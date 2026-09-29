@@ -28,6 +28,11 @@ memry setup --url https://your-memry.example  # use another memry server
 `{"url": "...", "token": "..."}` to `~/.config/memry/config.json` (permissions 0600).
 Other keys already in that file are kept.
 
+If the file already held a token from an earlier login, `memry setup` then revokes it with
+`DELETE <previous url>/api/auth/token`, so only the new token stays valid. A failed revoke
+(for example a token that is already revoked or an unreachable server) only prints a warning;
+it never fails setup.
+
 It then registers the `db-memory` MCP server in Claude Code (user scope), replacing any existing entry:
 
 ```bash

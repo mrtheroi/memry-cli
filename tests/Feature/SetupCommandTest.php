@@ -24,12 +24,29 @@ afterEach(function () {
     }
 });
 
-function fakeServer(array $code = [202, ['message' => 'If the email is valid, a login code has been sent.']], array $token = [200, ['token' => 'secret-token']]): void
+/**
+ * Fake the auth endpoints. POST /api/auth/token logs in; DELETE revokes the
+ * token used, answering with $revoke (or failing to connect when it is null).
+ */
+function fakeServer(array $code = [202, ['message' => 'If the email is valid, a login code has been sent.']], array $token = [200, ['token' => 'secret-token']], ?array $revoke = [204, '']): void
 {
     Http::fake([
         '*/api/auth/code' => Http::response($code[1], $code[0]),
-        '*/api/auth/token' => Http::response($token[1], $token[0]),
+        '*/api/auth/token' => fn ($request) => match (true) {
+            $request->method() !== 'DELETE' => Http::response($token[1], $token[0]),
+            $revoke === null => Http::failedConnection()($request),
+            default => Http::response($revoke[1], $revoke[0]),
+        },
     ]);
+}
+
+/**
+ * Write a config file as a previous `memry setup` would have left it.
+ */
+function previousConfig(array $values = ['url' => 'https://memry.test', 'token' => 'old-token']): void
+{
+    mkdir(dirname(getenv('MEMRY_CONFIG')), 0700, true);
+    file_put_contents(getenv('MEMRY_CONFIG'), json_encode($values));
 }
 
 /**
@@ -56,6 +73,99 @@ it('writes the url and token to the config file on success', function () {
 
     expect(json_decode(file_get_contents($this->configPath), true))
         ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token']);
+});
+
+it('revokes the previous token after saving the new one', function () {
+    previousConfig();
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->expectsOutputToContain('Revoked the previous memry token.')
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://memry.test/api/auth/token'
+        && $request->method() === 'DELETE'
+        && $request->hasHeader('Authorization', 'Bearer old-token')
+        && $request->hasHeader('Accept', 'application/json'));
+});
+
+it('does not revoke anything when there was no previous login', function (?array $previous) {
+    if ($previous !== null) {
+        previousConfig($previous);
+    }
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->doesntExpectOutputToContain('Revoked')
+        ->assertExitCode(0);
+
+    Http::assertNotSent(fn ($request) => $request->method() === 'DELETE');
+})->with([
+    'no config file' => [null],
+    'config without a token' => [['url' => 'https://memry.test', 'project' => 'kept']],
+]);
+
+it('keeps going when the previous token cannot be revoked', function (?array $revoke) {
+    config(['memry.executable' => "'/opt/memry/memry'"]);
+    previousConfig();
+    fakeServer(revoke: $revoke);
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->expectsOutputToContain('Could not revoke the previous memry token.')
+        ->doesntExpectOutputToContain('Revoked the previous memry token.')
+        ->expectsOutputToContain('Registered the db-memory MCP server in Claude Code (user scope).')
+        ->expectsOutputToContain("Installed the memry SessionStart hook in {$this->settingsPath}.")
+        ->assertExitCode(0);
+
+    expect(json_decode(file_get_contents($this->configPath), true))
+        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token']);
+})->with([
+    'already revoked' => [[401, ['message' => 'Unauthenticated.']]],
+    'server error' => [[500, 'Server Error']],
+    'unreachable' => [null],
+]);
+
+it('does not revoke the previous token when the server returns the same one', function () {
+    previousConfig(['url' => 'https://memry.test', 'token' => 'secret-token']);
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->doesntExpectOutputToContain('Revoked')
+        ->doesntExpectOutputToContain('Could not revoke')
+        ->assertExitCode(0);
+
+    Http::assertNotSent(fn ($request) => $request->method() === 'DELETE');
+});
+
+it('revokes the previous token on the server it belongs to', function () {
+    previousConfig(['url' => 'https://old.memry.test', 'token' => 'old-token']);
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://old.memry.test/api/auth/token'
+        && $request->method() === 'DELETE'
+        && $request->hasHeader('Authorization', 'Bearer old-token'));
+    Http::assertNotSent(fn ($request) => str_starts_with($request->url(), 'https://memry.test')
+        && $request->method() === 'DELETE');
+});
+
+it('does not revoke the previous token when the login fails', function () {
+    previousConfig();
+    fakeServer(token: [422, ['message' => 'Invalid or expired code.']]);
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '000000')
+        ->assertExitCode(1);
+
+    Http::assertNotSent(fn ($request) => $request->method() === 'DELETE');
+    expect(json_decode(file_get_contents($this->configPath), true)['token'])->toBe('old-token');
 });
 
 it('makes the config file readable by the owner only', function () {

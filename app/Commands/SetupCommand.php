@@ -55,9 +55,14 @@ class SetupCommand extends Command
         }
 
         $config = ConfigFile::resolve();
+        $previous = $config->read();
         $config->merge(['url' => $url, 'token' => $token]);
 
         $this->info("Logged in as {$email}. Credentials saved to {$config->path()}.");
+
+        if (is_string($previous['token'] ?? null) && is_string($previous['url'] ?? null) && $previous['token'] !== $token) {
+            $this->revokePreviousToken($previous['url'], $previous['token']);
+        }
 
         // The hook only needs the config file, so install it even when MCP registration fails.
         $registered = $this->registerMcpServer($url);
@@ -123,6 +128,23 @@ class SetupCommand extends Command
         $this->info("Installed the memry SessionStart hook in {$settings->path()}.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Revoke the token of the previous login on the server it belongs to.
+     * A failure never fails setup: the new login is already saved.
+     */
+    private function revokePreviousToken(string $url, string $token): void
+    {
+        try {
+            $revoked = Http::acceptJson()->timeout(10)->withToken($token)->delete($url.'/api/auth/token')->successful();
+        } catch (ConnectionException) {
+            $revoked = false;
+        }
+
+        $revoked
+            ? $this->info('Revoked the previous memry token.')
+            : $this->warn('Could not revoke the previous memry token.');
     }
 
     private function failWithManualRegistration(string $server): int

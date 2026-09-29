@@ -26,7 +26,10 @@ Claude Code keep working after `brew upgrade`. Requires PHP 8.3+.
 memry setup                                   # asks for your email, then the 6-digit login code
 memry setup --email you@example.com           # skip the email prompt
 memry setup --url https://your-memry.example  # use another memry server
+memry uninstall                               # undo setup (asks for confirmation; --force skips it)
 ```
+
+Without `--url`, `memry setup` uses `https://api.memry.com.mx` (or `MEMRY_URL`).
 
 `memry setup` emails you a one-time login code, exchanges it for an API token, and saves
 `{"url": "...", "token": "..."}` to `~/.config/memry/config.json` (permissions 0600).
@@ -86,9 +89,32 @@ non-empty string `project`, the project is the root's directory name.
 non-ASCII characters preserved. If it is not valid JSON or its `hooks` do not have the expected
 shape, it is left untouched and setup prints the hook to add by hand and exits with code 1.
 
+### Uninstall
+
+`memry uninstall` undoes `memry setup` after asking
+"Remove memry from Claude Code and delete your login? (yes/no)" (default no; `--force` skips it):
+
+1. Revokes the stored token with `DELETE <url>/api/auth/token` (skipped when not logged in; a
+   401 means it was already revoked and counts as done).
+2. Removes the `memry` and legacy `db-memory` MCP servers with `claude mcp remove --scope user`
+   (a server that is not registered is ignored).
+3. Removes memry's SessionStart hook from Claude Code's `settings.json`, keeping every other hook
+   and setting. A `SessionStart` list or `hooks` object left empty is dropped. A malformed file is
+   left untouched.
+4. Deletes `~/.config/memry/config.json` (or `MEMRY_CONFIG`).
+
+Each step runs even if an earlier one fails and prints one line. It exits with code 1 if any step
+failed (revoke failed with another error or an unreachable server, `claude` CLI not found, malformed settings, config not deletable) or the
+confirmation was declined, and 0 otherwise, including when there was nothing to remove.
+Then remove the CLI itself:
+
+```bash
+brew uninstall memry
+```
+
 | Variable       | Purpose                                                              |
 | -------------- | -------------------------------------------------------------------- |
-| `MEMRY_URL`    | Default server URL when `--url` is not given                         |
+| `MEMRY_URL`    | Default server URL when `--url` is not given (default `https://api.memry.com.mx`) |
 | `CLAUDE_CONFIG_DIR` | Claude Code config directory where the hook is installed (default `~/.claude`) |
 | `MEMRY_CONFIG` | Alternative config file path (default `~/.config/memry/config.json`); passed on to the `headersHelper` and the SessionStart hook |
 | `MEMRY_EXECUTABLE` | Shell command Claude Code runs memry with (default: the running memry executable); set by the Homebrew wrapper |

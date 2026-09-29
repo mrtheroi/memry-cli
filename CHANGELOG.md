@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `memry uninstall` undoes `memry setup`: it revokes the stored token (`DELETE <url>/api/auth/token`; a 401 prints "The memry token was already revoked." and counts as success), removes the `memry` and legacy `db-memory` MCP servers from Claude Code, removes only memry's SessionStart hook from Claude Code's `settings.json` (dropping a `SessionStart` list or `hooks` object left empty, leaving a malformed file untouched), and deletes the config file. It asks "Remove memry from Claude Code and delete your login? (yes/no)" first (default no; `--force` skips it). Every step runs even when an earlier one fails; it exits with code 1 when a step failed or the confirmation was declined, and ends with the hint "Run `brew uninstall memry` to remove the CLI.".
+
 ### Changed
+
+- The default server URL is now `https://api.memry.com.mx` instead of `https://db-mcp-production-n8vlvz.laravel.cloud`. Existing logins keep the URL stored in `config.json`.
 
 - `memry setup` registers memry in Claude Code as the user-scope `memry` MCP server instead of `db-memory`. It removes the legacy `db-memory` entry and any existing `memry` entry (ignoring failures of either) before adding `memry` and verifying it with `claude mcp get memry`. The tool names in Claude Code change from `mcp__db-memory__*` to `mcp__memry__*`.
 - The SessionStart protocol text references the `memry` MCP tools and no longer mentions Engram.

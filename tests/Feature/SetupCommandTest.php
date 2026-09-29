@@ -24,46 +24,6 @@ afterEach(function () {
     }
 });
 
-/**
- * Fake the auth endpoints. POST /api/auth/token logs in; DELETE revokes the
- * token used, answering with $revoke (or failing to connect when it is null).
- */
-function fakeServer(array $code = [202, ['message' => 'If the email is valid, a login code has been sent.']], array $token = [200, ['token' => 'secret-token']], ?array $revoke = [204, '']): void
-{
-    Http::fake([
-        '*/api/auth/code' => Http::response($code[1], $code[0]),
-        '*/api/auth/token' => fn ($request) => match (true) {
-            $request->method() !== 'DELETE' => Http::response($token[1], $token[0]),
-            $revoke === null => Http::failedConnection()($request),
-            default => Http::response($revoke[1], $revoke[0]),
-        },
-    ]);
-}
-
-/**
- * Write a config file as a previous `memry setup` would have left it.
- */
-function previousConfig(array $values = ['url' => 'https://memry.test', 'token' => 'old-token']): void
-{
-    mkdir(dirname(getenv('MEMRY_CONFIG')), 0700, true);
-    file_put_contents(getenv('MEMRY_CONFIG'), json_encode($values));
-}
-
-/**
- * Fake the `claude` lookup and `claude mcp` subcommands, succeeding unless a
- * result is given. Calling it again replaces the given results.
- */
-function fakeClaude(array $results = [], bool $installed = true): void
-{
-    Process::fake(['command -v claude' => Process::result(exitCode: $installed ? 0 : 1)]);
-
-    $results += ['remove' => Process::result(), 'add-json' => Process::result(), 'get' => Process::result()];
-
-    foreach ($results as $subcommand => $result) {
-        Process::fake(["'claude' 'mcp' '{$subcommand}' *" => $result]);
-    }
-}
-
 it('writes the url and token to the config file on success', function () {
     fakeServer();
 
@@ -278,6 +238,10 @@ it('uses the configured server url when no --url option is given', function () {
         ->assertExitCode(0);
 
     Http::assertSent(fn ($request) => $request->url() === 'https://configured.memry.test/api/auth/code');
+});
+
+it('uses the memry production server by default', function () {
+    expect(config('memry.url'))->toBe('https://api.memry.com.mx');
 });
 
 it('overwrites url and token but keeps other keys of an existing config file', function () {

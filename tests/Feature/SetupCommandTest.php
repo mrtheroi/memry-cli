@@ -116,7 +116,7 @@ it('keeps going when the previous token cannot be revoked', function (?array $re
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Could not revoke the previous memry token.')
         ->doesntExpectOutputToContain('Revoked the previous memry token.')
-        ->expectsOutputToContain('Registered the db-memory MCP server in Claude Code (user scope).')
+        ->expectsOutputToContain('Registered the memry MCP server in Claude Code (user scope).')
         ->expectsOutputToContain("Installed the memry SessionStart hook in {$this->settingsPath}.")
         ->assertExitCode(0);
 
@@ -454,7 +454,7 @@ function memryCommand(string $subcommand): string
     return 'MEMRY_CONFIG='.escapeshellarg(getenv('MEMRY_CONFIG'))." '/opt/memry/memry' {$subcommand}";
 }
 
-it('registers the db-memory MCP server in Claude Code with a headers helper', function () {
+it('registers the memry MCP server in Claude Code with a headers helper', function () {
     config(['memry.executable' => "'/opt/memry/memry'"]);
     fakeServer();
 
@@ -463,7 +463,7 @@ it('registers the db-memory MCP server in Claude Code with a headers helper', fu
         ->assertExitCode(0);
 
     Process::assertRan(fn ($process) => $process->command === [
-        'claude', 'mcp', 'add-json', '--scope', 'user', 'db-memory',
+        'claude', 'mcp', 'add-json', '--scope', 'user', 'memry',
         json_encode(['type' => 'http', 'url' => 'https://memry.test/mcp/memory', 'headersHelper' => memryCommand('mcp-headers')], JSON_UNESCAPED_SLASHES),
     ]);
 });
@@ -483,7 +483,7 @@ it('points the headers helper at the running memry script when no helper command
         && json_decode($process->command[6], true)['headersHelper'] === $helper);
 });
 
-it('looks up claude, removes any existing user-scope db-memory entry, adds it and verifies it, in that order', function () {
+it('looks up claude, removes the legacy db-memory and any existing memry user-scope entries, adds memry and verifies it, in that order', function () {
     fakeServer();
 
     $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
@@ -493,8 +493,9 @@ it('looks up claude, removes any existing user-scope db-memory entry, adds it an
     Process::assertRanInOrder([
         'command -v claude',
         ['claude', 'mcp', 'remove', '--scope', 'user', 'db-memory'],
+        ['claude', 'mcp', 'remove', '--scope', 'user', 'memry'],
         fn ($process) => ($process->command[2] ?? null) === 'add-json',
-        ['claude', 'mcp', 'get', 'db-memory'],
+        ['claude', 'mcp', 'get', 'memry'],
     ]);
 });
 
@@ -505,8 +506,8 @@ it('fails with manual instructions but keeps the config when adding the MCP serv
 
     $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
         ->expectsQuestion('Login code', '123456')
-        ->expectsOutputToContain('Could not register the db-memory MCP server in Claude Code.')
-        ->expectsOutputToContain('claude mcp add-json --scope user db-memory '.escapeshellarg(json_encode(['type' => 'http', 'url' => 'https://memry.test/mcp/memory', 'headersHelper' => memryCommand('mcp-headers')], JSON_UNESCAPED_SLASHES)))
+        ->expectsOutputToContain('Could not register the memry MCP server in Claude Code.')
+        ->expectsOutputToContain('claude mcp add-json --scope user memry '.escapeshellarg(json_encode(['type' => 'http', 'url' => 'https://memry.test/mcp/memory', 'headersHelper' => memryCommand('mcp-headers')], JSON_UNESCAPED_SLASHES)))
         ->assertExitCode(1);
 
     expect(json_decode(file_get_contents($this->configPath), true))
@@ -519,11 +520,11 @@ it('fails with manual instructions when the MCP server cannot be verified', func
 
     $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
         ->expectsQuestion('Login code', '123456')
-        ->expectsOutputToContain('Could not register the db-memory MCP server in Claude Code.')
-        ->expectsOutputToContain('claude mcp add-json --scope user db-memory')
+        ->expectsOutputToContain('Could not register the memry MCP server in Claude Code.')
+        ->expectsOutputToContain('claude mcp add-json --scope user memry')
         ->assertExitCode(1);
 
-    Process::assertRan(['claude', 'mcp', 'get', 'db-memory']);
+    Process::assertRan(['claude', 'mcp', 'get', 'memry']);
 });
 
 it('confirms the MCP server registration', function () {
@@ -531,7 +532,7 @@ it('confirms the MCP server registration', function () {
 
     $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
         ->expectsQuestion('Login code', '123456')
-        ->expectsOutputToContain('Registered the db-memory MCP server in Claude Code (user scope).')
+        ->expectsOutputToContain('Registered the memry MCP server in Claude Code (user scope).')
         ->assertExitCode(0);
 });
 
@@ -542,20 +543,20 @@ it('warns with manual instructions and skips registration when the Claude Code C
     $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Claude Code CLI not found; skipped MCP registration.')
-        ->expectsOutputToContain('claude mcp add-json --scope user db-memory')
+        ->expectsOutputToContain('claude mcp add-json --scope user memry')
         ->assertExitCode(1);
 
     Process::assertDidntRun(fn ($process) => ($process->command[0] ?? null) === 'claude');
     expect(json_decode(file_get_contents($this->configPath), true)['token'])->toBe('secret-token');
 });
 
-it('ignores a failure to remove a db-memory entry that does not exist', function () {
+it('ignores failures to remove the legacy db-memory and memry entries when they do not exist', function () {
     fakeServer();
-    fakeClaude(['remove' => Process::result(exitCode: 1, errorOutput: 'No MCP server found with name: db-memory')]);
+    fakeClaude(['remove' => Process::result(exitCode: 1, errorOutput: 'No MCP server found')]);
 
     $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
         ->expectsQuestion('Login code', '123456')
-        ->expectsOutputToContain('Registered the db-memory MCP server in Claude Code (user scope).')
+        ->expectsOutputToContain('Registered the memry MCP server in Claude Code (user scope).')
         ->assertExitCode(0);
 });
 
@@ -685,7 +686,7 @@ it('fails with manual instructions and leaves an invalid settings file untouched
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain("Could not install the memry SessionStart hook: {$this->settingsPath} is not valid JSON.")
         ->expectsOutputToContain('"command": '.json_encode(memryCommand('hook:session-start'), JSON_UNESCAPED_SLASHES))
-        ->expectsOutputToContain('Registered the db-memory MCP server in Claude Code (user scope).')
+        ->expectsOutputToContain('Registered the memry MCP server in Claude Code (user scope).')
         ->assertExitCode(1);
 
     expect(file_get_contents($this->settingsPath))->toBe('{not json')

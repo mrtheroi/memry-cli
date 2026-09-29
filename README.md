@@ -1,8 +1,12 @@
+<p align="center">
+  <img src="art/memry-logo.png" alt="memry" width="400">
+</p>
+
 # memry CLI
 
-Command-line client for [memry](https://github.com/mrtheroi/db-mcp), a private remote memory MCP server for AI agents.
+Command-line client for [memry](https://github.com/mrtheroi/memry-server), a private remote memory MCP server for AI agents.
 
-`memry setup` logs in from the terminal with an email one-time code, registers memry in Claude Code as the `db-memory` MCP server, and installs a `SessionStart` hook that loads your project's memry context into every session.
+`memry setup` logs in from the terminal with an email one-time code, registers memry in Claude Code as the `memry` MCP server, and installs a `SessionStart` hook that loads your project's memry context into every session.
 
 Requires the [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (`claude`) on your `PATH`.
 
@@ -33,10 +37,10 @@ If the file already held a token from an earlier login, `memry setup` then revok
 (for example a token that is already revoked or an unreachable server) only prints a warning;
 it never fails setup.
 
-It then registers the `db-memory` MCP server in Claude Code (user scope), replacing any existing entry:
+It then registers the `memry` MCP server in Claude Code (user scope), replacing any existing entry and removing the legacy `db-memory` entry of earlier versions:
 
 ```bash
-claude mcp add-json --scope user db-memory '{"type":"http","url":"<url>/mcp/memory","headersHelper":"<memry> mcp-headers"}'
+claude mcp add-json --scope user memry '{"type":"http","url":"<url>/mcp/memory","headersHelper":"<memry> mcp-headers"}'
 ```
 
 The server uses a `headersHelper`: Claude Code runs `memry mcp-headers`, which prints

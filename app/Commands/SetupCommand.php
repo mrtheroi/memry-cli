@@ -13,6 +13,10 @@ use LaravelZero\Framework\Commands\Command;
 
 class SetupCommand extends Command
 {
+    private const MCP_SERVER = 'memry';
+
+    private const LEGACY_MCP_SERVER = 'db-memory';
+
     protected $signature = 'setup
         {--url= : The memry server URL}
         {--email= : The email to log in with}';
@@ -78,7 +82,7 @@ class SetupCommand extends Command
     }
 
     /**
-     * Register memry as the user-scope db-memory MCP server in Claude Code.
+     * Register memry as the user-scope memry MCP server in Claude Code.
      * The token stays in the config file; Claude Code gets it from the
      * headers helper.
      */
@@ -96,16 +100,17 @@ class SetupCommand extends Command
             return $this->failWithManualRegistration($server);
         }
 
-        Process::run(['claude', 'mcp', 'remove', '--scope', 'user', 'db-memory']);
+        Process::run(['claude', 'mcp', 'remove', '--scope', 'user', self::LEGACY_MCP_SERVER]);
+        Process::run(['claude', 'mcp', 'remove', '--scope', 'user', self::MCP_SERVER]);
 
-        if (Process::run(['claude', 'mcp', 'add-json', '--scope', 'user', 'db-memory', $server])->failed()
-            || Process::run(['claude', 'mcp', 'get', 'db-memory'])->failed()) {
-            $this->error('Could not register the db-memory MCP server in Claude Code.');
+        if (Process::run(['claude', 'mcp', 'add-json', '--scope', 'user', self::MCP_SERVER, $server])->failed()
+            || Process::run(['claude', 'mcp', 'get', self::MCP_SERVER])->failed()) {
+            $this->error('Could not register the '.self::MCP_SERVER.' MCP server in Claude Code.');
 
             return $this->failWithManualRegistration($server);
         }
 
-        $this->info('Registered the db-memory MCP server in Claude Code (user scope).');
+        $this->info('Registered the '.self::MCP_SERVER.' MCP server in Claude Code (user scope).');
 
         return self::SUCCESS;
     }
@@ -191,7 +196,7 @@ class SetupCommand extends Command
     private function failWithManualRegistration(string $server): int
     {
         $this->line('Your login was saved. Register the server manually with:');
-        $this->line('  claude mcp add-json --scope user db-memory '.escapeshellarg($server));
+        $this->line('  claude mcp add-json --scope user '.self::MCP_SERVER.' '.escapeshellarg($server));
 
         return self::FAILURE;
     }

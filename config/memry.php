@@ -11,7 +11,7 @@ return [
     |
     */
 
-    'url' => env('MEMRY_URL', 'https://db-mcp-production-n8vlvz.laravel.cloud'),
+    'url' => env('MEMRY_URL', 'https://api.memry.com.mx'),
 
     /*
     |--------------------------------------------------------------------------

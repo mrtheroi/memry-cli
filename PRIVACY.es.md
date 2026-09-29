@@ -6,7 +6,7 @@ memry es un servicio de memoria persistente para agentes de IA de programación.
 Valero, con domicilio en México ("nosotros"). Este aviso explica qué datos guarda memry, para qué,
 quién más los trata y cómo puedes eliminarlos. memry está en beta pública.
 
-Dudas y solicitudes: **privacidad@memry.com.mx**
+Dudas y solicitudes: **mrtheroi@gmail.com**
 
 ## Qué datos guardamos
 
@@ -53,7 +53,7 @@ operativos por un tiempo limitado conforme a sus propias políticas.
 - **Eliminar todo:** `memry delete-account` elimina de forma permanente tu cuenta, todas tus memorias
   y prompts, tus tokens y tus códigos de acceso. No se puede deshacer.
 - **Acceder a tus datos, rectificarlos, cancelarlos u oponerte a su uso (derechos ARCO):** escribe a
-  privacidad@memry.com.mx. Responderemos en un plazo máximo de 20 días hábiles.
+  mrtheroi@gmail.com. Responderemos en un plazo máximo de 20 días hábiles.
 
 ## Cambios
 

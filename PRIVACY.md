@@ -6,7 +6,7 @@ memry is a persistent memory service for AI coding agents. It is operated by Ces
 Mexico ("we"). This policy explains what memry stores, why, who else handles it, and how you can
 delete it. memry is in public beta.
 
-Questions and requests: **privacidad@memry.com.mx**
+Questions and requests: **mrtheroi@gmail.com**
 
 ## What we store
 
@@ -53,7 +53,7 @@ their own policies.
 - **Delete everything:** `memry delete-account` permanently deletes your account, every memory and
   prompt, all your tokens and login codes. It cannot be undone.
 - **Access, correct or delete your data, or object to its use:** write to
-  privacidad@memry.com.mx. We will answer within 20 business days.
+  mrtheroi@gmail.com. We will answer within 20 business days.
 
 ## Changes
 

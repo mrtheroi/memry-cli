@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-29
+
 ### Added
 
 - `memry delete-account` permanently deletes the memry account and all its memories. It requires being logged in ("You are not logged in to memry." otherwise), warns that the deletion cannot be undone and asks the user to type their account email to confirm (asking again for an invalid address; an empty answer aborts with exit code 1; there is no `--force`). It sends `DELETE <url>/api/account` with the stored token and the normalized email. On success it prints "Deleted your memry account and all its memories." and removes memry from this machine like `memry uninstall` (MCP servers, SessionStart hook, config file), without revoking the already deleted token. A 422 ("The email does not match your memry account."), 401 ("Your memry login is no longer valid. Run `memry setup` and try again."), other error or unreachable server ("Could not delete your memry account. Try again later.") exits with code 1 and removes nothing locally.

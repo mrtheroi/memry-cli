@@ -22,3 +22,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A repo can declare its memry project in a `.memry.json` file at its root (`{"project": "memry"}`), so several repos of one product share a project. `memry hook:session-start` reads it from the git top-level (or the `cwd` outside git), trims the value and falls back to the directory name when the file is missing, unreadable, not valid JSON or has no non-empty string `project`.
 - The SessionStart protocol asks for the repo (directory name) in `session-summary` and to save memories about another product under that product's project.
 - This repo declares the `memry` project in `.memry.json`.
+- `MEMRY_EXECUTABLE` sets the command Claude Code uses to run memry (for the `headersHelper` and the SessionStart hook), so a stable path survives upgrades of a versioned install such as Homebrew's. A custom `MEMRY_CONFIG` is prefixed to it as well.
+- memry is built as a single-file PHAR with `php memry app:build memry --build-version=<version>` into `builds/` (ignored by git) and can be installed with `brew install mrtheroi/tap/memry`.

@@ -6,6 +6,16 @@ Command-line client for [memry](https://github.com/mrtheroi/db-mcp), a private r
 
 Requires the [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (`claude`) on your `PATH`.
 
+## Installation
+
+```bash
+brew install mrtheroi/tap/memry
+```
+
+The Homebrew formula installs the memry PHAR behind a wrapper that sets `MEMRY_EXECUTABLE` to
+the stable `$(brew --prefix)/opt/memry/bin/memry` path, so the commands `memry setup` writes into
+Claude Code keep working after `brew upgrade`. Requires PHP 8.3+.
+
 ## Usage
 
 ```bash
@@ -72,8 +82,10 @@ shape, it is left untouched and setup prints the hook to add by hand and exits w
 | `MEMRY_URL`    | Default server URL when `--url` is not given                         |
 | `CLAUDE_CONFIG_DIR` | Claude Code config directory where the hook is installed (default `~/.claude`) |
 | `MEMRY_CONFIG` | Alternative config file path (default `~/.config/memry/config.json`); passed on to the `headersHelper` and the SessionStart hook |
+| `MEMRY_EXECUTABLE` | Shell command Claude Code runs memry with (default: the running memry executable); set by the Homebrew wrapper |
 
 ## Development
 
 - PHP 8.3+ · [Laravel Zero](https://laravel-zero.com) · Pest
 - Run the tests with `./vendor/bin/pest`
+- Build the PHAR with `php memry app:build memry --build-version=<version>` (output: `builds/memry`)

@@ -577,14 +577,14 @@ it('installs the memry SessionStart hook in a new Claude Code settings file', fu
 
 it('keeps every other setting, event and hook when installing the SessionStart hook', function () {
     config(['memry.executable' => "'/opt/memry/memry'"]);
-    $engram = ['matcher' => 'startup', 'hooks' => [['type' => 'command', 'command' => 'engram context']]];
+    $otherTool = ['matcher' => 'startup', 'hooks' => [['type' => 'command', 'command' => 'other-tool context']]];
     $existing = [
         'model' => 'opus',
         'permissions' => ['allow' => ['Bash(ls)'], 'deny' => []],
         'env' => new stdClass,
         'hooks' => [
             'PreToolUse' => [['matcher' => 'Bash', 'hooks' => [['type' => 'command', 'command' => 'echo pre']]]],
-            'SessionStart' => [$engram],
+            'SessionStart' => [$otherTool],
         ],
     ];
     mkdir(dirname($this->settingsPath), 0700, true);
@@ -604,14 +604,14 @@ it('keeps every other setting, event and hook when installing the SessionStart h
 
 it('replaces a previously installed memry SessionStart hook', function () {
     config(['memry.executable' => "'/opt/memry/memry'"]);
-    $engram = ['matcher' => 'startup', 'hooks' => [['type' => 'command', 'command' => 'engram context']]];
+    $otherTool = ['matcher' => 'startup', 'hooks' => [['type' => 'command', 'command' => 'other-tool context']]];
     $mixed = ['matcher' => 'resume', 'hooks' => [
         ['type' => 'command', 'command' => "'/old/memry' hook:session-start"],
         ['type' => 'command', 'command' => 'echo resumed'],
     ]];
     mkdir(dirname($this->settingsPath), 0700, true);
     file_put_contents($this->settingsPath, json_encode(['hooks' => ['SessionStart' => [
-        $engram, memryHookGroup("'/old/memry' hook:session-start"), $mixed,
+        $otherTool, memryHookGroup("'/old/memry' hook:session-start"), $mixed,
     ]]]));
     fakeServer();
 
@@ -620,7 +620,7 @@ it('replaces a previously installed memry SessionStart hook', function () {
         ->assertExitCode(0);
 
     expect(json_decode(file_get_contents($this->settingsPath), true)['hooks']['SessionStart'])->toBe([
-        $engram,
+        $otherTool,
         ['matcher' => 'resume', 'hooks' => [['type' => 'command', 'command' => 'echo resumed']]],
         memryHookGroup(),
     ]);

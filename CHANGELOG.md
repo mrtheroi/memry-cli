@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The default server URL is now `https://api.memry.com.mx` instead of `https://db-mcp-production-n8vlvz.laravel.cloud`. Existing logins keep the URL stored in `config.json`.
 
 - `memry setup` registers memry in Claude Code as the user-scope `memry` MCP server instead of `db-memory`. It removes the legacy `db-memory` entry and any existing `memry` entry (ignoring failures of either) before adding `memry` and verifying it with `claude mcp get memry`. The tool names in Claude Code change from `mcp__db-memory__*` to `mcp__memry__*`.
-- The SessionStart protocol text references the `memry` MCP tools and no longer mentions Engram.
+- The SessionStart protocol text references the `memry` MCP tools.
 
 ## [0.2.1] - 2026-09-29
 

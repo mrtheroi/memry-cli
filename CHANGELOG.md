@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `memry setup` revokes the token of the previous login (`DELETE /api/auth/token` on the server stored with it) after the new credentials are saved, printing "Revoked the previous memry token.". It is skipped when there was no previous token or the server returned the same one, and a failed revoke (401, server error, unreachable server) only prints a warning and never changes the exit code.
+
 ## [0.1.0] - 2026-09-28
 
 ### Added

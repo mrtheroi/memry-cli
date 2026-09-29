@@ -43,10 +43,25 @@ memry hook and keeping every other setting and hook:
 ```
 
 `memry hook:session-start` reads the hook JSON on stdin, uses the git top-level of its `cwd`
-(or the directory name) as the project, and prints the memry usage protocol followed by
-`GET <url>/api/context?project=<project>`. When you are not logged in or the request fails it
+(or the `cwd` itself outside git) as the repo root, resolves the project (see below), and prints
+the memry usage protocol followed by `GET <url>/api/context?project=<project>`. The protocol asks
+Claude to save memories under that project (or under another product's project when they are
+about another product) and to pass the project and the repo (the root's directory name) to
+`session-summary`. When you are not logged in or the request fails it
 prints nothing and exits with code 0, so it never blocks a session. The hook is installed even
 if MCP registration fails.
+
+#### Project name
+
+memry groups memories by product, not by folder, so several repos can share one project.
+Declare it in a `.memry.json` file at the repo root:
+
+```json
+{"project": "memry"}
+```
+
+The value is trimmed. Without the file, or when it is unreadable, not valid JSON or has no
+non-empty string `project`, the project is the root's directory name.
 
 `settings.json` is rewritten atomically (temporary file + rename) with its permissions and
 non-ASCII characters preserved. If it is not valid JSON or its `hooks` do not have the expected

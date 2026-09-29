@@ -64,13 +64,54 @@ it('prints the protocol block and the context body using the git top-level as pr
 ## memry memory (project: MyProject)
 memry is available through the `db-memory` MCP tools, alongside Engram.
 - Use get-memory with an id to read a memory from the context below in full, and search-memory to find older ones.
-- Save decisions, bug fixes and discoveries with save-memory (project "MyProject", with a topic_key for evolving topics).
-- Before ending the session, save a summary with session-summary (project "MyProject").
+- Save decisions, bug fixes and discoveries with save-memory (project "MyProject", with a topic_key for evolving topics). Save a memory about another product under that product's project instead.
+- Before ending the session, save a summary with session-summary (project "MyProject", repo "MyProject").
 
 ## Latest session
 Did things
 TXT."\n");
 });
+
+it('uses the project from .memry.json at the git top-level and the folder name as repo', function () {
+    $repo = gitRepo($this->tmpDir.'/memry-cli');
+    mkdir($repo.'/src/deep', 0755, true);
+    file_put_contents($repo.'/.memry.json', '{"project": "memry"}');
+    Http::fake(['*/api/context*' => Http::response('body')]);
+
+    [$exitCode, $output] = runHook(['session_id' => 'abc', 'cwd' => $repo.'/src/deep', 'source' => 'startup']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toStartWith("## memry memory (project: memry)\n")
+        ->and($output)->toContain('(project "memry", repo "memry-cli")');
+});
+
+it('trims the project from .memry.json', function () {
+    $repo = gitRepo($this->tmpDir.'/memry-cli');
+    file_put_contents($repo.'/.memry.json', '{"project": "  memry \n"}');
+    Http::fake(['*/api/context*' => Http::response('body')]);
+
+    [, $output] = runHook(['session_id' => 'abc', 'cwd' => $repo, 'source' => 'startup']);
+
+    expect($output)->toStartWith("## memry memory (project: memry)\n");
+});
+
+it('falls back to the repo name when .memry.json has no usable project', function (string $contents) {
+    $repo = gitRepo($this->tmpDir.'/memry-cli');
+    file_put_contents($repo.'/.memry.json', $contents);
+    Http::fake(['*/api/context*' => Http::response('body')]);
+
+    [$exitCode, $output] = runHook(['session_id' => 'abc', 'cwd' => $repo, 'source' => 'startup']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toStartWith("## memry memory (project: memry-cli)\n");
+})->with([
+    'invalid json' => ['not json'],
+    'missing project' => ['{"name": "memry"}'],
+    'empty project' => ['{"project": ""}'],
+    'blank project' => ['{"project": "   "}'],
+    'non-string project' => ['{"project": 42}'],
+    'non-object json' => ['"memry"'],
+]);
 
 it('falls back to the cwd basename outside a git repository', function () {
     mkdir($dir = $this->tmpDir.'/PlainFolder');
@@ -80,6 +121,29 @@ it('falls back to the cwd basename outside a git repository', function () {
 
     expect($exitCode)->toBe(0)
         ->and($output)->toStartWith("## memry memory (project: PlainFolder)\n");
+});
+
+it('falls back to the repo name when .memry.json is unreadable', function () {
+    $repo = gitRepo($this->tmpDir.'/memry-cli');
+    file_put_contents($file = $repo.'/.memry.json', '{"project": "memry"}');
+    chmod($file, 0000);
+    Http::fake(['*/api/context*' => Http::response('body')]);
+
+    [$exitCode, $output] = runHook(['session_id' => 'abc', 'cwd' => $repo, 'source' => 'startup']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toStartWith("## memry memory (project: memry-cli)\n");
+});
+
+it('honors .memry.json in the cwd outside a git repository', function () {
+    mkdir($dir = $this->tmpDir.'/PlainFolder');
+    file_put_contents($dir.'/.memry.json', '{"project": "memry"}');
+    Http::fake(['*/api/context*' => Http::response('body')]);
+
+    [, $output] = runHook(['session_id' => 'abc', 'cwd' => $dir, 'source' => 'startup']);
+
+    expect($output)->toStartWith("## memry memory (project: memry)\n")
+        ->and($output)->toContain('repo "PlainFolder"');
 });
 
 it('uses the working directory when the input has no cwd', function (array $input) {
@@ -118,6 +182,16 @@ it('requests the context with the bearer token, an encoded project and a 3 secon
         && $request->hasHeader('Authorization', 'Bearer secret-token'));
     expect($timeout)->toBe(3)
         ->and($output)->not->toContain('secret-token');
+});
+
+it('requests the context of the project from .memry.json', function () {
+    $repo = gitRepo($this->tmpDir.'/memry-cli');
+    file_put_contents($repo.'/.memry.json', '{"project": "memry app"}');
+    Http::fake(['*/api/context*' => Http::response('body')]);
+
+    runHook(['session_id' => 'abc', 'cwd' => $repo, 'source' => 'startup']);
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://memry.test/api/context?project=memry%20app');
 });
 
 it('prints nothing, sends nothing and exits zero without a usable config', function (?string $contents) {

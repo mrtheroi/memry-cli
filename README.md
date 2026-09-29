@@ -72,6 +72,7 @@ be undone, so it asks you to type your account email to confirm.
 
 Your memories are stored on the memry server and tied to your account. `memry uninstall` revokes
 the token on this machine, so it can no longer access them. `memry delete-account` deletes them.
+See the [privacy policy](PRIVACY.md) ([en español](PRIVACY.es.md)) for what memry stores and who handles it.
 
 ## License
 

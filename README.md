@@ -58,10 +58,20 @@ brew uninstall memry
 `memry uninstall` asks for confirmation, then removes memry from Claude Code and deletes your
 local login. Use `memry uninstall --force` to skip the confirmation.
 
+### Delete your account
+
+```bash
+memry delete-account
+```
+
+`memry delete-account` permanently deletes your memry account and all its memories on the server,
+then removes memry from Claude Code and deletes your local login, like `memry uninstall`. It cannot
+be undone, so it asks you to type your account email to confirm.
+
 ## Your data
 
 Your memories are stored on the memry server and tied to your account. `memry uninstall` revokes
-the token on this machine, so it can no longer access them.
+the token on this machine, so it can no longer access them. `memry delete-account` deletes them.
 
 ## License
 

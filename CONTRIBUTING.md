@@ -37,6 +37,7 @@ memry setup                                   # asks for your email, then the 6-
 memry setup --email you@example.com           # skip the email prompt
 memry setup --url https://your-memry.example  # use another memry server
 memry uninstall                               # undo setup (asks for confirmation; --force skips it)
+memry delete-account                          # delete the account and all its memories, then undo setup
 ```
 
 Two hidden commands are run by Claude Code, not by users: `memry mcp-headers` (the MCP
@@ -121,6 +122,26 @@ Each step runs even if an earlier one fails and prints one line. It exits with c
 failed (revoke failed with another error or an unreachable server, `claude` CLI not found,
 malformed settings, config not deletable) or the confirmation was declined, and 0 otherwise,
 including when there was nothing to remove. It ends with a hint to run `brew uninstall memry`.
+
+## How `memry delete-account` works
+
+1. **Login.** Without a `url` and `token` in the config file it prints "You are not logged in to
+   memry." and exits with code 1.
+2. **Confirmation.** It warns that this deletes the account and all its memories on the server and
+   cannot be undone, then asks "Type your account email to confirm". The answer is trimmed and
+   lowercased; an invalid address prints "Enter a valid email address." and asks again, and an
+   empty answer aborts with "Aborted; nothing was deleted." (exit code 1). There is no `--force`:
+   deleting an account always requires typing the email. The email is not stored locally, so the
+   server checks that it matches the account.
+3. **Deletion.** It sends `DELETE <url>/api/account` with the stored token and `{"email": "..."}`.
+   On a 204 the server has deleted the account with its memories, prompts, tokens and login codes,
+   and it prints "Deleted your memry account and all its memories.". A 422 (email does not match),
+   401 (login no longer valid; run `memry setup`), other error or unreachable server prints an
+   error and exits with code 1 without removing anything locally.
+4. **Local cleanup.** After a deletion it runs steps 2 to 4 of `memry uninstall` (MCP servers,
+   SessionStart hook, config file); there is no token left to revoke. Each step runs even if an
+   earlier one fails, and it exits with code 1 if any step failed. It ends with a hint to run
+   `brew uninstall memry`.
 
 ## Troubleshooting
 

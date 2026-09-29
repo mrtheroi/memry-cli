@@ -82,3 +82,16 @@ function fakeClaude(array $results = [], bool $installed = true): void
         Process::fake(["'claude' 'mcp' '{$subcommand}' *" => $result]);
     }
 }
+
+/**
+ * Fake DELETE /api/account, answering with $response (or failing to connect
+ * when it is null).
+ */
+function fakeAccountDeletion(?array $response = [204, '']): void
+{
+    Http::fake([
+        '*/api/account' => fn ($request) => $response === null
+            ? Http::failedConnection()($request)
+            : Http::response($response[1], $response[0]),
+    ]);
+}

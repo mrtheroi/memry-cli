@@ -285,6 +285,15 @@ it('fails without writing the config when the server answers without a token', f
     Process::assertNothingRan();
 });
 
+/**
+ * The command `memry setup` writes for the configured '/opt/memry/memry'
+ * executable, prefixed with the custom MEMRY_CONFIG every test sets.
+ */
+function memryCommand(string $subcommand): string
+{
+    return 'MEMRY_CONFIG='.escapeshellarg(getenv('MEMRY_CONFIG'))." '/opt/memry/memry' {$subcommand}";
+}
+
 it('registers the db-memory MCP server in Claude Code with a headers helper', function () {
     config(['memry.executable' => "'/opt/memry/memry'"]);
     fakeServer();
@@ -295,7 +304,7 @@ it('registers the db-memory MCP server in Claude Code with a headers helper', fu
 
     Process::assertRan(fn ($process) => $process->command === [
         'claude', 'mcp', 'add-json', '--scope', 'user', 'db-memory',
-        '{"type":"http","url":"https://memry.test/mcp/memory","headersHelper":"\'/opt/memry/memry\' mcp-headers"}',
+        json_encode(['type' => 'http', 'url' => 'https://memry.test/mcp/memory', 'headersHelper' => memryCommand('mcp-headers')], JSON_UNESCAPED_SLASHES),
     ]);
 });
 
@@ -337,7 +346,7 @@ it('fails with manual instructions but keeps the config when adding the MCP serv
     $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Could not register the db-memory MCP server in Claude Code.')
-        ->expectsOutputToContain("claude mcp add-json --scope user db-memory '{\"type\":\"http\",\"url\":\"https://memry.test/mcp/memory\",\"headersHelper\":\"'\\''/opt/memry/memry'\\'' mcp-headers\"}'")
+        ->expectsOutputToContain('claude mcp add-json --scope user db-memory '.escapeshellarg(json_encode(['type' => 'http', 'url' => 'https://memry.test/mcp/memory', 'headersHelper' => memryCommand('mcp-headers')], JSON_UNESCAPED_SLASHES)))
         ->assertExitCode(1);
 
     expect(json_decode(file_get_contents($this->configPath), true))
@@ -420,11 +429,11 @@ it('passes a custom MEMRY_CONFIG on to the headers helper', function () {
 /**
  * The SessionStart matcher group that `memry setup` installs.
  */
-function memryHookGroup(string $command = "'/opt/memry/memry' hook:session-start"): array
+function memryHookGroup(?string $command = null): array
 {
     return [
         'matcher' => 'startup|resume|clear|compact',
-        'hooks' => [['type' => 'command', 'command' => $command, 'timeout' => 10]],
+        'hooks' => [['type' => 'command', 'command' => $command ?? memryCommand('hook:session-start'), 'timeout' => 10]],
     ];
 }
 
@@ -515,7 +524,7 @@ it('fails with manual instructions and leaves an invalid settings file untouched
     $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain("Could not install the memry SessionStart hook: {$this->settingsPath} is not valid JSON.")
-        ->expectsOutputToContain('"command": "\'/opt/memry/memry\' hook:session-start"')
+        ->expectsOutputToContain('"command": '.json_encode(memryCommand('hook:session-start'), JSON_UNESCAPED_SLASHES))
         ->expectsOutputToContain('Registered the db-memory MCP server in Claude Code (user scope).')
         ->assertExitCode(1);
 

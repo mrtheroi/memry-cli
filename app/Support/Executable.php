@@ -15,13 +15,9 @@ class Executable
 
     private static function executable(): string
     {
-        if ($executable = config('memry.executable')) {
-            return $executable;
-        }
-
-        $executable = \Phar::running(false) !== ''
+        $executable = config('memry.executable') ?: (\Phar::running(false) !== ''
             ? escapeshellarg(\Phar::running(false))
-            : escapeshellarg(PHP_BINARY).' '.escapeshellarg(base_path('memry'));
+            : escapeshellarg(PHP_BINARY).' '.escapeshellarg(base_path('memry')));
 
         // Claude Code runs our commands without our environment, so a custom config path must travel with them.
         $env = getenv('MEMRY_CONFIG') ? 'MEMRY_CONFIG='.escapeshellarg(getenv('MEMRY_CONFIG')).' ' : '';

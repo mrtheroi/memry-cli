@@ -19,11 +19,13 @@ return [
     |--------------------------------------------------------------------------
     |
     | The shell command Claude Code uses to run memry, for the MCP headers
-    | helper and the SessionStart hook. Null resolves it to the running
-    | memry executable, prefixed with a custom MEMRY_CONFIG when set.
+    | helper and the SessionStart hook. Set MEMRY_EXECUTABLE to a stable
+    | path (the Homebrew wrapper does) so an upgrade does not break it.
+    | Unset resolves it to the running memry executable. A custom
+    | MEMRY_CONFIG is prefixed in both cases.
     |
     */
 
-    'executable' => null,
+    'executable' => env('MEMRY_EXECUTABLE'),
 
 ];

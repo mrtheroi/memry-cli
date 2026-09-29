@@ -2,9 +2,11 @@
 
 namespace App\Commands;
 
+use App\Support\AuthToken;
 use App\Support\ClaudeSettings;
 use App\Support\ConfigFile;
 use App\Support\Executable;
+use App\Support\RevokeResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -13,9 +15,9 @@ use LaravelZero\Framework\Commands\Command;
 
 class SetupCommand extends Command
 {
-    private const MCP_SERVER = 'memry';
+    public const MCP_SERVER = 'memry';
 
-    private const LEGACY_MCP_SERVER = 'db-memory';
+    public const LEGACY_MCP_SERVER = 'db-memory';
 
     protected $signature = 'setup
         {--url= : The memry server URL}
@@ -147,13 +149,7 @@ class SetupCommand extends Command
      */
     private function revokePreviousToken(string $url, string $token): void
     {
-        try {
-            $revoked = Http::acceptJson()->timeout(10)->withToken($token)->delete($url.'/api/auth/token')->successful();
-        } catch (ConnectionException) {
-            $revoked = false;
-        }
-
-        $revoked
+        AuthToken::revoke($url, $token) === RevokeResult::Revoked
             ? $this->info('Revoked the previous memry token.')
             : $this->warn('Could not revoke the previous memry token.');
     }

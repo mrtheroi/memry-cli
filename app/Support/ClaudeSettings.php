@@ -43,9 +43,58 @@ class ClaudeSettings
         $settings->hooks->SessionStart = $this->withoutHooks($settings->hooks->SessionStart, $marker);
         $settings->hooks->SessionStart[] = $group;
 
-        $this->writeAtomically(json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).PHP_EOL);
+        $this->write($settings);
 
         return true;
+    }
+
+    /**
+     * Remove every SessionStart hook whose command contains $marker (and any
+     * matcher group left empty by that), keeping every other hook and setting.
+     * A SessionStart list and hooks object left empty are dropped too, as
+     * installing the hook creates them when missing. Returns whether a hook
+     * was removed, or null, leaving the file untouched, when it is not a
+     * valid JSON object with the expected hooks shape.
+     */
+    public function removeSessionStartHook(string $marker): ?bool
+    {
+        if (! is_file($this->path)) {
+            return false;
+        }
+
+        $settings = json_decode(file_get_contents($this->path));
+
+        if (! $this->isWellFormed($settings)) {
+            return null;
+        }
+
+        $groups = $settings->hooks->SessionStart ?? [];
+        // Encoded first: withoutHooks() edits the groups it keeps in place.
+        $before = json_encode($groups);
+        $kept = $this->withoutHooks($groups, $marker);
+
+        if (json_encode($kept) === $before) {
+            return false;
+        }
+
+        $settings->hooks->SessionStart = $kept;
+
+        if ($settings->hooks->SessionStart === []) {
+            unset($settings->hooks->SessionStart);
+        }
+
+        if (get_object_vars($settings->hooks) === []) {
+            unset($settings->hooks);
+        }
+
+        $this->write($settings);
+
+        return true;
+    }
+
+    private function write(\stdClass $settings): void
+    {
+        $this->writeAtomically(json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).PHP_EOL);
     }
 
     /**

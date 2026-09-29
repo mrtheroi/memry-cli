@@ -1,0 +1,181 @@
+<?php
+
+use App\Support\Stdin;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Http;
+
+beforeEach(function () {
+    $this->tmpDir = sys_get_temp_dir().'/memry-test-'.bin2hex(random_bytes(6));
+    mkdir($this->tmpDir, 0700, true);
+    $this->configPath = $this->tmpDir.'/config.json';
+    file_put_contents($this->configPath, json_encode(['url' => 'https://memry.test', 'token' => 'secret-token']));
+    putenv('MEMRY_CONFIG='.$this->configPath);
+    Http::preventStrayRequests();
+});
+
+afterEach(function () {
+    putenv('MEMRY_CONFIG');
+    exec('rm -rf '.escapeshellarg($this->tmpDir));
+});
+
+/**
+ * Give the hook the JSON Claude Code would write to its stdin.
+ */
+function hookInput(array $input): void
+{
+    app()->instance(Stdin::class, new class(json_encode($input)) extends Stdin
+    {
+        public function __construct(private string $contents) {}
+
+        public function read(): string
+        {
+            return $this->contents;
+        }
+    });
+}
+
+function gitRepo(string $path): string
+{
+    mkdir($path, 0755, true);
+    exec('git -C '.escapeshellarg($path).' init -q');
+
+    return $path;
+}
+
+/**
+ * Run the hook and return its exit code and exact stdout.
+ */
+function runHook(array $input): array
+{
+    hookInput($input);
+
+    return [Artisan::call('hook:session-start'), Artisan::output()];
+}
+
+it('prints the protocol block and the context body using the git top-level as project', function () {
+    $repo = gitRepo($this->tmpDir.'/MyProject');
+    mkdir($repo.'/src/deep', 0755, true);
+    Http::fake(['*/api/context*' => Http::response("## Latest session\nDid things")]);
+
+    [$exitCode, $output] = runHook(['session_id' => 'abc', 'cwd' => $repo.'/src/deep', 'source' => 'startup']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toBe(<<<'TXT'
+## memry memory (project: MyProject)
+memry is available through the `db-memory` MCP tools, alongside Engram.
+- Use get-memory with an id to read a memory from the context below in full, and search-memory to find older ones.
+- Save decisions, bug fixes and discoveries with save-memory (project "MyProject", with a topic_key for evolving topics).
+- Before ending the session, save a summary with session-summary (project "MyProject").
+
+## Latest session
+Did things
+TXT."\n");
+});
+
+it('falls back to the cwd basename outside a git repository', function () {
+    mkdir($dir = $this->tmpDir.'/PlainFolder');
+    Http::fake(['*/api/context*' => Http::response('body')]);
+
+    [$exitCode, $output] = runHook(['session_id' => 'abc', 'cwd' => $dir, 'source' => 'startup']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toStartWith("## memry memory (project: PlainFolder)\n");
+});
+
+it('uses the working directory when the input has no cwd', function (array $input) {
+    mkdir($dir = $this->tmpDir.'/FromPwd');
+    $previous = getcwd();
+    chdir($dir);
+    Http::fake(['*/api/context*' => Http::response('body')]);
+
+    try {
+        [$exitCode, $output] = runHook($input);
+    } finally {
+        chdir($previous);
+    }
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toStartWith("## memry memory (project: FromPwd)\n");
+})->with([
+    'empty cwd' => [['session_id' => 'abc', 'cwd' => '', 'source' => 'startup']],
+    'null cwd' => [['session_id' => 'abc', 'cwd' => null, 'source' => 'startup']],
+    'missing cwd' => [['session_id' => 'abc', 'source' => 'startup']],
+]);
+
+it('requests the context with the bearer token, an encoded project and a 3 second timeout', function () {
+    mkdir($dir = $this->tmpDir.'/My Project');
+    $timeout = null;
+    Http::fake(function ($request, array $options) use (&$timeout) {
+        $timeout = $options['timeout'] ?? null;
+
+        return Http::response('body');
+    });
+
+    [, $output] = runHook(['session_id' => 'abc', 'cwd' => $dir, 'source' => 'startup']);
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://memry.test/api/context?project=My%20Project'
+        && $request->method() === 'GET'
+        && $request->hasHeader('Authorization', 'Bearer secret-token'));
+    expect($timeout)->toBe(3)
+        ->and($output)->not->toContain('secret-token');
+});
+
+it('prints nothing, sends nothing and exits zero without a usable config', function (?string $contents) {
+    unlink($this->configPath);
+    if ($contents !== null) {
+        file_put_contents($this->configPath, $contents);
+    }
+    Http::fake();
+
+    [$exitCode, $output] = runHook(['session_id' => 'abc', 'cwd' => gitRepo($this->tmpDir.'/MyProject'), 'source' => 'startup']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toBe('');
+    Http::assertNothingSent();
+})->with([
+    'missing file' => [null],
+    'without token' => ['{"url": "https://memry.test"}'],
+    'without url' => ['{"token": "secret-token"}'],
+    'empty token' => ['{"url": "https://memry.test", "token": ""}'],
+    'invalid json' => ['not json'],
+]);
+
+it('prints nothing and exits zero when the request fails', function (Closure $response) {
+    Http::fake(['*/api/context*' => $response()]);
+
+    [$exitCode, $output] = runHook(['session_id' => 'abc', 'cwd' => gitRepo($this->tmpDir.'/MyProject'), 'source' => 'startup']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toBe('');
+})->with([
+    'unauthorized' => [fn () => Http::response('Unauthenticated.', 401)],
+    'server error' => [fn () => Http::response('partial', 500)],
+    'connection failure' => [fn () => Http::failedConnection()],
+]);
+
+it('prints nothing and exits zero on an unexpected error', function () {
+    app()->instance(Stdin::class, new class extends Stdin
+    {
+        public function read(): string
+        {
+            throw new RuntimeException('stdin exploded');
+        }
+    });
+
+    expect(Artisan::call('hook:session-start'))->toBe(0)
+        ->and(Artisan::output())->toBe('');
+});
+
+it('ends the output with exactly one newline like the bash hook', function () {
+    Http::fake(['*/api/context*' => Http::response("body\n\n")]);
+
+    [, $output] = runHook(['session_id' => 'abc', 'cwd' => gitRepo($this->tmpDir.'/MyProject'), 'source' => 'startup']);
+
+    expect($output)->toEndWith("\n\nbody\n");
+});
+
+it('is hidden from the command list', function () {
+    $this->artisan('list')
+        ->doesntExpectOutputToContain('hook:session-start')
+        ->assertExitCode(0);
+});

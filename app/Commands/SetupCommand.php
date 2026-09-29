@@ -2,7 +2,9 @@
 
 namespace App\Commands;
 
+use App\Support\ClaudeSettings;
 use App\Support\ConfigFile;
+use App\Support\Executable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
@@ -57,7 +59,11 @@ class SetupCommand extends Command
 
         $this->info("Logged in as {$email}. Credentials saved to {$config->path()}.");
 
-        return $this->registerMcpServer($url);
+        // The hook only needs the config file, so install it even when MCP registration fails.
+        $registered = $this->registerMcpServer($url);
+        $installed = $this->installSessionStartHook();
+
+        return $registered === self::SUCCESS && $installed === self::SUCCESS ? self::SUCCESS : self::FAILURE;
     }
 
     /**
@@ -70,7 +76,7 @@ class SetupCommand extends Command
         $server = json_encode([
             'type' => 'http',
             'url' => $url.'/mcp/memory',
-            'headersHelper' => $this->helperCommand(),
+            'headersHelper' => Executable::command('mcp-headers'),
         ], JSON_UNESCAPED_SLASHES);
 
         if (Process::run('command -v claude')->failed()) {
@@ -94,23 +100,29 @@ class SetupCommand extends Command
     }
 
     /**
-     * The shell command that runs `memry mcp-headers` with this executable:
-     * the PHAR itself, or the PHP binary plus the memry script.
+     * Install the Claude Code SessionStart hook that prints the memry
+     * context of the current project.
      */
-    private function helperCommand(): string
+    private function installSessionStartHook(): int
     {
-        if ($command = config('memry.helper_command')) {
-            return $command;
+        $settings = ClaudeSettings::resolve();
+
+        $group = [
+            'matcher' => 'startup|resume|clear|compact',
+            'hooks' => [['type' => 'command', 'command' => Executable::command('hook:session-start'), 'timeout' => 10]],
+        ];
+
+        if (! $settings->replaceSessionStartHook($group, 'hook:session-start')) {
+            $this->error("Could not install the memry SessionStart hook: {$settings->path()} is not valid JSON.");
+            $this->line('Fix the file, then add this group to the "hooks.SessionStart" array by hand:');
+            $this->line(json_encode($group, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return self::FAILURE;
         }
 
-        $executable = \Phar::running(false) !== ''
-            ? escapeshellarg(\Phar::running(false))
-            : escapeshellarg(PHP_BINARY).' '.escapeshellarg(base_path('memry'));
+        $this->info("Installed the memry SessionStart hook in {$settings->path()}.");
 
-        // Claude Code runs the helper without our environment, so a custom config path must travel with it.
-        $env = getenv('MEMRY_CONFIG') ? 'MEMRY_CONFIG='.escapeshellarg(getenv('MEMRY_CONFIG')).' ' : '';
-
-        return $env.$executable.' mcp-headers';
+        return self::SUCCESS;
     }
 
     private function failWithManualRegistration(string $server): int

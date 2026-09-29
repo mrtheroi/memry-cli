@@ -2,7 +2,7 @@
 
 Command-line client for [memry](https://github.com/mrtheroi/db-mcp), a private remote memory MCP server for AI agents.
 
-`memry setup` logs in from the terminal with an email one-time code and registers memry in Claude Code as the `db-memory` MCP server.
+`memry setup` logs in from the terminal with an email one-time code, registers memry in Claude Code as the `db-memory` MCP server, and installs a `SessionStart` hook that loads your project's memry context into every session.
 
 Requires the [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (`claude`) on your `PATH`.
 
@@ -31,10 +31,32 @@ and is never stored in Claude Code's configuration.
 If the `claude` CLI is not found or the registration fails, `memry setup` keeps your login,
 prints the command above to run by hand, and exits with code 1.
 
+### SessionStart hook
+
+`memry setup` also adds this hook to Claude Code's user settings
+(`$CLAUDE_CONFIG_DIR/settings.json`, default `~/.claude/settings.json`), replacing any earlier
+memry hook and keeping every other setting and hook:
+
+```json
+{"hooks": {"SessionStart": [{"matcher": "startup|resume|clear|compact",
+  "hooks": [{"type": "command", "command": "<memry> hook:session-start", "timeout": 10}]}]}}
+```
+
+`memry hook:session-start` reads the hook JSON on stdin, uses the git top-level of its `cwd`
+(or the directory name) as the project, and prints the memry usage protocol followed by
+`GET <url>/api/context?project=<project>`. When you are not logged in or the request fails it
+prints nothing and exits with code 0, so it never blocks a session. The hook is installed even
+if MCP registration fails.
+
+`settings.json` is rewritten atomically (temporary file + rename) with its permissions and
+non-ASCII characters preserved. If it is not valid JSON or its `hooks` do not have the expected
+shape, it is left untouched and setup prints the hook to add by hand and exits with code 1.
+
 | Variable       | Purpose                                                              |
 | -------------- | -------------------------------------------------------------------- |
 | `MEMRY_URL`    | Default server URL when `--url` is not given                         |
-| `MEMRY_CONFIG` | Alternative config file path (default `~/.config/memry/config.json`); passed on to the `headersHelper` |
+| `CLAUDE_CONFIG_DIR` | Claude Code config directory where the hook is installed (default `~/.claude`) |
+| `MEMRY_CONFIG` | Alternative config file path (default `~/.config/memry/config.json`); passed on to the `headersHelper` and the SessionStart hook |
 
 ## Development
 

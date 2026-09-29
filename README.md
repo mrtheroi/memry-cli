@@ -65,5 +65,5 @@ the token on this machine, so it can no longer access them.
 
 ## License
 
-memry is released under the MIT license. See [CHANGELOG.md](CHANGELOG.md) for release notes and
+memry is released under the [MIT license](LICENSE). See [CHANGELOG.md](CHANGELOG.md) for release notes and
 [CONTRIBUTING.md](CONTRIBUTING.md) for development and troubleshooting.

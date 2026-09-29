@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-29
+
 ### Added
 
 - `memry uninstall` undoes `memry setup`: it revokes the stored token (`DELETE <url>/api/auth/token`; a 401 prints "The memry token was already revoked." and counts as success), removes the `memry` and legacy `db-memory` MCP servers from Claude Code, removes only memry's SessionStart hook from Claude Code's `settings.json` (dropping a `SessionStart` list or `hooks` object left empty, leaving a malformed file untouched), and deletes the config file. It asks "Remove memry from Claude Code and delete your login? (yes/no)" first (default no; `--force` skips it). Every step runs even when an earlier one fails; it exits with code 1 when a step failed or the confirmation was declined, and ends with the hint "Run `brew uninstall memry` to remove the CLI.".

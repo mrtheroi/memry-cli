@@ -20,6 +20,16 @@ class ConfigFile
     }
 
     /**
+     * The decoded file, or an empty array when it is missing or not valid JSON.
+     */
+    public function read(): array
+    {
+        return is_file($this->path)
+            ? (json_decode(file_get_contents($this->path), true) ?? [])
+            : [];
+    }
+
+    /**
      * Merge the given values into the file, keeping any other keys, and
      * make it readable by the owner only.
      */
@@ -29,9 +39,7 @@ class ConfigFile
             mkdir(dirname($this->path), 0700, true);
         }
 
-        $existing = is_file($this->path)
-            ? (json_decode(file_get_contents($this->path), true) ?? [])
-            : [];
+        $existing = $this->read();
 
         touch($this->path);
         chmod($this->path, 0600);

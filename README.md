@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="art/memry-logo.png" alt="memry" width="400">
+</p>
+
 # memry CLI
 
 Command-line client for [memry](https://github.com/mrtheroi/memry-server), a private remote memory MCP server for AI agents.

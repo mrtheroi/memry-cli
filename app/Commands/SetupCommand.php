@@ -22,7 +22,13 @@ class SetupCommand extends Command
     public function handle(): int
     {
         $url = rtrim($this->option('url') ?? config('memry.url'), '/');
-        $email = strtolower(trim($this->option('email') ?? $this->ask('Email')));
+        $email = $this->option('email') !== null ? $this->normalizeEmail($this->option('email')) : $this->askEmail();
+
+        if ($email === null) {
+            $this->error('Invalid email address given with --email.');
+
+            return self::FAILURE;
+        }
 
         try {
             $response = $this->post($url.'/api/auth/code', ['email' => $email]);
@@ -33,7 +39,7 @@ class SetupCommand extends Command
 
             $this->line("We sent a login code to {$email}.");
 
-            $code = $this->ask('Login code');
+            $code = $this->askCode();
 
             $response = $this->post($url.'/api/auth/token', ['email' => $email, 'code' => $code]);
 
@@ -145,6 +151,41 @@ class SetupCommand extends Command
         $revoked
             ? $this->info('Revoked the previous memry token.')
             : $this->warn('Could not revoke the previous memry token.');
+    }
+
+    /**
+     * Ask for the email until it is a valid address.
+     */
+    private function askEmail(): string
+    {
+        while (($email = $this->normalizeEmail((string) $this->ask('Email'))) === null) {
+            $this->error('Enter a valid email address.');
+        }
+
+        return $email;
+    }
+
+    /**
+     * Ask for the login code until it has 6 digits.
+     */
+    private function askCode(): string
+    {
+        while (preg_match('/^\d{6}$/', $code = trim((string) $this->ask('Login code'))) !== 1) {
+            $this->error('Enter the 6-digit code from the email.');
+        }
+
+        return $code;
+    }
+
+    /**
+     * Trim and lowercase the email, or return null when it is not a valid
+     * address (which also rejects bytes that are not valid UTF-8).
+     */
+    private function normalizeEmail(string $email): ?string
+    {
+        $email = strtolower(trim($email));
+
+        return filter_var($email, FILTER_VALIDATE_EMAIL) === false ? null : $email;
     }
 
     private function failWithManualRegistration(string $server): int

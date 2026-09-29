@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `memry setup` validates the email before sending any request, instead of crashing with a Guzzle `json_encode error: Malformed UTF-8 characters` when it contained bytes that are not valid UTF-8. An invalid `--email` prints "Invalid email address given with --email." and exits with code 1 without contacting the server; an invalid email typed at the prompt prints "Enter a valid email address." and asks again.
+- `memry setup` asks for the login code again ("Enter the 6-digit code from the email.") until it has 6 digits, so a malformed code no longer crashes the same way.
+
 ## [0.2.0] - 2026-09-29
 
 ### Added

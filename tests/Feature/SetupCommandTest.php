@@ -229,6 +229,21 @@ it('asks for the email when no --email option is given', function () {
         && $request->data() === ['email' => 'ana@example.com']);
 });
 
+it('asks for the email again until it is valid', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test'])
+        ->expectsQuestion('Email', "ana@example.co\xc3m")
+        ->expectsOutputToContain('Enter a valid email address.')
+        ->expectsQuestion('Email', 'ana@example.com')
+        ->expectsQuestion('Login code', '123456')
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api/auth/code')
+        && $request->data() === ['email' => 'ana@example.com']);
+    Http::assertSentCount(2);
+});
+
 it('trims and lowercases the email before sending it', function () {
     fakeServer();
 
@@ -307,13 +322,48 @@ it('writes to ~/.config/memry/config.json when MEMRY_CONFIG is not set', functio
 it('fails without writing the config when the email is rejected', function () {
     fakeServer(code: [422, ['message' => 'The email field must be a valid email address.', 'errors' => ['email' => ['The email field must be a valid email address.']]]]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'not-an-email'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
         ->expectsOutputToContain('The email field must be a valid email address.')
         ->assertExitCode(1);
 
     expect(file_exists($this->configPath))->toBeFalse();
     Process::assertNothingRan();
     Http::assertSentCount(1);
+});
+
+it('fails without sending anything when the --email option is not valid UTF-8', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => "ana@example.co\xc3m"])
+        ->expectsOutputToContain('Invalid email address given with --email.')
+        ->assertExitCode(1);
+
+    expect(file_exists($this->configPath))->toBeFalse();
+    Http::assertNothingSent();
+    Process::assertNothingRan();
+});
+
+it('fails without sending anything when the --email option is not an email address', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'not-an-email'])
+        ->expectsOutputToContain('Invalid email address given with --email.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+});
+
+it('asks for the login code again until it has 6 digits', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', "12345\xc3")
+        ->expectsOutputToContain('Enter the 6-digit code from the email.')
+        ->expectsQuestion('Login code', ' 123456 ')
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api/auth/token')
+        && $request->data() === ['email' => 'ana@example.com', 'code' => '123456']);
 });
 
 it('fails without writing the config when the code is invalid or expired', function () {

@@ -5,6 +5,7 @@ namespace App\Commands;
 use App\Support\AuthToken;
 use App\Support\ClaudeSettings;
 use App\Support\ConfigFile;
+use App\Support\Email;
 use App\Support\Executable;
 use App\Support\RevokeResult;
 use Illuminate\Http\Client\ConnectionException;
@@ -28,7 +29,7 @@ class SetupCommand extends Command
     public function handle(): int
     {
         $url = rtrim($this->option('url') ?? config('memry.url'), '/');
-        $email = $this->option('email') !== null ? $this->normalizeEmail($this->option('email')) : $this->askEmail();
+        $email = $this->option('email') !== null ? Email::normalize($this->option('email')) : $this->askEmail();
 
         if ($email === null) {
             $this->error('Invalid email address given with --email.');
@@ -159,7 +160,7 @@ class SetupCommand extends Command
      */
     private function askEmail(): string
     {
-        while (($email = $this->normalizeEmail((string) $this->ask('Email'))) === null) {
+        while (($email = Email::normalize((string) $this->ask('Email'))) === null) {
             $this->error('Enter a valid email address.');
         }
 
@@ -176,17 +177,6 @@ class SetupCommand extends Command
         }
 
         return $code;
-    }
-
-    /**
-     * Trim and lowercase the email, or return null when it is not a valid
-     * address (which also rejects bytes that are not valid UTF-8).
-     */
-    private function normalizeEmail(string $email): ?string
-    {
-        $email = strtolower(trim($email));
-
-        return filter_var($email, FILTER_VALIDATE_EMAIL) === false ? null : $email;
     }
 
     private function failWithManualRegistration(string $server): int

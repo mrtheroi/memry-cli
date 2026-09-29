@@ -11,10 +11,13 @@ beforeEach(function () {
     fakeClaude();
     $this->originalHome = getenv('HOME');
     putenv('MEMRY_CONFIG='.$this->configPath);
+    $this->settingsPath = $this->tmpDir.'/claude/settings.json';
+    putenv('CLAUDE_CONFIG_DIR='.dirname($this->settingsPath));
 });
 
 afterEach(function () {
     putenv('MEMRY_CONFIG');
+    putenv('CLAUDE_CONFIG_DIR');
     putenv('HOME='.$this->originalHome);
     if (is_dir($this->tmpDir)) {
         exec('rm -rf '.escapeshellarg($this->tmpDir));
@@ -283,7 +286,7 @@ it('fails without writing the config when the server answers without a token', f
 });
 
 it('registers the db-memory MCP server in Claude Code with a headers helper', function () {
-    config(['memry.helper_command' => "'/opt/memry/memry' mcp-headers"]);
+    config(['memry.executable' => "'/opt/memry/memry'"]);
     fakeServer();
 
     $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
@@ -327,7 +330,7 @@ it('looks up claude, removes any existing user-scope db-memory entry, adds it an
 });
 
 it('fails with manual instructions but keeps the config when adding the MCP server fails', function () {
-    config(['memry.helper_command' => "'/opt/memry/memry' mcp-headers"]);
+    config(['memry.executable' => "'/opt/memry/memry'"]);
     fakeServer();
     fakeClaude(['add-json' => Process::result(exitCode: 1, errorOutput: 'Invalid configuration')]);
 
@@ -412,4 +415,175 @@ it('passes a custom MEMRY_CONFIG on to the headers helper', function () {
 
     Process::assertRan(fn ($process) => ($process->command[2] ?? null) === 'add-json'
         && json_decode($process->command[6], true)['headersHelper'] === $helper);
+});
+
+/**
+ * The SessionStart matcher group that `memry setup` installs.
+ */
+function memryHookGroup(string $command = "'/opt/memry/memry' hook:session-start"): array
+{
+    return [
+        'matcher' => 'startup|resume|clear|compact',
+        'hooks' => [['type' => 'command', 'command' => $command, 'timeout' => 10]],
+    ];
+}
+
+it('installs the memry SessionStart hook in a new Claude Code settings file', function () {
+    config(['memry.executable' => "'/opt/memry/memry'"]);
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->expectsOutputToContain("Installed the memry SessionStart hook in {$this->settingsPath}.")
+        ->assertExitCode(0);
+
+    expect(json_decode(file_get_contents($this->settingsPath), true))
+        ->toBe(['hooks' => ['SessionStart' => [memryHookGroup()]]]);
+});
+
+it('keeps every other setting, event and hook when installing the SessionStart hook', function () {
+    config(['memry.executable' => "'/opt/memry/memry'"]);
+    $engram = ['matcher' => 'startup', 'hooks' => [['type' => 'command', 'command' => 'engram context']]];
+    $existing = [
+        'model' => 'opus',
+        'permissions' => ['allow' => ['Bash(ls)'], 'deny' => []],
+        'env' => new stdClass,
+        'hooks' => [
+            'PreToolUse' => [['matcher' => 'Bash', 'hooks' => [['type' => 'command', 'command' => 'echo pre']]]],
+            'SessionStart' => [$engram],
+        ],
+    ];
+    mkdir(dirname($this->settingsPath), 0700, true);
+    file_put_contents($this->settingsPath, json_encode($existing));
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->assertExitCode(0);
+
+    $expected = $existing;
+    $expected['hooks']['SessionStart'][] = memryHookGroup();
+
+    expect(json_decode(file_get_contents($this->settingsPath)))
+        ->toEqual(json_decode(json_encode($expected)));
+});
+
+it('replaces a previously installed memry SessionStart hook', function () {
+    config(['memry.executable' => "'/opt/memry/memry'"]);
+    $engram = ['matcher' => 'startup', 'hooks' => [['type' => 'command', 'command' => 'engram context']]];
+    $mixed = ['matcher' => 'resume', 'hooks' => [
+        ['type' => 'command', 'command' => "'/old/memry' hook:session-start"],
+        ['type' => 'command', 'command' => 'echo resumed'],
+    ]];
+    mkdir(dirname($this->settingsPath), 0700, true);
+    file_put_contents($this->settingsPath, json_encode(['hooks' => ['SessionStart' => [
+        $engram, memryHookGroup("'/old/memry' hook:session-start"), $mixed,
+    ]]]));
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->assertExitCode(0);
+
+    expect(json_decode(file_get_contents($this->settingsPath), true)['hooks']['SessionStart'])->toBe([
+        $engram,
+        ['matcher' => 'resume', 'hooks' => [['type' => 'command', 'command' => 'echo resumed']]],
+        memryHookGroup(),
+    ]);
+});
+
+it('leaves exactly one memry SessionStart hook after running setup twice', function () {
+    config(['memry.executable' => "'/opt/memry/memry'"]);
+    fakeServer();
+
+    foreach ([1, 2] as $run) {
+        $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+            ->expectsQuestion('Login code', '123456')
+            ->assertExitCode(0);
+    }
+
+    expect(json_decode(file_get_contents($this->settingsPath), true)['hooks']['SessionStart'])
+        ->toBe([memryHookGroup()]);
+});
+
+it('fails with manual instructions and leaves an invalid settings file untouched', function () {
+    config(['memry.executable' => "'/opt/memry/memry'"]);
+    mkdir(dirname($this->settingsPath), 0700, true);
+    file_put_contents($this->settingsPath, '{not json');
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->expectsOutputToContain("Could not install the memry SessionStart hook: {$this->settingsPath} is not valid JSON.")
+        ->expectsOutputToContain('"command": "\'/opt/memry/memry\' hook:session-start"')
+        ->expectsOutputToContain('Registered the db-memory MCP server in Claude Code (user scope).')
+        ->assertExitCode(1);
+
+    expect(file_get_contents($this->settingsPath))->toBe('{not json')
+        ->and(json_decode(file_get_contents($this->configPath), true)['token'])->toBe('secret-token');
+});
+
+it('runs the hook with the running memry script and a custom MEMRY_CONFIG', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->assertExitCode(0);
+
+    $command = 'MEMRY_CONFIG='.escapeshellarg($this->configPath).' '
+        .escapeshellarg(PHP_BINARY).' '.escapeshellarg(base_path('memry')).' hook:session-start';
+
+    expect(json_decode(file_get_contents($this->settingsPath), true)['hooks']['SessionStart'])
+        ->toBe([memryHookGroup($command)]);
+});
+
+it('installs the hook in ~/.claude/settings.json when CLAUDE_CONFIG_DIR is not set', function () {
+    putenv('CLAUDE_CONFIG_DIR');
+    putenv('HOME='.$this->tmpDir);
+    config(['memry.executable' => "'/opt/memry/memry'"]);
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->assertExitCode(0);
+
+    expect(json_decode(file_get_contents($this->tmpDir.'/.claude/settings.json'), true))
+        ->toBe(['hooks' => ['SessionStart' => [memryHookGroup()]]]);
+});
+
+it('keeps the permissions of an existing settings file', function () {
+    mkdir(dirname($this->settingsPath), 0700, true);
+    file_put_contents($this->settingsPath, '{}');
+    chmod($this->settingsPath, 0640);
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->assertExitCode(0);
+
+    expect(fileperms($this->settingsPath) & 0777)->toBe(0640);
+});
+
+it('still installs the hook but fails when the MCP server cannot be registered', function () {
+    config(['memry.executable' => "'/opt/memry/memry'"]);
+    fakeServer();
+    fakeClaude(installed: false);
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '123456')
+        ->expectsOutputToContain("Installed the memry SessionStart hook in {$this->settingsPath}.")
+        ->assertExitCode(1);
+
+    expect(json_decode(file_get_contents($this->settingsPath), true)['hooks']['SessionStart'])
+        ->toBe([memryHookGroup()]);
+});
+
+it('does not touch the Claude Code settings when the login fails', function () {
+    fakeServer(token: [422, ['message' => 'Invalid or expired code.']]);
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        ->expectsQuestion('Login code', '000000')
+        ->assertExitCode(1);
+
+    expect(file_exists(dirname($this->settingsPath)))->toBeFalse();
 });

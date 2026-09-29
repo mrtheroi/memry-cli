@@ -15,14 +15,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Headers Helper Command
+    | Executable
     |--------------------------------------------------------------------------
     |
-    | The shell command Claude Code runs to get the memry MCP headers. Null
-    | resolves it to the running memry executable followed by `mcp-headers`.
+    | The shell command Claude Code uses to run memry, for the MCP headers
+    | helper and the SessionStart hook. Null resolves it to the running
+    | memry executable, prefixed with a custom MEMRY_CONFIG when set.
     |
     */
 
-    'helper_command' => null,
+    'executable' => null,
 
 ];

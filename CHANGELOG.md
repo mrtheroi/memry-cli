@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `memry mcp` is a hidden stdio MCP server for agents that launch local MCP servers. It reads newline-delimited JSON-RPC messages from stdin until EOF and forwards each one to `<url>/mcp/memory` with the stored token (`Authorization: Bearer`, 30 second timeout), printing each reply as one line of JSON on stdout and nothing for notifications, so the token never appears in the agent's config. Requests of the stateless 2026-07-28 protocol also get the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers. Errors are JSON-RPC errors and never stop it: not logged in or a 401 (`-32000`, "Run `memry setup`."), another HTTP error, unreachable server or invalid reply (`-32603`), and a stdin line that is not JSON (`-32700`, `id` null). The config file is read for every message, so a new login applies without restarting the agent.
+
 ## [0.4.0] - 2026-09-29
 
 ### Added

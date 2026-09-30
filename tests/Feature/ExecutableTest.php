@@ -30,3 +30,24 @@ it('prefixes a custom MEMRY_CONFIG to the configured executable', function () {
     expect(Executable::command('mcp-headers'))
         ->toBe("MEMRY_CONFIG='/tmp/memry config.json' '/opt/memry/memry' mcp-headers");
 });
+
+it('splits the command into the executable given in MEMRY_EXECUTABLE and its arguments', function () {
+    putenv('MEMRY_EXECUTABLE=/opt/homebrew/opt/memry/bin/memry');
+    reloadMemryConfig();
+
+    expect(Executable::arguments('mcp'))->toBe(['/opt/homebrew/opt/memry/bin/memry', 'mcp']);
+});
+
+it('splits the command into the PHP binary and the memry script when no executable is configured', function () {
+    config(['memry.executable' => null]);
+
+    expect(Executable::arguments('mcp'))->toBe([PHP_BINARY, base_path('memry'), 'mcp']);
+});
+
+it('gives the environment a custom MEMRY_CONFIG needs, and none by default', function () {
+    expect(Executable::environment())->toBe([]);
+
+    putenv('MEMRY_CONFIG=/tmp/memry config.json');
+
+    expect(Executable::environment())->toBe(['MEMRY_CONFIG' => '/tmp/memry config.json']);
+});

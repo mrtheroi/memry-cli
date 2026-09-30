@@ -36,7 +36,7 @@ Record every user-visible change under `## [Unreleased]` in [CHANGELOG.md](CHANG
 memry setup                                   # asks for your email, then the 6-digit login code
 memry setup --email you@example.com           # skip the email prompt
 memry setup --url https://your-memry.example  # use another memry server
-memry setup --agents=claude-code              # skip the agent prompt (comma-separated keys)
+memry setup --agents=claude-code,codex        # skip the agent prompt (comma-separated keys)
 memry uninstall                               # undo setup (asks for confirmation; --force skips it)
 memry delete-account                          # delete the account and all its memories, then undo setup
 ```
@@ -51,12 +51,15 @@ Hidden commands are run by AI agents, not by users: `memry mcp-headers` (the Cla
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `MEMRY_URL`         | Default server URL when `--url` is not given (default `https://api.memry.com.mx`).                                       |
 | `MEMRY_CONFIG`      | Alternative config file path (default `~/.config/memry/config.json`). Passed on to the `headersHelper` and the SessionStart hook. |
-| `MEMRY_EXECUTABLE`  | Shell command Claude Code runs memry with (default: the running memry executable). Set by the Homebrew wrapper.         |
+| `MEMRY_EXECUTABLE`  | Path of the memry executable agents run (default: the running memry executable). Set by the Homebrew wrapper. Agents that take a command and its arguments separately get it as the command, so it must be a plain path. |
 | `CLAUDE_CONFIG_DIR` | Claude Code config directory where the hook is installed (default `~/.claude`).                                         |
+| `CODEX_HOME`        | Codex home directory, when it is an absolute path (default `~/.codex`), as Codex resolves it.                           |
+| `XDG_CONFIG_HOME`   | Base of the OpenCode config directory (default `~/.config`), as OpenCode resolves it.                                   |
 
 The Homebrew formula installs the PHAR behind a wrapper that sets `MEMRY_EXECUTABLE` to the stable
 `$(brew --prefix)/opt/memry/bin/memry` path, so the commands `memry setup` writes into Claude Code
-keep working after `brew upgrade`. A custom `MEMRY_CONFIG` is prefixed to that command as well.
+keep working after `brew upgrade`. A custom `MEMRY_CONFIG` is prefixed to that command as well,
+and passed to the other agents through the environment of their MCP server entry.
 
 ## How `memry setup` works
 
@@ -76,7 +79,8 @@ Without `--url`, `memry setup` uses `https://api.memry.com.mx` (or `MEMRY_URL`).
    with the list of valid keys before logging in. Setup then runs each selected agent's install
    and each previously saved but deselected agent's uninstall, prints their messages and a summary
    line per agent, and exits with code 1 if any of them failed. An empty selection only prints a
-   warning. For Claude Code, install is steps 4 and 5.
+   warning. For Claude Code, install is steps 4 and 5; for the other agents, see
+   [Other agents](#other-agents).
 4. **MCP server.** It registers the `memry` MCP server in Claude Code (user scope), replacing any
    existing entry and removing the legacy `db-memory` entry of earlier versions. The server uses a
    `headersHelper`: Claude Code runs `memry mcp-headers`, which prints
@@ -107,7 +111,58 @@ Each supported agent is an adapter in `app/Agents` implementing the `Agent` cont
 `install()` and `uninstall()` return an `AgentResult`: whether it succeeded and the lines to show
 (`[style, text]`, style `info`, `warn`, `error` or `line`). Adapters never write to the console, so
 the commands decide how to print them. `AgentRegistry` lists the supported agents in display
-order; `ClaudeCodeAgent` is the only one so far.
+order: Claude Code, Codex, OpenCode, Antigravity, Windsurf.
+
+### Other agents
+
+Codex, OpenCode, Antigravity and Windsurf extend `ConfigFileAgent`. They have no SessionStart
+hook, so install does two things, and uninstall reverses exactly those:
+
+1. **MCP server.** It sets the `memry` entry in the agent's config file to a stdio server running
+   `<memry> mcp` (see [How `memry mcp` works](#how-memry-mcp-works)), with a custom `MEMRY_CONFIG`
+   in the entry's environment. The token and URL are never written: `memry mcp` reads them from
+   `config.json`. The file and its directories are created when missing; every other key, server,
+   comment and non-ASCII character is kept; a re-install replaces only memry's entry; writes are
+   atomic (temporary file + rename, permissions kept). A file memry cannot edit safely is left
+   untouched, and install prints the entry to add by hand and fails. Uninstall removes only the
+   `memry` entry (and a server list left empty); config files are never deleted.
+2. **Instructions.** It writes the memry protocol (`app/Agents/Protocol.php`) into the agent's
+   global instructions file as a block between `<!-- memry:start -->` and `<!-- memry:end -->`,
+   appended after a blank line, or replaced in place when it is already there. Nothing else in the
+   file changes. The protocol tells the agent to call `get-context` at the start of every session
+   with the project name (the `project` in `.memry.json`, else the repo or folder name), to use
+   `search-memory` and `get-memory`, to save with `save-memory` (with a `topic_key` for evolving
+   topics) and to call `session-summary` before ending. Uninstall removes the block and the blank
+   line before it, and deletes the file when nothing else is left in it. If the markers are broken
+   (one without the other, or more than one block), the file is left untouched and the step fails.
+
+Install writes the instructions even when the MCP server cannot be registered, and uninstall runs
+both steps even when one fails.
+
+| Agent       | Config file (format)                                                              | Instructions file                               | Detected when                                        |
+| ----------- | --------------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------- |
+| Codex       | `$CODEX_HOME/config.toml`, default `~/.codex/config.toml` (TOML, `[mcp_servers.memry]` with `command`, `args`, `env`) | `$CODEX_HOME/AGENTS.md`                         | `codex` is on the `PATH`, or its home directory exists |
+| OpenCode    | `~/.config/opencode/opencode.json`, or an existing `opencode.jsonc` when there is no `opencode.json` (JSON, `mcp.memry` with `"type": "local"`, `command` array, `enabled`, `environment`) | `~/.config/opencode/AGENTS.md`                  | `opencode` is on the `PATH`, or its config directory exists |
+| Antigravity | `~/.gemini/config/mcp_config.json` (JSON, `mcpServers.memry` with `command`, `args`, `env`) | `~/.gemini/config/GEMINI.md`                    | `~/.gemini/antigravity` or `~/.gemini/config` exists |
+| Windsurf    | `~/.codeium/windsurf/mcp_config.json` (JSON, `mcpServers.memry` with `command`, `args`, `env`) | `~/.codeium/windsurf/memories/global_rules.md` | `~/.codeium/windsurf` exists                          |
+
+OpenCode's directory is `$XDG_CONFIG_HOME/opencode` when `XDG_CONFIG_HOME` is set. Antigravity
+also reads `~/.gemini/GEMINI.md`, but so does Gemini CLI, which has no memry server; memry uses the
+Antigravity-only `~/.gemini/config/GEMINI.md` instead. Windsurf limits its global rules to 6,000
+characters, so the protocol stays short.
+
+Notes on the formats:
+
+- **JSON** files are decoded as objects, so `{}` stays `{}`, and rewritten pretty-printed with
+  unescaped slashes and Unicode. JSON with comments (such as a `.jsonc` file that uses them) cannot
+  be parsed and is left untouched.
+- **TOML** (Codex) has no parser dependency. `TomlMcpConfig` scans the file line by line, following
+  strings (including multi-line ones), arrays and inline tables so a `[` inside a value is never
+  taken for a table header, and edits only the lines of `[mcp_servers.memry]` and its subtables;
+  every other byte stays the same. It refuses to edit (leaving the file untouched) when the scan
+  finds something it cannot follow (an unterminated string or array, a line that is not a header
+  or `key = value`) or memry (or the whole `mcp_servers` table) defined through dotted keys or an
+  inline table.
 
 To add an agent:
 
@@ -120,7 +175,9 @@ To add an agent:
 Command tests replace the registry with `fakeAgents(new FakeAgent(...), ...)` (see
 `tests/Fakes/FakeAgent.php`). `tests/TestCase.php` sets the environment to `testing`, so Laravel
 Prompts questions like the agent multiselect fall back to console questions that tests answer
-with `expectsChoice()`.
+with `expectsChoice()`. It also points `HOME` at an empty temporary directory and unsets
+`CODEX_HOME` and `XDG_CONFIG_HOME` for every feature test, so no test can reach your real agent
+configs.
 
 ### SessionStart hook
 
@@ -146,7 +203,7 @@ non-empty string `project`, the project is the root's directory name.
 
 ## How `memry uninstall` works
 
-`memry uninstall` asks "Remove memry from Claude Code and delete your login? (yes/no)" (default
+`memry uninstall` asks "Remove memry from your agents and delete your login? (yes/no)" (default
 no; `--force` skips it), then:
 
 1. Revokes the stored token with `DELETE <url>/api/auth/token` (skipped when not logged in; a 401
@@ -158,11 +215,14 @@ no; `--force` skips it), then:
    - it removes memry's SessionStart hook from Claude Code's `settings.json`, keeping every other
      hook and setting. A `SessionStart` list or `hooks` object left empty is dropped. A malformed
      file is left untouched.
+
+   For the other agents, it removes the `memry` entry and the instructions block (see
+   [Other agents](#other-agents)); a file memry cannot edit is left untouched with a warning.
 3. Deletes `~/.config/memry/config.json` (or `MEMRY_CONFIG`).
 
 Each step runs even if an earlier one fails and prints one line. It exits with code 1 if any step
 failed (revoke failed with another error or an unreachable server, `claude` CLI not found,
-malformed settings, config not deletable) or the confirmation was declined, and 0 otherwise,
+malformed settings or agent files, config not deletable) or the confirmation was declined, and 0 otherwise,
 including when there was nothing to remove. It ends with a hint to run `brew uninstall memry`.
 
 ## How `memry delete-account` works
@@ -243,6 +303,22 @@ If it cannot install the hook, fix `settings.json` and add this group to its
 {"hooks": {"SessionStart": [{"matcher": "startup|resume|clear|compact",
   "hooks": [{"type": "command", "command": "<memry> hook:session-start", "timeout": 10}]}]}}
 ```
+
+For the other agents, setup prints the exact entry to add when it cannot edit a config file. For
+example, for Codex:
+
+```toml
+[mcp_servers.memry]
+command = "<memry>"
+args = ["mcp"]
+```
+
+When the memry markers in an instructions file are broken, remove the leftover
+`<!-- memry:start -->` / `<!-- memry:end -->` lines (and anything between them) and run
+`memry setup` again.
+
+`memry setup --no-interaction` needs `--email`; it cannot read the login code either, so it exits
+with code 1 after the code is sent. Run `memry setup` in a terminal to log in.
 
 ## Building the PHAR
 

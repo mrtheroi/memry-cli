@@ -10,7 +10,13 @@ class AgentRegistry
     /**
      * @param  list<Agent>  $agents
      */
-    public function __construct(private array $agents = [new ClaudeCodeAgent]) {}
+    public function __construct(private array $agents = [
+        new ClaudeCodeAgent,
+        new CodexAgent,
+        new OpenCodeAgent,
+        new AntigravityAgent,
+        new WindsurfAgent,
+    ]) {}
 
     /**
      * @return list<Agent>

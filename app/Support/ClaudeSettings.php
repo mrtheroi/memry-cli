@@ -94,21 +94,7 @@ class ClaudeSettings
 
     private function write(\stdClass $settings): void
     {
-        $this->writeAtomically(json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).PHP_EOL);
-    }
-
-    /**
-     * Write to a temporary file in the same directory and rename it over the
-     * settings, so a crash mid-write never leaves a truncated settings.json.
-     */
-    private function writeAtomically(string $contents): void
-    {
-        $mode = is_file($this->path) ? fileperms($this->path) & 0777 : 0666 & ~umask();
-        $temporary = tempnam(dirname($this->path), '.settings.json.');
-
-        file_put_contents($temporary, $contents);
-        chmod($temporary, $mode);
-        rename($temporary, $this->path);
+        AtomicFile::write($this->path, json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE).PHP_EOL);
     }
 
     /**

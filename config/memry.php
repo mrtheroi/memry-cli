@@ -18,11 +18,11 @@ return [
     | Executable
     |--------------------------------------------------------------------------
     |
-    | The shell command Claude Code uses to run memry, for the MCP headers
-    | helper and the SessionStart hook. Set MEMRY_EXECUTABLE to a stable
-    | path (the Homebrew wrapper does) so an upgrade does not break it.
-    | Unset resolves it to the running memry executable. A custom
-    | MEMRY_CONFIG is prefixed in both cases.
+    | The memry executable agents run: Claude Code for the MCP headers
+    | helper and the SessionStart hook, the other agents for `memry mcp`.
+    | Set MEMRY_EXECUTABLE to a stable path (the Homebrew wrapper does) so
+    | an upgrade does not break it. Unset resolves it to the running memry
+    | executable. A custom MEMRY_CONFIG travels with it in both cases.
     |
     */
 

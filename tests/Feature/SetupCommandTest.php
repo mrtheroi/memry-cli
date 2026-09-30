@@ -189,6 +189,29 @@ it('asks for the email when no --email option is given', function () {
         && $request->data() === ['email' => 'ana@example.com']);
 });
 
+it('fails without sending anything when not interactive and no --email option is given', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--agents' => 'claude-code', '--no-interaction' => true])
+        ->expectsOutputToContain('Pass --email when running without interaction.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
+});
+
+it('fails without asking again when no login code can be read', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code', '--no-interaction' => true])
+        ->expectsQuestion('Login code', null)
+        ->expectsOutputToContain('No login code given. Run `memry setup` interactively to enter the code from the email.')
+        ->assertExitCode(1);
+
+    Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/api/auth/token'));
+    expect(file_exists($this->configPath))->toBeFalse();
+});
+
 it('asks for the email again until it is valid', function () {
     fakeServer();
 

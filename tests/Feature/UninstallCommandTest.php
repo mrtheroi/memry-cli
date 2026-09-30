@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Tests\Fakes\FakeAgent;
 
 beforeEach(function () {
     $this->tmpDir = sys_get_temp_dir().'/memry-test-'.bin2hex(random_bytes(6));
@@ -191,3 +192,33 @@ it('removes everything after the confirmation and ends with the Homebrew hint', 
 
     expect(file_exists($this->configPath))->toBeFalse();
 });
+
+it('removes memry from the agents saved by setup', function () {
+    fakeAgents($claude = new FakeAgent('claude-code', 'Claude Code'), $codex = new FakeAgent('codex', 'Codex'));
+    previousConfig(['url' => 'https://memry.test', 'token' => 'old-token', 'agents' => ['codex']]);
+    fakeServer();
+
+    $this->artisan('uninstall', ['--force' => true])
+        ->expectsOutputToContain('Unwired Codex.')
+        ->assertExitCode(0);
+
+    expect($codex->calls)->toBe(['uninstall'])
+        ->and($claude->calls)->toBe([]);
+});
+
+it('removes memry from Claude Code when setup saved no agents, as setup did up to 0.4.0', function (?array $config) {
+    fakeAgents($claude = new FakeAgent('claude-code', 'Claude Code'), $codex = new FakeAgent('codex', 'Codex'));
+    if ($config !== null) {
+        previousConfig($config);
+    }
+    fakeServer();
+
+    $this->artisan('uninstall', ['--force' => true])
+        ->assertExitCode(0);
+
+    expect($claude->calls)->toBe(['uninstall'])
+        ->and($codex->calls)->toBe([]);
+})->with([
+    'config without agents' => [['url' => 'https://memry.test', 'token' => 'old-token']],
+    'no config file' => [null],
+]);

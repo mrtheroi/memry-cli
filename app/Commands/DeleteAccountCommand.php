@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Agents\AgentRegistry;
 use App\Commands\Concerns\RemovesLocalInstall;
 use App\Support\ConfigFile;
 use App\Support\Email;
@@ -17,7 +18,7 @@ class DeleteAccountCommand extends Command
 
     protected $description = 'Permanently delete your memry account and all its memories';
 
-    public function handle(): int
+    public function handle(AgentRegistry $agents): int
     {
         $config = ConfigFile::resolve()->read();
 
@@ -46,7 +47,7 @@ class DeleteAccountCommand extends Command
         $this->info('Deleted your memry account and all its memories.');
 
         // The token was deleted with the account, so there is nothing to revoke.
-        $removed = $this->removeLocalInstall();
+        $removed = $this->removeLocalInstall($agents);
 
         $this->line('Run `brew uninstall memry` to remove the CLI.');
 

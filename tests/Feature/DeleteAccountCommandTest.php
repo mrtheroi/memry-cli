@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
+use Tests\Fakes\FakeAgent;
 
 beforeEach(function () {
     $this->tmpDir = sys_get_temp_dir().'/memry-test-'.bin2hex(random_bytes(6));
@@ -160,4 +161,18 @@ it('keeps cleaning up and fails when a local step fails after deleting the accou
         ->expectsOutputToContain('Claude Code CLI not found; skipped removing the memry MCP server.')
         ->expectsOutputToContain("Deleted {$this->configPath}.")
         ->assertExitCode(1);
+});
+
+it('removes memry from the agents saved by setup after deleting the account', function () {
+    fakeAgents($claude = new FakeAgent('claude-code', 'Claude Code'), $codex = new FakeAgent('codex', 'Codex'));
+    previousConfig(['url' => 'https://memry.test', 'token' => 'old-token', 'agents' => ['codex']]);
+    fakeAccountDeletion();
+
+    $this->artisan('delete-account')
+        ->expectsQuestion('Type your account email to confirm', 'ana@example.com')
+        ->expectsOutputToContain('Unwired Codex.')
+        ->assertExitCode(0);
+
+    expect($codex->calls)->toBe(['uninstall'])
+        ->and($claude->calls)->toBe([]);
 });

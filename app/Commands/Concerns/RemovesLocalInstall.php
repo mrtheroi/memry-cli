@@ -2,72 +2,32 @@
 
 namespace App\Commands\Concerns;
 
-use App\Commands\SetupCommand;
-use App\Support\ClaudeSettings;
+use App\Agents\AgentRegistry;
 use App\Support\ConfigFile;
-use Illuminate\Support\Facades\Process;
 
 /**
- * Remove what `memry setup` left on this machine: the MCP servers, the
- * SessionStart hook and the config file with the login.
+ * Remove what `memry setup` left on this machine: memry in every agent it
+ * wired, and the config file with the login.
  */
 trait RemovesLocalInstall
 {
+    use ReportsAgentResults;
+
     /**
      * Run every step, even when an earlier one fails, and return whether
      * all of them succeeded.
      */
-    private function removeLocalInstall(): bool
+    private function removeLocalInstall(AgentRegistry $agents): bool
     {
-        $results = [
-            $this->removeMcpServers(),
-            $this->removeSessionStartHook(),
-            $this->deleteConfig(),
-        ];
+        $saved = ConfigFile::resolve()->read()['agents'] ?? null;
+        $removed = true;
 
-        return ! in_array(false, $results, true);
-    }
-
-    /**
-     * Remove the memry MCP server and the legacy one of earlier versions.
-     * Failing to remove one only means it was not registered.
-     */
-    private function removeMcpServers(): bool
-    {
-        if (Process::run('command -v claude')->failed()) {
-            $this->warn('Claude Code CLI not found; skipped removing the '.SetupCommand::MCP_SERVER.' MCP server.');
-
-            return false;
+        // Setup saves no agents up to 0.4.0, when it only wired Claude Code.
+        foreach ($agents->only(is_array($saved) ? $saved : ['claude-code']) as $agent) {
+            $removed = $this->report($agent->uninstall()) && $removed;
         }
 
-        Process::run(['claude', 'mcp', 'remove', '--scope', 'user', SetupCommand::LEGACY_MCP_SERVER]);
-        Process::run(['claude', 'mcp', 'remove', '--scope', 'user', SetupCommand::MCP_SERVER])->successful()
-            ? $this->info('Removed the '.SetupCommand::MCP_SERVER.' MCP server from Claude Code.')
-            : $this->line('The '.SetupCommand::MCP_SERVER.' MCP server was not registered in Claude Code.');
-
-        return true;
-    }
-
-    /**
-     * Remove the hook `memry setup` installed, identified like setup does
-     * by the hook:session-start command.
-     */
-    private function removeSessionStartHook(): bool
-    {
-        $settings = ClaudeSettings::resolve();
-        $removed = $settings->removeSessionStartHook('hook:session-start');
-
-        if ($removed === null) {
-            $this->warn("Could not remove the memry SessionStart hook: {$settings->path()} is not valid JSON.");
-
-            return false;
-        }
-
-        $removed
-            ? $this->info("Removed the memry SessionStart hook from {$settings->path()}.")
-            : $this->line('No memry SessionStart hook to remove.');
-
-        return true;
+        return $this->deleteConfig() && $removed;
     }
 
     /**

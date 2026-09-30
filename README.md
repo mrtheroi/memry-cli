@@ -21,8 +21,18 @@ brew install mrtheroi/tap/memry
 memry setup
 ```
 
-`memry setup` asks for your email, sends you a 6-digit login code and connects memry to
-Claude Code. Start a new Claude Code session afterwards to use it.
+`memry setup` asks for your email, sends you a 6-digit login code, then asks which agents you use
+and connects memry to each one you select (the ones found on your machine are preselected; press
+space to select, enter to confirm). Supported agents: Claude Code. Start a new session in your
+agent afterwards to use it.
+
+To choose the agents without the prompt, for example in a script, pass their keys:
+
+```bash
+memry setup --agents=claude-code
+```
+
+Run `memry setup` again to change the selection; memry is removed from agents you deselect.
 
 ## How it works
 

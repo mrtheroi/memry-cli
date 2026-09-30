@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `memry mcp` is a hidden stdio MCP server for agents that launch local MCP servers. It reads newline-delimited JSON-RPC messages from stdin until EOF and forwards each one to `<url>/mcp/memory` with the stored token (`Authorization: Bearer`, 30 second timeout), printing each reply as one line of JSON on stdout and nothing for notifications, so the token never appears in the agent's config. Requests of the stateless 2026-07-28 protocol also get the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers. Errors are JSON-RPC errors and never stop it: not logged in or a 401 (`-32000`, "Run `memry setup`."), another HTTP error, unreachable server or invalid reply (`-32603`), and a stdin line that is not JSON (`-32700`, `id` null). The config file is read for every message, so a new login applies without restarting the agent.
+- `memry setup` asks "Which agents do you use?" after logging in (a multiselect of every supported agent, currently Claude Code; agents not found on this machine are labelled "(not installed)" but can still be selected). The default is the selection saved by the previous setup, or else the installed agents; it is also used without asking when the session is not interactive. `--agents=claude-code,...` skips the prompt; an unknown key prints "Unknown agent "<key>". Valid agents: ..." and exits with code 1 before logging in. The selection is saved as `agents` in `config.json`. Setup wires memry into every selected agent and removes it from agents saved earlier but no longer selected, continuing when one fails, then prints a summary line per agent; it exits with code 1 if any agent failed. Selecting no agent keeps the login, prints a warning and exits with code 0.
+
+### Changed
+
+- `memry uninstall` and `memry delete-account` remove memry only from the agents saved in `config.json`, or from Claude Code when the config has no `agents` (setups of 0.4.0 and earlier).
 
 ## [0.4.0] - 2026-09-29
 

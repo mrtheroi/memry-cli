@@ -27,19 +27,19 @@ afterEach(function () {
 it('writes the url and token to the config file on success', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
     expect(json_decode(file_get_contents($this->configPath), true))
-        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token']);
+        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token', 'agents' => ['claude-code']]);
 });
 
 it('revokes the previous token after saving the new one', function () {
     previousConfig();
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Revoked the previous memry token.')
         ->assertExitCode(0);
@@ -56,7 +56,7 @@ it('does not revoke anything when there was no previous login', function (?array
     }
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->doesntExpectOutputToContain('Revoked')
         ->assertExitCode(0);
@@ -72,7 +72,7 @@ it('keeps going when the previous token cannot be revoked', function (?array $re
     previousConfig();
     fakeServer(revoke: $revoke);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Could not revoke the previous memry token.')
         ->doesntExpectOutputToContain('Revoked the previous memry token.')
@@ -81,7 +81,7 @@ it('keeps going when the previous token cannot be revoked', function (?array $re
         ->assertExitCode(0);
 
     expect(json_decode(file_get_contents($this->configPath), true))
-        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token']);
+        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token', 'agents' => ['claude-code']]);
 })->with([
     'already revoked' => [[401, ['message' => 'Unauthenticated.']]],
     'server error' => [[500, 'Server Error']],
@@ -92,7 +92,7 @@ it('does not revoke the previous token when the server returns the same one', fu
     previousConfig(['url' => 'https://memry.test', 'token' => 'secret-token']);
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->doesntExpectOutputToContain('Revoked')
         ->doesntExpectOutputToContain('Could not revoke')
@@ -105,7 +105,7 @@ it('revokes the previous token on the server it belongs to', function () {
     previousConfig(['url' => 'https://old.memry.test', 'token' => 'old-token']);
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -120,7 +120,7 @@ it('does not revoke the previous token when the login fails', function () {
     previousConfig();
     fakeServer(token: [422, ['message' => 'Invalid or expired code.']]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '000000')
         ->assertExitCode(1);
 
@@ -131,7 +131,7 @@ it('does not revoke the previous token when the login fails', function () {
 it('makes the config file readable by the owner only', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -141,7 +141,7 @@ it('makes the config file readable by the owner only', function () {
 it('confirms the login without ever printing the token', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Logged in as ana@example.com')
         ->doesntExpectOutputToContain('secret-token')
@@ -151,7 +151,7 @@ it('confirms the login without ever printing the token', function () {
 it('tells the user where the login code was sent', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsOutputToContain('We sent a login code to ana@example.com.')
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
@@ -160,7 +160,7 @@ it('tells the user where the login code was sent', function () {
 it('sends JSON requests that accept JSON responses', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -180,7 +180,7 @@ it('sends JSON requests that accept JSON responses', function () {
 it('asks for the email when no --email option is given', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--agents' => 'claude-code'])
         ->expectsQuestion('Email', 'ana@example.com')
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
@@ -192,7 +192,7 @@ it('asks for the email when no --email option is given', function () {
 it('asks for the email again until it is valid', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--agents' => 'claude-code'])
         ->expectsQuestion('Email', "ana@example.co\xc3m")
         ->expectsOutputToContain('Enter a valid email address.')
         ->expectsQuestion('Email', 'ana@example.com')
@@ -207,7 +207,7 @@ it('asks for the email again until it is valid', function () {
 it('trims and lowercases the email before sending it', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--agents' => 'claude-code'])
         ->expectsQuestion('Email', '  Ana@Example.COM ')
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
@@ -221,7 +221,7 @@ it('trims and lowercases the email before sending it', function () {
 it('strips a trailing slash from the server url', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test/', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test/', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -233,7 +233,7 @@ it('uses the configured server url when no --url option is given', function () {
     config(['memry.url' => 'https://configured.memry.test']);
     fakeServer();
 
-    $this->artisan('setup', ['--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -249,12 +249,12 @@ it('overwrites url and token but keeps other keys of an existing config file', f
     file_put_contents($this->configPath, json_encode(['url' => 'https://old.test', 'token' => 'old-token', 'project' => 'kept']));
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
     expect(json_decode(file_get_contents($this->configPath), true))
-        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token', 'project' => 'kept']);
+        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token', 'project' => 'kept', 'agents' => ['claude-code']]);
 });
 
 it('creates the missing parent directory readable by the owner only', function () {
@@ -262,7 +262,7 @@ it('creates the missing parent directory readable by the owner only', function (
     putenv('MEMRY_CONFIG='.$path);
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -275,18 +275,18 @@ it('writes to ~/.config/memry/config.json when MEMRY_CONFIG is not set', functio
     putenv('HOME='.$this->tmpDir);
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
     expect(json_decode(file_get_contents($this->tmpDir.'/.config/memry/config.json'), true))
-        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token']);
+        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token', 'agents' => ['claude-code']]);
 });
 
 it('fails without writing the config when the email is rejected', function () {
     fakeServer(code: [422, ['message' => 'The email field must be a valid email address.', 'errors' => ['email' => ['The email field must be a valid email address.']]]]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsOutputToContain('The email field must be a valid email address.')
         ->assertExitCode(1);
 
@@ -298,7 +298,7 @@ it('fails without writing the config when the email is rejected', function () {
 it('fails without sending anything when the --email option is not valid UTF-8', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => "ana@example.co\xc3m"])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => "ana@example.co\xc3m", '--agents' => 'claude-code'])
         ->expectsOutputToContain('Invalid email address given with --email.')
         ->assertExitCode(1);
 
@@ -310,7 +310,7 @@ it('fails without sending anything when the --email option is not valid UTF-8', 
 it('fails without sending anything when the --email option is not an email address', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'not-an-email'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'not-an-email', '--agents' => 'claude-code'])
         ->expectsOutputToContain('Invalid email address given with --email.')
         ->assertExitCode(1);
 
@@ -320,7 +320,7 @@ it('fails without sending anything when the --email option is not an email addre
 it('asks for the login code again until it has 6 digits', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', "12345\xc3")
         ->expectsOutputToContain('Enter the 6-digit code from the email.')
         ->expectsQuestion('Login code', ' 123456 ')
@@ -333,7 +333,7 @@ it('asks for the login code again until it has 6 digits', function () {
 it('fails without writing the config when the code is invalid or expired', function () {
     fakeServer(token: [422, ['message' => 'Invalid or expired code.']]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '000000')
         ->expectsOutputToContain('Invalid or expired code.')
         ->assertExitCode(1);
@@ -346,7 +346,7 @@ it('fails without writing the config when rate limited', function (string $endpo
     $tooMany = [429, ['message' => 'Too Many Attempts.']];
     $endpoint === 'code' ? fakeServer(code: $tooMany) : fakeServer(token: $tooMany);
 
-    $command = $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com']);
+    $command = $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code']);
     if ($endpoint === 'token') {
         $command->expectsQuestion('Login code', '123456');
     }
@@ -367,7 +367,7 @@ it('fails without writing the config when the server cannot be reached', functio
         '*/api/auth/token' => Http::failedConnection(),
     ]);
 
-    $command = $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com']);
+    $command = $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code']);
     if ($endpoint === 'token') {
         $command->expectsQuestion('Login code', '123456');
     }
@@ -384,7 +384,7 @@ it('fails with a generic message when the server errors without a message', func
     $serverError = [500, 'Server Error'];
     $endpoint === 'code' ? fakeServer(code: $serverError) : fakeServer(token: $serverError);
 
-    $command = $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com']);
+    $command = $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code']);
     if ($endpoint === 'token') {
         $command->expectsQuestion('Login code', '123456');
     }
@@ -400,7 +400,7 @@ it('fails with a generic message when the server errors without a message', func
 it('fails without writing the config when the server answers without a token', function () {
     fakeServer(token: [200, []]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('The memry server did not return a token.')
         ->assertExitCode(1);
@@ -422,7 +422,7 @@ it('registers the memry MCP server in Claude Code with a headers helper', functi
     config(['memry.executable' => "'/opt/memry/memry'"]);
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -437,7 +437,7 @@ it('points the headers helper at the running memry script when no helper command
     putenv('HOME='.$this->tmpDir);
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -450,7 +450,7 @@ it('points the headers helper at the running memry script when no helper command
 it('looks up claude, removes the legacy db-memory and any existing memry user-scope entries, adds memry and verifies it, in that order', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -468,21 +468,21 @@ it('fails with manual instructions but keeps the config when adding the MCP serv
     fakeServer();
     fakeClaude(['add-json' => Process::result(exitCode: 1, errorOutput: 'Invalid configuration')]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Could not register the memry MCP server in Claude Code.')
         ->expectsOutputToContain('claude mcp add-json --scope user memry '.escapeshellarg(json_encode(['type' => 'http', 'url' => 'https://memry.test/mcp/memory', 'headersHelper' => memryCommand('mcp-headers')], JSON_UNESCAPED_SLASHES)))
         ->assertExitCode(1);
 
     expect(json_decode(file_get_contents($this->configPath), true))
-        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token']);
+        ->toBe(['url' => 'https://memry.test', 'token' => 'secret-token', 'agents' => ['claude-code']]);
 });
 
 it('fails with manual instructions when the MCP server cannot be verified', function () {
     fakeServer();
     fakeClaude(['get' => Process::result(exitCode: 1)]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Could not register the memry MCP server in Claude Code.')
         ->expectsOutputToContain('claude mcp add-json --scope user memry')
@@ -494,7 +494,7 @@ it('fails with manual instructions when the MCP server cannot be verified', func
 it('confirms the MCP server registration', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Registered the memry MCP server in Claude Code (user scope).')
         ->assertExitCode(0);
@@ -504,7 +504,7 @@ it('warns with manual instructions and skips registration when the Claude Code C
     fakeServer();
     fakeClaude(installed: false);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Claude Code CLI not found; skipped MCP registration.')
         ->expectsOutputToContain('claude mcp add-json --scope user memry')
@@ -518,7 +518,7 @@ it('ignores failures to remove the legacy db-memory and memry entries when they 
     fakeServer();
     fakeClaude(['remove' => Process::result(exitCode: 1, errorOutput: 'No MCP server found')]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain('Registered the memry MCP server in Claude Code (user scope).')
         ->assertExitCode(0);
@@ -528,7 +528,7 @@ it('never passes the token to Claude Code or prints it in the manual instruction
     fakeServer();
     fakeClaude(['add-json' => Process::result(exitCode: 1)]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->doesntExpectOutputToContain('secret-token')
         ->assertExitCode(1);
@@ -540,7 +540,7 @@ it('never passes the token to Claude Code or prints it in the manual instruction
 it('passes a custom MEMRY_CONFIG on to the headers helper', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -566,7 +566,7 @@ it('installs the memry SessionStart hook in a new Claude Code settings file', fu
     config(['memry.executable' => "'/opt/memry/memry'"]);
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain("Installed the memry SessionStart hook in {$this->settingsPath}.")
         ->assertExitCode(0);
@@ -591,7 +591,7 @@ it('keeps every other setting, event and hook when installing the SessionStart h
     file_put_contents($this->settingsPath, json_encode($existing));
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -615,7 +615,7 @@ it('replaces a previously installed memry SessionStart hook', function () {
     ]]]));
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -631,7 +631,7 @@ it('leaves exactly one memry SessionStart hook after running setup twice', funct
     fakeServer();
 
     foreach ([1, 2] as $run) {
-        $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+        $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
             ->expectsQuestion('Login code', '123456')
             ->assertExitCode(0);
     }
@@ -646,7 +646,7 @@ it('fails with manual instructions and leaves an invalid settings file untouched
     file_put_contents($this->settingsPath, '{not json');
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain("Could not install the memry SessionStart hook: {$this->settingsPath} is not valid JSON.")
         ->expectsOutputToContain('"command": '.json_encode(memryCommand('hook:session-start'), JSON_UNESCAPED_SLASHES))
@@ -660,7 +660,7 @@ it('fails with manual instructions and leaves an invalid settings file untouched
 it('runs the hook with the running memry script and a custom MEMRY_CONFIG', function () {
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -677,7 +677,7 @@ it('installs the hook in ~/.claude/settings.json when CLAUDE_CONFIG_DIR is not s
     config(['memry.executable' => "'/opt/memry/memry'"]);
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -691,7 +691,7 @@ it('keeps the permissions of an existing settings file', function () {
     chmod($this->settingsPath, 0640);
     fakeServer();
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->assertExitCode(0);
 
@@ -703,7 +703,7 @@ it('still installs the hook but fails when the MCP server cannot be registered',
     fakeServer();
     fakeClaude(installed: false);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '123456')
         ->expectsOutputToContain("Installed the memry SessionStart hook in {$this->settingsPath}.")
         ->assertExitCode(1);
@@ -715,7 +715,7 @@ it('still installs the hook but fails when the MCP server cannot be registered',
 it('does not touch the Claude Code settings when the login fails', function () {
     fakeServer(token: [422, ['message' => 'Invalid or expired code.']]);
 
-    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com'])
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
         ->expectsQuestion('Login code', '000000')
         ->assertExitCode(1);
 

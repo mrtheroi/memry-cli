@@ -1,5 +1,7 @@
 <?php
 
+use App\Agents\Agent;
+use App\Agents\AgentRegistry;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Tests\TestCase;
@@ -94,4 +96,12 @@ function fakeAccountDeletion(?array $response = [204, '']): void
             ? Http::failedConnection()($request)
             : Http::response($response[1], $response[0]),
     ]);
+}
+
+/**
+ * Replace the supported agents with the given ones.
+ */
+function fakeAgents(Agent ...$agents): void
+{
+    app()->instance(AgentRegistry::class, new AgentRegistry($agents));
 }

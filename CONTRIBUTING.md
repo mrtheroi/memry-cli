@@ -36,6 +36,7 @@ Record every user-visible change under `## [Unreleased]` in [CHANGELOG.md](CHANG
 memry setup                                   # asks for your email, then the 6-digit login code
 memry setup --email you@example.com           # skip the email prompt
 memry setup --url https://your-memry.example  # use another memry server
+memry setup --agents=claude-code              # skip the agent prompt (comma-separated keys)
 memry uninstall                               # undo setup (asks for confirmation; --force skips it)
 memry delete-account                          # delete the account and all its memories, then undo setup
 ```
@@ -68,20 +69,58 @@ Without `--url`, `memry setup` uses `https://api.memry.com.mx` (or `MEMRY_URL`).
    `DELETE <previous url>/api/auth/token`, so only the new token stays valid. A failed revoke (for
    example a token that is already revoked or an unreachable server) only prints a warning; it
    never fails setup.
-3. **MCP server.** It registers the `memry` MCP server in Claude Code (user scope), replacing any
+3. **Agents.** It asks which agents to wire memry into (see [Agents](#agents)) and saves the
+   selection as `"agents": ["claude-code"]` in `config.json`. The default is the saved selection,
+   or else the installed agents; without an interactive terminal (or with `--no-interaction`) the
+   default is used without asking. `--agents=<key>,<key>` skips the prompt; an unknown key fails
+   with the list of valid keys before logging in. Setup then runs each selected agent's install
+   and each previously saved but deselected agent's uninstall, prints their messages and a summary
+   line per agent, and exits with code 1 if any of them failed. An empty selection only prints a
+   warning. For Claude Code, install is steps 4 and 5.
+4. **MCP server.** It registers the `memry` MCP server in Claude Code (user scope), replacing any
    existing entry and removing the legacy `db-memory` entry of earlier versions. The server uses a
    `headersHelper`: Claude Code runs `memry mcp-headers`, which prints
    `{"Authorization":"Bearer <token>"}` from `config.json`. The token lives only in `config.json`
    and is never stored in Claude Code's configuration. If the `claude` CLI is not found or the
    registration fails, setup keeps the login, prints the manual command (see
    [Troubleshooting](#troubleshooting)) and exits with code 1.
-4. **SessionStart hook.** It adds memry's hook to Claude Code's user settings
+5. **SessionStart hook.** It adds memry's hook to Claude Code's user settings
    (`$CLAUDE_CONFIG_DIR/settings.json`, default `~/.claude/settings.json`), replacing any earlier
    memry hook and keeping every other setting and hook. The hook is installed even if MCP
    registration fails. `settings.json` is rewritten atomically (temporary file + rename) with its
    permissions and non-ASCII characters preserved. If it is not valid JSON or its `hooks` do not
    have the expected shape, it is left untouched and setup prints the hook to add by hand and exits
    with code 1.
+
+### Agents
+
+Each supported agent is an adapter in `app/Agents` implementing the `Agent` contract:
+
+| Method          | Purpose                                                                          |
+| --------------- | -------------------------------------------------------------------------------- |
+| `key()`         | Stable key used by `--agents` and the `agents` config key, e.g. `claude-code`.  |
+| `name()`        | Name shown to the user, e.g. `Claude Code`.                                      |
+| `isInstalled()` | Detection, used to label the prompt and pick the default selection.              |
+| `install($url)` | Wires memry into the agent.                                                      |
+| `uninstall()`   | Removes memry from the agent.                                                    |
+
+`install()` and `uninstall()` return an `AgentResult`: whether it succeeded and the lines to show
+(`[style, text]`, style `info`, `warn`, `error` or `line`). Adapters never write to the console, so
+the commands decide how to print them. `AgentRegistry` lists the supported agents in display
+order; `ClaudeCodeAgent` is the only one so far.
+
+To add an agent:
+
+1. Write a failing test, then an `app/Agents/<Name>Agent.php` class implementing `Agent`. Resolve
+   its config files from `HOME` (or an agent-specific environment variable) so tests can point
+   them at a temporary directory.
+2. Add it to the default list in `AgentRegistry`.
+3. Document it in the README and the changelog.
+
+Command tests replace the registry with `fakeAgents(new FakeAgent(...), ...)` (see
+`tests/Fakes/FakeAgent.php`). `tests/TestCase.php` sets the environment to `testing`, so Laravel
+Prompts questions like the agent multiselect fall back to console questions that tests answer
+with `expectsChoice()`.
 
 ### SessionStart hook
 
@@ -112,12 +151,14 @@ no; `--force` skips it), then:
 
 1. Revokes the stored token with `DELETE <url>/api/auth/token` (skipped when not logged in; a 401
    means it was already revoked and counts as done).
-2. Removes the `memry` and legacy `db-memory` MCP servers with `claude mcp remove --scope user`
-   (a server that is not registered is ignored).
-3. Removes memry's SessionStart hook from Claude Code's `settings.json`, keeping every other hook
-   and setting. A `SessionStart` list or `hooks` object left empty is dropped. A malformed file is
-   left untouched.
-4. Deletes `~/.config/memry/config.json` (or `MEMRY_CONFIG`).
+2. Runs the uninstall of every agent saved in `config.json`, or of Claude Code when there is no
+   `agents` key (setups of 0.4.0 and earlier only wired Claude Code). For Claude Code:
+   - it removes the `memry` and legacy `db-memory` MCP servers with
+     `claude mcp remove --scope user` (a server that is not registered is ignored);
+   - it removes memry's SessionStart hook from Claude Code's `settings.json`, keeping every other
+     hook and setting. A `SessionStart` list or `hooks` object left empty is dropped. A malformed
+     file is left untouched.
+3. Deletes `~/.config/memry/config.json` (or `MEMRY_CONFIG`).
 
 Each step runs even if an earlier one fails and prints one line. It exits with code 1 if any step
 failed (revoke failed with another error or an unreachable server, `claude` CLI not found,
@@ -139,8 +180,8 @@ including when there was nothing to remove. It ends with a hint to run `brew uni
    and it prints "Deleted your memry account and all its memories.". A 422 (email does not match),
    401 (login no longer valid; run `memry setup`), other error or unreachable server prints an
    error and exits with code 1 without removing anything locally.
-4. **Local cleanup.** After a deletion it runs steps 2 to 4 of `memry uninstall` (MCP servers,
-   SessionStart hook, config file); there is no token left to revoke. Each step runs even if an
+4. **Local cleanup.** After a deletion it runs steps 2 and 3 of `memry uninstall` (the saved
+   agents, config file); there is no token left to revoke. Each step runs even if an
    earlier one fails, and it exits with code 1 if any step failed. It ends with a hint to run
    `brew uninstall memry`.
 

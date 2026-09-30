@@ -2,32 +2,42 @@
 
 namespace App\Commands;
 
+use App\Agents\AgentRegistry;
+use App\Commands\Concerns\ReportsAgentResults;
 use App\Support\AuthToken;
-use App\Support\ClaudeSettings;
 use App\Support\ConfigFile;
 use App\Support\Email;
-use App\Support\Executable;
 use App\Support\RevokeResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
+
+use function Laravel\Prompts\multiselect;
 
 class SetupCommand extends Command
 {
-    public const MCP_SERVER = 'memry';
-
-    public const LEGACY_MCP_SERVER = 'db-memory';
+    use ReportsAgentResults;
 
     protected $signature = 'setup
         {--url= : The memry server URL}
-        {--email= : The email to log in with}';
+        {--email= : The email to log in with}
+        {--agents= : Comma-separated keys of the agents to wire memry into}';
 
     protected $description = 'Log in to memry with an email one-time code';
 
-    public function handle(): int
+    public function handle(AgentRegistry $agents): int
     {
+        if ($this->option('agents') !== null) {
+            $unknown = array_diff($this->splitKeys($this->option('agents')), $agents->keys());
+
+            if ($unknown !== []) {
+                $this->error('Unknown agent "'.reset($unknown).'". Valid agents: '.implode(', ', $agents->keys()).'.');
+
+                return self::FAILURE;
+            }
+        }
+
         $url = rtrim($this->option('url') ?? config('memry.url'), '/');
         $email = $this->option('email') !== null ? Email::normalize($this->option('email')) : $this->askEmail();
 
@@ -69,7 +79,10 @@ class SetupCommand extends Command
 
         $config = ConfigFile::resolve();
         $previous = $config->read();
-        $config->merge(['url' => $url, 'token' => $token]);
+        $saved = is_array($previous['agents'] ?? null) ? $previous['agents'] : null;
+
+        $selected = $this->option('agents') !== null ? $this->splitKeys($this->option('agents')) : $this->askAgents($agents, $saved);
+        $config->merge(['url' => $url, 'token' => $token, 'agents' => $selected]);
 
         $this->info("Logged in as {$email}. Credentials saved to {$config->path()}.");
 
@@ -77,71 +90,32 @@ class SetupCommand extends Command
             $this->revokePreviousToken($previous['url'], $previous['token']);
         }
 
-        // The hook only needs the config file, so install it even when MCP registration fails.
-        $registered = $this->registerMcpServer($url);
-        $installed = $this->installSessionStartHook();
-
-        return $registered === self::SUCCESS && $installed === self::SUCCESS ? self::SUCCESS : self::FAILURE;
-    }
-
-    /**
-     * Register memry as the user-scope memry MCP server in Claude Code.
-     * The token stays in the config file; Claude Code gets it from the
-     * headers helper.
-     */
-    private function registerMcpServer(string $url): int
-    {
-        $server = json_encode([
-            'type' => 'http',
-            'url' => $url.'/mcp/memory',
-            'headersHelper' => Executable::command('mcp-headers'),
-        ], JSON_UNESCAPED_SLASHES);
-
-        if (Process::run('command -v claude')->failed()) {
-            $this->warn('Claude Code CLI not found; skipped MCP registration.');
-
-            return $this->failWithManualRegistration($server);
+        if ($selected === []) {
+            $this->warn('No agents selected; memry is not wired into any agent. Run `memry setup` again to choose some.');
         }
 
-        Process::run(['claude', 'mcp', 'remove', '--scope', 'user', self::LEGACY_MCP_SERVER]);
-        Process::run(['claude', 'mcp', 'remove', '--scope', 'user', self::MCP_SERVER]);
+        // Every agent is handled, even when an earlier one fails.
+        $summary = [];
 
-        if (Process::run(['claude', 'mcp', 'add-json', '--scope', 'user', self::MCP_SERVER, $server])->failed()
-            || Process::run(['claude', 'mcp', 'get', self::MCP_SERVER])->failed()) {
-            $this->error('Could not register the '.self::MCP_SERVER.' MCP server in Claude Code.');
-
-            return $this->failWithManualRegistration($server);
+        foreach ($agents->only($selected) as $agent) {
+            $summary[] = $this->report($agent->install($url))
+                ? ['info', "{$agent->name()}: memry is set up."]
+                : ['error', "{$agent->name()}: failed; see the messages above."];
         }
 
-        $this->info('Registered the '.self::MCP_SERVER.' MCP server in Claude Code (user scope).');
-
-        return self::SUCCESS;
-    }
-
-    /**
-     * Install the Claude Code SessionStart hook that prints the memry
-     * context of the current project.
-     */
-    private function installSessionStartHook(): int
-    {
-        $settings = ClaudeSettings::resolve();
-
-        $group = [
-            'matcher' => 'startup|resume|clear|compact',
-            'hooks' => [['type' => 'command', 'command' => Executable::command('hook:session-start'), 'timeout' => 10]],
-        ];
-
-        if (! $settings->replaceSessionStartHook($group, 'hook:session-start')) {
-            $this->error("Could not install the memry SessionStart hook: {$settings->path()} is not valid JSON.");
-            $this->line('Fix the file, then add this group to the "hooks.SessionStart" array by hand:');
-            $this->line(json_encode($group, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-
-            return self::FAILURE;
+        foreach ($agents->only(array_diff($saved ?? [], $selected)) as $agent) {
+            $summary[] = $this->report($agent->uninstall())
+                ? ['info', "{$agent->name()}: memry was removed."]
+                : ['error', "{$agent->name()}: failed; see the messages above."];
         }
 
-        $this->info("Installed the memry SessionStart hook in {$settings->path()}.");
+        $this->newLine();
 
-        return self::SUCCESS;
+        foreach ($summary as [$style, $text]) {
+            $this->{$style}($text);
+        }
+
+        return in_array('error', array_column($summary, 0), true) ? self::FAILURE : self::SUCCESS;
     }
 
     /**
@@ -179,12 +153,45 @@ class SetupCommand extends Command
         return $code;
     }
 
-    private function failWithManualRegistration(string $server): int
+    /**
+     * Ask which of the supported agents to wire memry into, defaulting to
+     * the saved selection, or else the installed ones. The default is also
+     * the answer when not interactive.
+     *
+     * @param  list<string>|null  $saved
+     * @return list<string>
+     */
+    private function askAgents(AgentRegistry $agents, ?array $saved): array
     {
-        $this->line('Your login was saved. Register the server manually with:');
-        $this->line('  claude mcp add-json --scope user '.self::MCP_SERVER.' '.escapeshellarg($server));
+        $options = [];
+        $installed = [];
 
-        return self::FAILURE;
+        foreach ($agents->all() as $agent) {
+            if ($agent->isInstalled()) {
+                $options[$agent->key()] = $agent->name();
+                $installed[] = $agent->key();
+            } else {
+                $options[$agent->key()] = "{$agent->name()} (not installed)";
+            }
+        }
+
+        $default = $saved !== null ? array_values(array_intersect($saved, $agents->keys())) : $installed;
+
+        if (! $this->input->isInteractive()) {
+            return $default;
+        }
+
+        return multiselect('Which agents do you use?', $options, $default, hint: 'Space to select, enter to confirm.');
+    }
+
+    /**
+     * The agent keys of a comma-separated list, trimmed, without empty ones.
+     *
+     * @return list<string>
+     */
+    private function splitKeys(string $list): array
+    {
+        return array_values(array_filter(array_map('trim', explode(',', $list)), fn ($key) => $key !== ''));
     }
 
     private function post(string $url, array $data): Response

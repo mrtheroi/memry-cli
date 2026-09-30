@@ -2,6 +2,7 @@
 
 namespace App\Commands;
 
+use App\Agents\AgentRegistry;
 use App\Commands\Concerns\RemovesLocalInstall;
 use App\Support\AuthToken;
 use App\Support\ConfigFile;
@@ -17,7 +18,7 @@ class UninstallCommand extends Command
 
     protected $description = 'Remove memry from Claude Code and delete your login';
 
-    public function handle(): int
+    public function handle(AgentRegistry $agents): int
     {
         if (! $this->option('force') && ! $this->confirm('Remove memry from Claude Code and delete your login?')) {
             $this->line('Aborted; nothing was removed.');
@@ -27,7 +28,7 @@ class UninstallCommand extends Command
 
         // Each step runs even when an earlier one fails.
         $revoked = $this->revokeToken();
-        $removed = $this->removeLocalInstall();
+        $removed = $this->removeLocalInstall($agents);
 
         $this->line('Run `brew uninstall memry` to remove the CLI.');
 

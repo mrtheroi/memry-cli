@@ -172,7 +172,7 @@ it('removes nothing when the confirmation is declined', function () {
     fakeServer();
 
     $this->artisan('uninstall')
-        ->expectsConfirmation('Remove memry from Claude Code and delete your login?', 'no')
+        ->expectsConfirmation('Remove memry from your agents and delete your login?', 'no')
         ->expectsOutputToContain('Aborted; nothing was removed.')
         ->assertExitCode(1);
 
@@ -186,7 +186,7 @@ it('removes everything after the confirmation and ends with the Homebrew hint', 
     fakeServer();
 
     $this->artisan('uninstall')
-        ->expectsConfirmation('Remove memry from Claude Code and delete your login?', 'yes')
+        ->expectsConfirmation('Remove memry from your agents and delete your login?', 'yes')
         ->expectsOutputToContain('Run `brew uninstall memry` to remove the CLI.')
         ->assertExitCode(0);
 

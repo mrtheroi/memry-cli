@@ -38,6 +38,12 @@ class SetupCommand extends Command
             }
         }
 
+        if ($this->option('email') === null && ! $this->input->isInteractive()) {
+            $this->error('Pass --email when running without interaction.');
+
+            return self::FAILURE;
+        }
+
         $url = rtrim($this->option('url') ?? config('memry.url'), '/');
         $email = $this->option('email') !== null ? Email::normalize($this->option('email')) : $this->askEmail();
 
@@ -57,6 +63,12 @@ class SetupCommand extends Command
             $this->line("We sent a login code to {$email}.");
 
             $code = $this->askCode();
+
+            if ($code === null) {
+                $this->error('No login code given. Run `memry setup` interactively to enter the code from the email.');
+
+                return self::FAILURE;
+            }
 
             $response = $this->post($url.'/api/auth/token', ['email' => $email, 'code' => $code]);
 
@@ -142,15 +154,20 @@ class SetupCommand extends Command
     }
 
     /**
-     * Ask for the login code until it has 6 digits.
+     * Ask for the login code until it has 6 digits, or return null when
+     * no answer can be read at all (as when not interactive).
      */
-    private function askCode(): string
+    private function askCode(): ?string
     {
-        while (preg_match('/^\d{6}$/', $code = trim((string) $this->ask('Login code'))) !== 1) {
+        while (($answer = $this->ask('Login code')) !== null) {
+            if (preg_match('/^\d{6}$/', $code = trim((string) $answer)) === 1) {
+                return $code;
+            }
+
             $this->error('Enter the 6-digit code from the email.');
         }
 
-        return $code;
+        return null;
     }
 
     /**

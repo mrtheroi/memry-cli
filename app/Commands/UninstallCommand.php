@@ -16,11 +16,11 @@ class UninstallCommand extends Command
     protected $signature = 'uninstall
         {--force : Do not ask for confirmation}';
 
-    protected $description = 'Remove memry from Claude Code and delete your login';
+    protected $description = 'Remove memry from your agents and delete your login';
 
     public function handle(AgentRegistry $agents): int
     {
-        if (! $this->option('force') && ! $this->confirm('Remove memry from Claude Code and delete your login?')) {
+        if (! $this->option('force') && ! $this->confirm('Remove memry from your agents and delete your login?')) {
             $this->line('Aborted; nothing was removed.');
 
             return self::FAILURE;

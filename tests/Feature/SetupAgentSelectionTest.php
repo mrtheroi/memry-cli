@@ -1,5 +1,6 @@
 <?php
 
+use App\Agents\AgentRegistry;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Tests\Fakes\FakeAgent;
@@ -166,4 +167,26 @@ it('ends with a summary line per agent', function () {
         ->expectsOutputToContain('Codex: memry is set up.')
         ->expectsOutputToContain('Gemini CLI: memry was removed.')
         ->assertExitCode(1);
+});
+
+it('wires exactly the agents given with --agents into their files', function () {
+    app()->instance(AgentRegistry::class, new AgentRegistry);
+    config(['memry.executable' => '/opt/homebrew/opt/memry/bin/memry']);
+    $home = getenv('HOME');
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'codex,windsurf'])
+        ->expectsQuestion('Login code', '123456')
+        ->expectsOutputToContain('Codex: memry is set up.')
+        ->expectsOutputToContain('Windsurf: memry is set up.')
+        ->assertExitCode(0);
+
+    expect(file_get_contents($home.'/.codex/config.toml'))->toContain('[mcp_servers.memry]')
+        ->and(file_get_contents($home.'/.codex/AGENTS.md'))->toContain('<!-- memry:start -->')
+        ->and(json_decode(file_get_contents($home.'/.codeium/windsurf/mcp_config.json'), true)['mcpServers']['memry']['args'])->toBe(['mcp'])
+        ->and(file_get_contents($home.'/.codeium/windsurf/memories/global_rules.md'))->toContain('<!-- memry:start -->')
+        ->and(file_exists($home.'/.config/opencode'))->toBeFalse()
+        ->and(file_exists($home.'/.gemini'))->toBeFalse()
+        ->and(file_exists($home.'/.claude'))->toBeFalse()
+        ->and(file_get_contents($home.'/.codex/config.toml').file_get_contents($home.'/.codeium/windsurf/mcp_config.json'))->not->toContain('secret-token');
 });

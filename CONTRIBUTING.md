@@ -40,8 +40,9 @@ memry uninstall                               # undo setup (asks for confirmatio
 memry delete-account                          # delete the account and all its memories, then undo setup
 ```
 
-Two hidden commands are run by Claude Code, not by users: `memry mcp-headers` (the MCP
-`headersHelper`) and `memry hook:session-start` (the SessionStart hook).
+Hidden commands are run by AI agents, not by users: `memry mcp-headers` (the Claude Code MCP
+`headersHelper`), `memry hook:session-start` (the Claude Code SessionStart hook) and `memry mcp`
+(a local stdio MCP server for agents that cannot send the token themselves).
 
 ## Environment variables
 
@@ -142,6 +143,48 @@ including when there was nothing to remove. It ends with a hint to run `brew uni
    SessionStart hook, config file); there is no token left to revoke. Each step runs even if an
    earlier one fails, and it exits with code 1 if any step failed. It ends with a hint to run
    `brew uninstall memry`.
+
+## How `memry mcp` works
+
+`memry mcp` is a stdio MCP server that proxies every message to the memry server, so an agent
+(Codex, OpenCode, Antigravity, Windsurf...) can launch it as a local MCP server and the token never
+appears in the agent's config files.
+
+- **Framing.** Newline-delimited JSON-RPC: it reads one message per line from stdin until EOF,
+  then exits with code 0. Blank lines are ignored. Each reply is written to stdout as one line of
+  JSON followed by `\n` and flushed right away. Nothing else is ever written to stdout.
+- **Forwarding.** Each line is sent as is with `POST <url>/mcp/memory`, `Authorization: Bearer
+  <token>`, `Content-Type: application/json` and `Accept: application/json, text/event-stream`,
+  with a 30 second timeout. The config file is read again for every message, so a new
+  `memry setup` takes effect without restarting the agent. The server is stateless: there is no
+  `Mcp-Session-Id`, and a notification is answered with an empty 202, which prints nothing.
+  JSON-RPC errors the server answers with a 4xx or 5xx status are forwarded unchanged.
+- **Stateless protocol (2026-07-28).** When a request carries
+  `params._meta["io.modelcontextprotocol/protocolVersion"]`, it also sends the `MCP-Protocol-Version`,
+  `Mcp-Method` and (for `tools/call`, `prompts/get` and `resources/read`) `Mcp-Name` headers the
+  server requires to match the body. Requests of the initialize handshake protocols get none.
+- **Errors.** They are JSON-RPC errors for the request's `id`; a notification never gets one. The
+  command keeps reading after every error, so the agent shows the message instead of losing the
+  server.
+
+| Case                                                | Code     | Message                                                   |
+| --------------------------------------------------- | -------- | --------------------------------------------------------- |
+| No `url` or `token` in the config file              | `-32000` | Not logged in to memry. Run `memry setup`.                |
+| The server answers 401                              | `-32000` | Your memry login is no longer valid. Run `memry setup`.   |
+| Other error status without a JSON-RPC body          | `-32603` | The memry server returned HTTP `<status>`.                |
+| The server cannot be reached or times out           | `-32603` | Could not reach the memry server.                         |
+| The server answers with something that is not JSON  | `-32603` | The memry server returned an invalid response.            |
+| A line on stdin is not JSON (`id` is `null`)        | `-32700` | Parse error                                               |
+
+To try it by hand (the replies are the only output; the second line prints nothing):
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"manual","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | php memry mcp
+```
 
 ## Troubleshooting
 

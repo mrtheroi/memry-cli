@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Support\StdioStreams;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +20,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(StdioStreams::class, fn () => new StdioStreams(STDIN, STDOUT));
     }
 }

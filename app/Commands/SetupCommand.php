@@ -22,9 +22,10 @@ class SetupCommand extends Command
     protected $signature = 'setup
         {--url= : The memry server URL}
         {--email= : The email to log in with}
+        {--token= : A token created by the server admin, instead of the email login}
         {--agents= : Comma-separated keys of the agents to wire memry into}';
 
-    protected $description = 'Log in to memry with an email one-time code';
+    protected $description = 'Log in to memry with an email one-time code or a token';
 
     public function handle(AgentRegistry $agents): int
     {
@@ -38,55 +39,34 @@ class SetupCommand extends Command
             }
         }
 
-        if ($this->option('email') === null && ! $this->input->isInteractive()) {
-            $this->error('Pass --email when running without interaction.');
+        if ($this->option('email') !== null && $this->option('token') !== null) {
+            $this->error('Use either --email or --token, not both.');
 
             return self::FAILURE;
         }
 
         $url = rtrim($this->option('url') ?? config('memry.url'), '/');
-        $email = $this->option('email') !== null ? Email::normalize($this->option('email')) : $this->askEmail();
 
-        if ($email === null) {
-            $this->error('Invalid email address given with --email.');
+        if ($this->option('token') !== null) {
+            $token = trim($this->option('token'));
 
-            return self::FAILURE;
-        }
-
-        try {
-            $response = $this->post($url.'/api/auth/code', ['email' => $email]);
-
-            if ($response->failed()) {
-                return $this->failWith($response);
-            }
-
-            $this->line("We sent a login code to {$email}.");
-
-            $code = $this->askCode();
-
-            if ($code === null) {
-                $this->error('No login code given. Run `memry setup` interactively to enter the code from the email.');
+            if ($token === '') {
+                $this->error('The --token option is empty.');
 
                 return self::FAILURE;
             }
 
-            $response = $this->post($url.'/api/auth/token', ['email' => $email, 'code' => $code]);
-
-            if ($response->failed()) {
-                return $this->failWith($response);
+            if (! $this->acceptsToken($url, $token)) {
+                return self::FAILURE;
             }
-        } catch (ConnectionException) {
-            $this->error("Could not reach the memry server at {$url}.");
 
-            return self::FAILURE;
-        }
+            $loggedIn = "Connected to {$url}.";
+        } else {
+            [$token, $loggedIn] = $this->loginWithEmail($url);
 
-        $token = $response->json('token');
-
-        if (! is_string($token) || $token === '') {
-            $this->error('The memry server did not return a token.');
-
-            return self::FAILURE;
+            if ($token === null) {
+                return self::FAILURE;
+            }
         }
 
         $config = ConfigFile::resolve();
@@ -96,7 +76,7 @@ class SetupCommand extends Command
         $selected = $this->option('agents') !== null ? $this->splitKeys($this->option('agents')) : $this->askAgents($agents, $saved);
         $config->merge(['url' => $url, 'token' => $token, 'agents' => $selected]);
 
-        $this->info("Logged in as {$email}. Credentials saved to {$config->path()}.");
+        $this->info("{$loggedIn} Credentials saved to {$config->path()}.");
 
         if (is_string($previous['token'] ?? null) && is_string($previous['url'] ?? null) && $previous['token'] !== $token) {
             $this->revokePreviousToken($previous['url'], $previous['token']);
@@ -128,6 +108,100 @@ class SetupCommand extends Command
         }
 
         return in_array('error', array_column($summary, 0), true) ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Whether the server accepts the token, telling why when it does not.
+     * Any authenticated endpoint would do; the context is a cheap read.
+     */
+    private function acceptsToken(string $url, string $token): bool
+    {
+        try {
+            $response = Http::acceptJson()->timeout(10)->withToken($token)->get($url.'/api/context', ['project' => 'memry']);
+        } catch (ConnectionException) {
+            $this->error("Could not reach the memry server at {$url}.");
+
+            return false;
+        }
+
+        if ($response->unauthorized()) {
+            $this->error("The token was rejected by {$url}.");
+
+            return false;
+        }
+
+        if ($response->failed()) {
+            $this->failWith($response);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Log in with an email one-time code, returning the token and the
+     * confirmation to show, or nulls (after telling why) when it fails.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function loginWithEmail(string $url): array
+    {
+        if ($this->option('email') === null && ! $this->input->isInteractive()) {
+            $this->error('Pass --email when running without interaction.');
+
+            return [null, null];
+        }
+
+        $email = $this->option('email') !== null ? Email::normalize($this->option('email')) : $this->askEmail();
+
+        if ($email === null) {
+            $this->error('Invalid email address given with --email.');
+
+            return [null, null];
+        }
+
+        try {
+            $response = $this->post($url.'/api/auth/code', ['email' => $email]);
+
+            if ($response->failed()) {
+                $this->failWith($response);
+
+                return [null, null];
+            }
+
+            $this->line("We sent a login code to {$email}.");
+
+            $code = $this->askCode();
+
+            if ($code === null) {
+                $this->error('No login code given. Run `memry setup` interactively to enter the code from the email.');
+
+                return [null, null];
+            }
+
+            $response = $this->post($url.'/api/auth/token', ['email' => $email, 'code' => $code]);
+
+            if ($response->failed()) {
+                $this->failWith($response);
+
+                return [null, null];
+            }
+        } catch (ConnectionException) {
+            $this->error("Could not reach the memry server at {$url}.");
+
+            return [null, null];
+        }
+
+        $token = $response->json('token');
+
+        if (! is_string($token) || $token === '') {
+            $this->error('The memry server did not return a token.');
+
+            return [null, null];
+        }
+
+        return [$token, "Logged in as {$email}."];
     }
 
     /**
@@ -216,12 +290,10 @@ class SetupCommand extends Command
         return Http::acceptJson()->timeout(10)->post($url, $data);
     }
 
-    private function failWith(Response $response): int
+    private function failWith(Response $response): void
     {
         $this->error($response->tooManyRequests()
             ? 'Too many attempts, try again later.'
             : $response->json('message') ?? "The memry server returned an unexpected error (HTTP {$response->status()}).");
-
-        return self::FAILURE;
     }
 }

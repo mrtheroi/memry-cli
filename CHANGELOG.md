@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `memry setup --token <token>` logs in with a token created by the admin of a self-hosted server, instead of the email login (no email prompt and no login code). The token is trimmed and checked with `GET <url>/api/context?project=memry` (`Authorization: Bearer`) before it is saved: a 401 prints "The token was rejected by <url>.", another HTTP error prints the server's message and an unreachable server prints "Could not reach the memry server at <url>."; each exits with code 1 without saving anything. On success the URL and token are saved like a login, a different previous token is revoked, and setup continues with the agent selection. An empty token prints "The --token option is empty." and `--email` with `--token` prints "Use either --email or --token, not both."; both exit with code 1 before sending anything. The token is never printed.
+
 ## [0.5.0] - 2026-09-30
 
 ### Added

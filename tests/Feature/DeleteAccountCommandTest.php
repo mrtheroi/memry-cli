@@ -127,6 +127,24 @@ it('fails and removes nothing locally when the account cannot be deleted', funct
     'unreachable' => [null],
 ]);
 
+it('does not follow a redirect from the deletion to a page that answers 200', function () {
+    previousConfig();
+    Http::fake([
+        'https://memry.test/api/account' => Http::response('', 302, ['Location' => 'https://memry.test/login']),
+        'https://memry.test/login' => Http::response('<html>Log in</html>', 200),
+    ]);
+
+    $this->artisan('delete-account')
+        ->expectsQuestion('Type your account email to confirm', 'ana@example.com')
+        ->expectsOutputToContain('Could not delete your memry account. Try again later.')
+        ->doesntExpectOutputToContain('Deleted your memry account')
+        ->assertExitCode(1);
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'https://memry.test/login');
+    Process::assertNothingRan();
+    expect(file_exists($this->configPath))->toBeTrue();
+});
+
 it('removes memry from this machine after deleting the account', function () {
     previousConfig();
     fakeAccountDeletion();

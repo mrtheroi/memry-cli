@@ -13,7 +13,7 @@ class AuthToken
     public static function revoke(string $url, string $token): RevokeResult
     {
         try {
-            $response = Http::acceptJson()->timeout(10)->withToken($token)->delete($url.'/api/auth/token');
+            $response = Http::acceptJson()->timeout(10)->withoutRedirecting()->withToken($token)->delete($url.'/api/auth/token');
         } catch (ConnectionException) {
             return RevokeResult::Failed;
         }

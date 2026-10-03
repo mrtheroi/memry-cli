@@ -420,6 +420,39 @@ it('fails with a generic message when the server errors without a message', func
     Process::assertNothingRan();
 })->with(['code', 'token']);
 
+it('does not follow a redirect from the login code request to a page that answers 200', function () {
+    Http::fake([
+        'https://memry.test/api/auth/code' => Http::response('', 302, ['Location' => 'https://memry.test/elsewhere']),
+        'https://memry.test/elsewhere' => Http::response(['message' => 'OK'], 200),
+    ]);
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
+        ->expectsOutputToContain('The memry server returned an unexpected error (HTTP 302).')
+        ->doesntExpectOutputToContain('We sent a login code')
+        ->assertExitCode(1);
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'https://memry.test/elsewhere');
+    expect(file_exists($this->configPath))->toBeFalse();
+    Process::assertNothingRan();
+});
+
+it('does not follow a redirect from the token request to a page that answers with a token', function () {
+    Http::fake([
+        'https://memry.test/api/auth/code' => Http::response(['message' => 'If the email is valid, a login code has been sent.'], 202),
+        'https://memry.test/api/auth/token' => Http::response('', 302, ['Location' => 'https://memry.test/elsewhere']),
+        'https://memry.test/elsewhere' => Http::response(['token' => 'other-token'], 200),
+    ]);
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
+        ->expectsQuestion('Login code', '123456')
+        ->expectsOutputToContain('The memry server returned an unexpected error (HTTP 302).')
+        ->assertExitCode(1);
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'https://memry.test/elsewhere');
+    expect(file_exists($this->configPath))->toBeFalse();
+    Process::assertNothingRan();
+});
+
 it('fails without writing the config when the server answers without a token', function () {
     fakeServer(token: [200, []]);
 

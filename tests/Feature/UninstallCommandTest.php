@@ -48,6 +48,20 @@ it('warns and fails when the token cannot be revoked', function (?array $revoke)
     'unreachable' => [null],
 ]);
 
+it('does not follow a redirect from the revoke to a page that answers 200', function () {
+    previousConfig();
+    Http::fake([
+        'https://memry.test/api/auth/token' => Http::response('', 302, ['Location' => 'https://memry.test/login']),
+        'https://memry.test/login' => Http::response('<html>Log in</html>', 200),
+    ]);
+
+    $this->artisan('uninstall', ['--force' => true])
+        ->expectsOutputToContain('Could not revoke the memry token.')
+        ->assertExitCode(1);
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'https://memry.test/login');
+});
+
 it('counts a token the server no longer accepts as already revoked', function () {
     previousConfig();
     fakeServer(revoke: [401, ['message' => 'Unauthenticated.']]);

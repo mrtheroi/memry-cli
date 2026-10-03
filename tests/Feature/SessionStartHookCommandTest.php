@@ -227,6 +227,19 @@ it('prints nothing and exits zero when the request fails', function (Closure $re
     'connection failure' => [fn () => Http::failedConnection()],
 ]);
 
+it('prints nothing and exits zero instead of following a redirect', function () {
+    Http::fake([
+        'https://memry.test/api/context*' => Http::response('', 302, ['Location' => 'https://memry.test/login']),
+        'https://memry.test/login' => Http::response('<html>Log in</html>', 200),
+    ]);
+
+    [$exitCode, $output] = runHook(['session_id' => 'abc', 'cwd' => gitRepo($this->tmpDir.'/MyProject'), 'source' => 'startup']);
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toBe('');
+    Http::assertNotSent(fn ($request) => $request->url() === 'https://memry.test/login');
+});
+
 it('prints nothing and exits zero on an unexpected error', function () {
     app()->instance(Stdin::class, new class extends Stdin
     {

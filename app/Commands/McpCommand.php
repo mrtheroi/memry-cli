@@ -52,6 +52,7 @@ class McpCommand extends Command
             $response = Http::withToken($config['token'])
                 ->accept('application/json, text/event-stream')
                 ->timeout(30)
+                ->withoutRedirecting()
                 ->withHeaders($this->protocolHeaders($message))
                 ->withBody($message, 'application/json')
                 ->post($config['url'].'/mcp/memory');
@@ -64,7 +65,7 @@ class McpCommand extends Command
         }
 
         // laravel/mcp answers JSON-RPC errors with a 4xx or 5xx status.
-        if ($response->failed() && ! isset($response->json()['jsonrpc'])) {
+        if (! $response->successful() && ! isset($response->json()['jsonrpc'])) {
             return $this->errorReply($message, -32603, "The memry server returned HTTP {$response->status()}.");
         }
 

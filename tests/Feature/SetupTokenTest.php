@@ -121,7 +121,7 @@ it('fails without sending anything when the --token option is empty', function (
     fakeServer();
 
     $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => $token, '--agents' => 'claude-code'])
-        ->expectsOutputToContain('The --token option is empty.')
+        ->expectsOutputToContain('The token is empty.')
         ->assertExitCode(1);
 
     Http::assertNothingSent();
@@ -136,4 +136,51 @@ it('trims the token before checking and saving it', function () {
 
     Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer admin-token'));
     expect(json_decode(file_get_contents($this->configPath), true)['token'])->toBe('admin-token');
+});
+
+it('fails without sending anything when --email is given with a valueless --token', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--token' => null, '--agents' => 'claude-code'])
+        ->expectsOutputToContain('Use either --email or --token, not both.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
+});
+
+it('asks for the token when --token is given without a value', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => null, '--agents' => 'claude-code'])
+        ->expectsQuestion('Token', 'admin-token')
+        ->doesntExpectOutputToContain('admin-token')
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer admin-token'));
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/api/auth/'));
+    expect(json_decode(file_get_contents($this->configPath), true)['token'])->toBe('admin-token');
+});
+
+it('fails without sending anything when the entered token is empty', function (string $token) {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => null, '--agents' => 'claude-code'])
+        ->expectsQuestion('Token', $token)
+        ->expectsOutputToContain('The token is empty.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
+})->with(['empty' => [''], 'blank' => ['   ']]);
+
+it('fails without sending anything when --token has no value and there is no interaction', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => null, '--agents' => 'claude-code', '--no-interaction' => true])
+        ->expectsOutputToContain('Pass --token=<value> when running without interaction.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
 });

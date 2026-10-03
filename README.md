@@ -40,10 +40,12 @@ On a self-hosted memry server, your admin creates a token for you instead of the
 Connect with:
 
 ```bash
-memry setup --url https://memry.company.internal --token <token>
+memry setup --url https://memry.company.internal --token
 ```
 
-Setup checks the token with the server before saving it, then asks which agents you use as usual.
+Setup asks for the token without showing it, checks it with the server before saving it, then asks
+which agents you use as usual. For scripts, `--token=<token>` passes it without the prompt, but the
+token then lands in your shell history.
 
 ## Supported agents
 

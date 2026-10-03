@@ -22,7 +22,7 @@ class SetupCommand extends Command
     protected $signature = 'setup
         {--url= : The memry server URL}
         {--email= : The email to log in with}
-        {--token= : A token created by the server admin, instead of the email login}
+        {--token= : Log in with a token created by the server admin, asked with a hidden prompt (or given as --token=<value>)}
         {--agents= : Comma-separated keys of the agents to wire memry into}';
 
     protected $description = 'Log in to memry with an email one-time code or a token';
@@ -39,7 +39,7 @@ class SetupCommand extends Command
             }
         }
 
-        if ($this->option('email') !== null && $this->option('token') !== null) {
+        if ($this->option('email') !== null && $this->input->hasParameterOption('--token')) {
             $this->error('Use either --email or --token, not both.');
 
             return self::FAILURE;
@@ -47,11 +47,17 @@ class SetupCommand extends Command
 
         $url = rtrim($this->option('url') ?? config('memry.url'), '/');
 
-        if ($this->option('token') !== null) {
-            $token = trim($this->option('token'));
+        if ($this->input->hasParameterOption('--token')) {
+            if ($this->option('token') === null && ! $this->input->isInteractive()) {
+                $this->error('Pass --token=<value> when running without interaction.');
+
+                return self::FAILURE;
+            }
+
+            $token = trim((string) ($this->option('token') ?? $this->secret('Token')));
 
             if ($token === '') {
-                $this->error('The --token option is empty.');
+                $this->error('The token is empty.');
 
                 return self::FAILURE;
             }

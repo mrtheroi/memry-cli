@@ -52,6 +52,7 @@ class McpCommand extends Command
             $response = Http::withToken($config['token'])
                 ->accept('application/json, text/event-stream')
                 ->timeout(30)
+                ->withoutRedirecting()
                 ->withHeaders($this->protocolHeaders($message))
                 ->withBody($message, 'application/json')
                 ->post($config['url'].'/mcp/memory');
@@ -61,6 +62,11 @@ class McpCommand extends Command
 
         if ($response->status() === 401) {
             return $this->errorReply($message, -32000, 'Your memry login is no longer valid. Run `memry setup`.');
+        }
+
+        // Neither a success nor an error, such as a redirect: whatever its body says.
+        if (! $response->successful() && ! $response->failed()) {
+            return $this->errorReply($message, -32603, "The memry server returned HTTP {$response->status()}.");
         }
 
         // laravel/mcp answers JSON-RPC errors with a 4xx or 5xx status.

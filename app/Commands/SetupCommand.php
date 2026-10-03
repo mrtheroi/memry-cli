@@ -188,7 +188,7 @@ class SetupCommand extends Command
         try {
             $response = $this->post($url.'/api/auth/code', ['email' => $email]);
 
-            if ($response->failed()) {
+            if (! $response->successful()) {
                 $this->failWith($response);
 
                 return [null, null];
@@ -206,7 +206,7 @@ class SetupCommand extends Command
 
             $response = $this->post($url.'/api/auth/token', ['email' => $email, 'code' => $code]);
 
-            if ($response->failed()) {
+            if (! $response->successful()) {
                 $this->failWith($response);
 
                 return [null, null];
@@ -342,7 +342,7 @@ class SetupCommand extends Command
 
     private function post(string $url, array $data): Response
     {
-        return Http::acceptJson()->timeout(10)->post($url, $data);
+        return Http::acceptJson()->timeout(10)->withoutRedirecting()->post($url, $data);
     }
 
     private function failWith(Response $response): void

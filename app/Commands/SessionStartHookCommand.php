@@ -49,9 +49,10 @@ class SessionStartHookCommand extends Command
         $response = Http::withToken($config['token'])
             ->accept('text/plain')
             ->timeout(3)
+            ->withoutRedirecting()
             ->get($config['url'].'/api/context?project='.rawurlencode($project));
 
-        if ($response->failed()) {
+        if (! $response->successful()) {
             return;
         }
 

@@ -61,7 +61,7 @@ class DeleteAccountCommand extends Command
     private function deleteAccount(string $url, string $token, string $email): ?string
     {
         try {
-            $response = Http::acceptJson()->timeout(10)->withToken($token)->delete($url.'/api/account', ['email' => $email]);
+            $response = Http::acceptJson()->timeout(10)->withoutRedirecting()->withToken($token)->delete($url.'/api/account', ['email' => $email]);
         } catch (ConnectionException) {
             return 'Could not delete your memry account. Try again later.';
         }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Every request that sends the stored token or user data no longer follows a redirect, so it can never send the token, the email or the login code on to another URL, nor count the page a redirect leads to as a success. Like the token check of `memry setup --token`, a 3xx answer is now an error: `memry uninstall` prints "Could not revoke the memry token." and exits with code 1 (it used to print "Revoked the memry token."), and `memry setup` prints "Could not revoke the previous memry token." for the previous login; `memry delete-account` prints "Could not delete your memry account. Try again later." and exits with code 1 without removing anything locally (it used to report the account as deleted and remove memry from this machine); the email login of `memry setup` prints "The memry server returned an unexpected error (HTTP <status>)." and exits with code 1 without saving anything, whether the login code request or the token request is redirected; `memry mcp` answers a request with the `-32603` "The memry server returned HTTP <status>." error (it used to forward the reply of the page the redirect led to, or print nothing for an empty 3xx); and the Claude Code SessionStart hook prints nothing instead of printing that page as the memry context.
+
 ## [0.6.0] - 2026-10-03
 
 ### Added

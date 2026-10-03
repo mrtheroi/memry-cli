@@ -154,6 +154,14 @@ it('answers a request with an internal error instead of following a redirect', f
     Http::assertNotSent(fn ($request) => $request->url() === 'https://memry.test/elsewhere');
 });
 
+it('answers a request with an internal error for a redirect whose body is a JSON-RPC reply', function () {
+    Http::fake(['*/mcp/memory' => Http::response(['jsonrpc' => '2.0', 'id' => 1, 'result' => []], 302, ['Location' => 'https://memry.test/elsewhere'])]);
+
+    [, $output] = runMcp(['{"jsonrpc":"2.0","id":1,"method":"tools/list"}']);
+
+    expect($output)->toBe('{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"The memry server returned HTTP 302."}}'."\n");
+});
+
 it('forwards a JSON-RPC error the server sends with an error status', function (int $status) {
     $error = '{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"The method [foo] was not found."}}';
     Http::fake(['*/mcp/memory' => Http::response($error, $status)]);

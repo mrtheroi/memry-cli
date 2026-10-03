@@ -64,8 +64,13 @@ class McpCommand extends Command
             return $this->errorReply($message, -32000, 'Your memry login is no longer valid. Run `memry setup`.');
         }
 
+        // Neither a success nor an error, such as a redirect: whatever its body says.
+        if (! $response->successful() && ! $response->failed()) {
+            return $this->errorReply($message, -32603, "The memry server returned HTTP {$response->status()}.");
+        }
+
         // laravel/mcp answers JSON-RPC errors with a 4xx or 5xx status.
-        if (! $response->successful() && ! isset($response->json()['jsonrpc'])) {
+        if ($response->failed() && ! isset($response->json()['jsonrpc'])) {
             return $this->errorReply($message, -32603, "The memry server returned HTTP {$response->status()}.");
         }
 

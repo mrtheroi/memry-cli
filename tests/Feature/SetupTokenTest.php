@@ -217,3 +217,33 @@ it('fails without asking or sending anything when --token is given without --url
     Http::assertNothingSent();
     expect(file_exists($this->configPath))->toBeFalse();
 })->with(['with a value' => ['admin-token'], 'without a value' => [null]]);
+
+it('does not follow a redirect from the token check to a page that answers 200', function () {
+    Http::fake([
+        'https://memry.test/api/context*' => Http::response('', 302, ['Location' => 'https://memry.test/login']),
+        'https://memry.test/login' => Http::response('<html>Log in</html>', 200),
+    ]);
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => 'admin-token', '--agents' => 'claude-code'])
+        ->expectsOutputToContain('The memry server returned an unexpected error (HTTP 302).')
+        ->assertExitCode(1);
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'https://memry.test/login');
+    expect(file_exists($this->configPath))->toBeFalse()
+        ->and($this->claude->calls)->toBe([]);
+});
+
+it('accepts a plain http server url for self-hosted servers', function (string $url) {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => $url, '--token' => 'admin-token', '--agents' => 'claude-code'])
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => str_starts_with($request->url(), rtrim($url, '/').'/api/context?'));
+    expect(json_decode(file_get_contents($this->configPath), true)['url'])->toBe(rtrim($url, '/'));
+})->with([
+    'localhost with a port' => 'http://localhost:8000',
+    'a LAN address' => 'http://192.168.1.10/',
+    'a service name' => 'http://memry_server',
+    'a path' => 'https://tools.company.internal/memry',
+]);

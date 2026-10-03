@@ -45,6 +45,18 @@ class SetupCommand extends Command
             return self::FAILURE;
         }
 
+        if (($name = $this->optionWithoutValue()) !== null) {
+            $this->error("The --{$name} option needs a value.");
+
+            return self::FAILURE;
+        }
+
+        if ($this->option('url') !== null && ! $this->isServerUrl($this->option('url'))) {
+            $this->error('Invalid server address given with --url. Use an http:// or https:// URL.');
+
+            return self::FAILURE;
+        }
+
         $url = rtrim($this->option('url') ?? config('memry.url'), '/');
 
         if ($this->input->hasParameterOption('--token')) {
@@ -129,7 +141,7 @@ class SetupCommand extends Command
     private function acceptsToken(string $url, string $token): bool
     {
         try {
-            $response = Http::acceptJson()->timeout(10)->withToken($token)->get($url.'/api/context', ['project' => 'memry']);
+            $response = Http::acceptJson()->timeout(10)->withoutRedirecting()->withToken($token)->get($url.'/api/context', ['project' => 'memry']);
         } catch (ConnectionException) {
             $this->error("Could not reach the memry server at {$url}.");
 
@@ -285,6 +297,37 @@ class SetupCommand extends Command
         }
 
         return multiselect('Which agents do you use?', $options, $default, hint: 'Space to select, enter to confirm.');
+    }
+
+    /**
+     * The first option given without the value it needs, if any. Once none
+     * is, an option's value is null exactly when the option is absent. A
+     * valueless --token is fine: it means asking for the token.
+     */
+    private function optionWithoutValue(): ?string
+    {
+        foreach (['url', 'email', 'agents'] as $name) {
+            if ($this->input->hasParameterOption("--{$name}") && $this->option($name) === null) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the URL is an http(s) address that API paths can be appended
+     * to: a host, no whitespace, no query and no fragment.
+     */
+    private function isServerUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+
+        return is_array($parts)
+            && in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true)
+            && ($parts['host'] ?? '') !== ''
+            && ! isset($parts['query']) && ! isset($parts['fragment'])
+            && preg_match('/\s/', $url) !== 1;
     }
 
     /**

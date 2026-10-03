@@ -64,7 +64,11 @@ and passed to the other agents through the environment of their MCP server entry
 
 ## How `memry setup` works
 
-Without `--url`, `memry setup` uses `https://api.memry.com.mx` (or `MEMRY_URL`).
+Without `--url`, `memry setup` uses `https://api.memry.com.mx` (or `MEMRY_URL`). A given `--url` must
+be an `http://` or `https://` address with a host and no query or fragment; anything else prints
+"Invalid server address given with --url. Use an http:// or https:// URL.". `--url`, `--email` and
+`--agents` given without a value print "The --<option> option needs a value.". Both fail with code 1
+before asking or sending anything. (`--token` without a value is different: it asks for the token.)
 
 1. **Login.** It emails a one-time login code, exchanges it for an API token, and saves
    `{"url": "...", "token": "..."}` to `~/.config/memry/config.json` (permissions 0600). Other
@@ -73,8 +77,8 @@ Without `--url`, `memry setup` uses `https://api.memry.com.mx` (or `MEMRY_URL`).
    With `--token` (self-hosted servers, where the admin creates the token), there is no email
    login: setup asks for the token with a hidden prompt (or takes it from `--token=<value>`, which
    leaves it in the shell history and is meant for scripts only), trims it and checks it with `GET <url>/api/context?project=memry`
-   (`Authorization: Bearer <token>`, `Accept: application/json`) before saving it the same way.
-   Only a 2xx answer accepts the token: a 401 prints "The token was rejected by <url>.", any other
+   (`Authorization: Bearer <token>`, `Accept: application/json`, redirects not followed) before
+   saving it the same way. Only a 2xx answer accepts the token: a 401 prints "The token was rejected by <url>.", any other
    answer (including a redirect) prints the server's message, and
    an unreachable server prints "Could not reach the memry server at <url>."; each exits with code 1
    without saving anything. `--token` without `--url` fails before asking for the token or sending

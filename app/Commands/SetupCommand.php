@@ -39,7 +39,7 @@ class SetupCommand extends Command
             }
         }
 
-        if ($this->option('email') !== null && $this->input->hasParameterOption('--token')) {
+        if ($this->input->hasParameterOption('--email') && $this->input->hasParameterOption('--token')) {
             $this->error('Use either --email or --token, not both.');
 
             return self::FAILURE;
@@ -48,6 +48,12 @@ class SetupCommand extends Command
         $url = rtrim($this->option('url') ?? config('memry.url'), '/');
 
         if ($this->input->hasParameterOption('--token')) {
+            if (! $this->input->hasParameterOption('--url')) {
+                $this->error('Pass --url with --token, the address of your memry server.');
+
+                return self::FAILURE;
+            }
+
             if ($this->option('token') === null && ! $this->input->isInteractive()) {
                 $this->error('Pass --token=<value> when running without interaction.');
 
@@ -136,7 +142,7 @@ class SetupCommand extends Command
             return false;
         }
 
-        if ($response->failed()) {
+        if (! $response->successful()) {
             $this->failWith($response);
 
             return false;

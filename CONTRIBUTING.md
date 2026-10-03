@@ -74,10 +74,12 @@ Without `--url`, `memry setup` uses `https://api.memry.com.mx` (or `MEMRY_URL`).
    login: setup asks for the token with a hidden prompt (or takes it from `--token=<value>`, which
    leaves it in the shell history and is meant for scripts only), trims it and checks it with `GET <url>/api/context?project=memry`
    (`Authorization: Bearer <token>`, `Accept: application/json`) before saving it the same way.
-   A 401 prints "The token was rejected by <url>.", another error prints the server's message, and
+   Only a 2xx answer accepts the token: a 401 prints "The token was rejected by <url>.", any other
+   answer (including a redirect) prints the server's message, and
    an unreachable server prints "Could not reach the memry server at <url>."; each exits with code 1
-   without saving anything. An empty token, `--token` without a value when not interactive, or
-   `--email` together with `--token` (with or without a value), fails before sending anything. The token is never printed.
+   without saving anything. `--token` without `--url` fails before asking for the token or sending
+   anything, so an admin token never reaches the public server. An empty token, `--token` without a value when not interactive, or
+   `--email` together with `--token` (either with or without a value), fails before sending anything. The token is never printed.
 2. **Previous token.** If the file already held a token from an earlier login, it revokes it with
    `DELETE <previous url>/api/auth/token`, so only the new token stays valid. A failed revoke (for
    example a token that is already revoked or an unreachable server) only prints a warning; it

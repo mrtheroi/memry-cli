@@ -184,3 +184,36 @@ it('fails without sending anything when --token has no value and there is no int
     Http::assertNothingSent();
     expect(file_exists($this->configPath))->toBeFalse();
 });
+
+it('fails without sending anything when a valueless --email is given with --token', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => null, '--token' => 'admin-token', '--agents' => 'claude-code'])
+        ->expectsOutputToContain('Use either --email or --token, not both.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
+});
+
+it('fails without saving anything when the server answers the token check with a redirect', function () {
+    fakeServer(context: [302, '']);
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => 'admin-token', '--agents' => 'claude-code'])
+        ->expectsOutputToContain('The memry server returned an unexpected error (HTTP 302).')
+        ->assertExitCode(1);
+
+    expect(file_exists($this->configPath))->toBeFalse()
+        ->and($this->claude->calls)->toBe([]);
+});
+
+it('fails without asking or sending anything when --token is given without --url', function (?string $token) {
+    fakeServer();
+
+    $this->artisan('setup', ['--token' => $token, '--agents' => 'claude-code'])
+        ->expectsOutputToContain('Pass --url with --token, the address of your memry server.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
+})->with(['with a value' => ['admin-token'], 'without a value' => [null]]);

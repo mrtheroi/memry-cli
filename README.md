@@ -43,7 +43,8 @@ Connect with:
 memry setup --url https://memry.company.internal --token
 ```
 
-Setup asks for the token without showing it, checks it with the server before saving it, then asks
+`--url` is required with `--token`, so the token is never sent to the public server. Setup asks for
+the token without showing it, checks it with the server before saving it, then asks
 which agents you use as usual. For scripts, `--token=<token>` passes it without the prompt, but the
 token then lands in your shell history.
 

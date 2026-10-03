@@ -744,3 +744,62 @@ it('does not touch the Claude Code settings when the login fails', function () {
 
     expect(file_exists(dirname($this->settingsPath)))->toBeFalse();
 });
+
+it('fails without asking or sending anything when --url is given without a value', function (array $login) {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => null, ...$login, '--agents' => 'claude-code'])
+        ->expectsOutputToContain('The --url option needs a value.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
+})->with([
+    'email login' => [['--email' => 'ana@example.com']],
+    'token login' => [['--token' => 'admin-token']],
+]);
+
+it('fails without asking or sending anything when --email is given without a value', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => null, '--agents' => 'claude-code'])
+        ->expectsOutputToContain('The --email option needs a value.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
+});
+
+it('fails without asking or sending anything when --agents is given without a value', function () {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => null])
+        ->expectsOutputToContain('The --agents option needs a value.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
+});
+
+it('fails without asking or sending anything when the --url option is not an http(s) address', function (string $url, array $login) {
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => $url, ...$login, '--agents' => 'claude-code'])
+        ->expectsOutputToContain('Invalid server address given with --url. Use an http:// or https:// URL.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+    expect(file_exists($this->configPath))->toBeFalse();
+})->with([
+    'empty' => '',
+    'blank' => '   ',
+    'no scheme' => 'memry.test',
+    'another scheme' => 'ftp://memry.test',
+    'spaces' => 'https://memry .test',
+    'no host' => 'https://',
+    'a query' => 'https://memry.test?team=1',
+    'a fragment' => 'https://memry.test#top',
+])->with([
+    'email login' => [['--email' => 'ana@example.com']],
+    'token login' => [['--token' => 'admin-token']],
+]);

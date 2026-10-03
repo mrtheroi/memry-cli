@@ -36,6 +36,7 @@ Record every user-visible change under `## [Unreleased]` in [CHANGELOG.md](CHANG
 memry setup                                   # asks for your email, then the 6-digit login code
 memry setup --email you@example.com           # skip the email prompt
 memry setup --url https://your-memry.example  # use another memry server
+memry setup --url <url> --token               # self-hosted: log in with a token from the server admin (hidden prompt)
 memry setup --agents=claude-code,codex        # skip the agent prompt (comma-separated keys)
 memry uninstall                               # undo setup (asks for confirmation; --force skips it)
 memry delete-account                          # delete the account and all its memories, then undo setup
@@ -63,11 +64,26 @@ and passed to the other agents through the environment of their MCP server entry
 
 ## How `memry setup` works
 
-Without `--url`, `memry setup` uses `https://api.memry.com.mx` (or `MEMRY_URL`).
+Without `--url`, `memry setup` uses `https://api.memry.com.mx` (or `MEMRY_URL`). A given `--url` must
+be an `http://` or `https://` address with a host and no query or fragment; anything else prints
+"Invalid server address given with --url. Use an http:// or https:// URL.". `--url`, `--email` and
+`--agents` given without a value print "The --<option> option needs a value.". Both fail with code 1
+before asking or sending anything. (`--token` without a value is different: it asks for the token.)
 
 1. **Login.** It emails a one-time login code, exchanges it for an API token, and saves
    `{"url": "...", "token": "..."}` to `~/.config/memry/config.json` (permissions 0600). Other
    keys already in that file are kept.
+
+   With `--token` (self-hosted servers, where the admin creates the token), there is no email
+   login: setup asks for the token with a hidden prompt (or takes it from `--token=<value>`, which
+   leaves it in the shell history and is meant for scripts only), trims it and checks it with `GET <url>/api/context?project=memry`
+   (`Authorization: Bearer <token>`, `Accept: application/json`, redirects not followed) before
+   saving it the same way. Only a 2xx answer accepts the token: a 401 prints "The token was rejected by <url>.", any other
+   answer (including a redirect) prints the server's message, and
+   an unreachable server prints "Could not reach the memry server at <url>."; each exits with code 1
+   without saving anything. `--token` without `--url` fails before asking for the token or sending
+   anything, so an admin token never reaches the public server. An empty token, `--token` without a value when not interactive, or
+   `--email` together with `--token` (either with or without a value), fails before sending anything. The token is never printed.
 2. **Previous token.** If the file already held a token from an earlier login, it revokes it with
    `DELETE <previous url>/api/auth/token`, so only the new token stays valid. A failed revoke (for
    example a token that is already revoked or an unreachable server) only prints a warning; it
@@ -317,7 +333,7 @@ When the memry markers in an instructions file are broken, remove the leftover
 `<!-- memry:start -->` / `<!-- memry:end -->` lines (and anything between them) and run
 `memry setup` again.
 
-`memry setup --no-interaction` needs `--email`; it cannot read the login code either, so it exits
+`memry setup --no-interaction` needs `--email` (or `--token=<value>`); with `--email` it cannot read the login code either, so it exits
 with code 1 after the code is sent. Run `memry setup` in a terminal to log in.
 
 ## Building the PHAR

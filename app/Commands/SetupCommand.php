@@ -22,9 +22,10 @@ class SetupCommand extends Command
     protected $signature = 'setup
         {--url= : The memry server URL}
         {--email= : The email to log in with}
+        {--token= : Log in with a token created by the server admin, asked with a hidden prompt (or given as --token=<value>)}
         {--agents= : Comma-separated keys of the agents to wire memry into}';
 
-    protected $description = 'Log in to memry with an email one-time code';
+    protected $description = 'Log in to memry with an email one-time code or a token';
 
     public function handle(AgentRegistry $agents): int
     {
@@ -38,55 +39,58 @@ class SetupCommand extends Command
             }
         }
 
-        if ($this->option('email') === null && ! $this->input->isInteractive()) {
-            $this->error('Pass --email when running without interaction.');
+        if ($this->input->hasParameterOption('--email') && $this->input->hasParameterOption('--token')) {
+            $this->error('Use either --email or --token, not both.');
+
+            return self::FAILURE;
+        }
+
+        if (($name = $this->optionWithoutValue()) !== null) {
+            $this->error("The --{$name} option needs a value.");
+
+            return self::FAILURE;
+        }
+
+        if ($this->option('url') !== null && ! $this->isServerUrl($this->option('url'))) {
+            $this->error('Invalid server address given with --url. Use an http:// or https:// URL.');
 
             return self::FAILURE;
         }
 
         $url = rtrim($this->option('url') ?? config('memry.url'), '/');
-        $email = $this->option('email') !== null ? Email::normalize($this->option('email')) : $this->askEmail();
 
-        if ($email === null) {
-            $this->error('Invalid email address given with --email.');
-
-            return self::FAILURE;
-        }
-
-        try {
-            $response = $this->post($url.'/api/auth/code', ['email' => $email]);
-
-            if ($response->failed()) {
-                return $this->failWith($response);
-            }
-
-            $this->line("We sent a login code to {$email}.");
-
-            $code = $this->askCode();
-
-            if ($code === null) {
-                $this->error('No login code given. Run `memry setup` interactively to enter the code from the email.');
+        if ($this->input->hasParameterOption('--token')) {
+            if (! $this->input->hasParameterOption('--url')) {
+                $this->error('Pass --url with --token, the address of your memry server.');
 
                 return self::FAILURE;
             }
 
-            $response = $this->post($url.'/api/auth/token', ['email' => $email, 'code' => $code]);
+            if ($this->option('token') === null && ! $this->input->isInteractive()) {
+                $this->error('Pass --token=<value> when running without interaction.');
 
-            if ($response->failed()) {
-                return $this->failWith($response);
+                return self::FAILURE;
             }
-        } catch (ConnectionException) {
-            $this->error("Could not reach the memry server at {$url}.");
 
-            return self::FAILURE;
-        }
+            $token = trim((string) ($this->option('token') ?? $this->secret('Token')));
 
-        $token = $response->json('token');
+            if ($token === '') {
+                $this->error('The token is empty.');
 
-        if (! is_string($token) || $token === '') {
-            $this->error('The memry server did not return a token.');
+                return self::FAILURE;
+            }
 
-            return self::FAILURE;
+            if (! $this->acceptsToken($url, $token)) {
+                return self::FAILURE;
+            }
+
+            $loggedIn = "Connected to {$url}.";
+        } else {
+            [$token, $loggedIn] = $this->loginWithEmail($url);
+
+            if ($token === null) {
+                return self::FAILURE;
+            }
         }
 
         $config = ConfigFile::resolve();
@@ -96,7 +100,7 @@ class SetupCommand extends Command
         $selected = $this->option('agents') !== null ? $this->splitKeys($this->option('agents')) : $this->askAgents($agents, $saved);
         $config->merge(['url' => $url, 'token' => $token, 'agents' => $selected]);
 
-        $this->info("Logged in as {$email}. Credentials saved to {$config->path()}.");
+        $this->info("{$loggedIn} Credentials saved to {$config->path()}.");
 
         if (is_string($previous['token'] ?? null) && is_string($previous['url'] ?? null) && $previous['token'] !== $token) {
             $this->revokePreviousToken($previous['url'], $previous['token']);
@@ -128,6 +132,100 @@ class SetupCommand extends Command
         }
 
         return in_array('error', array_column($summary, 0), true) ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Whether the server accepts the token, telling why when it does not.
+     * Any authenticated endpoint would do; the context is a cheap read.
+     */
+    private function acceptsToken(string $url, string $token): bool
+    {
+        try {
+            $response = Http::acceptJson()->timeout(10)->withoutRedirecting()->withToken($token)->get($url.'/api/context', ['project' => 'memry']);
+        } catch (ConnectionException) {
+            $this->error("Could not reach the memry server at {$url}.");
+
+            return false;
+        }
+
+        if ($response->unauthorized()) {
+            $this->error("The token was rejected by {$url}.");
+
+            return false;
+        }
+
+        if (! $response->successful()) {
+            $this->failWith($response);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Log in with an email one-time code, returning the token and the
+     * confirmation to show, or nulls (after telling why) when it fails.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function loginWithEmail(string $url): array
+    {
+        if ($this->option('email') === null && ! $this->input->isInteractive()) {
+            $this->error('Pass --email when running without interaction.');
+
+            return [null, null];
+        }
+
+        $email = $this->option('email') !== null ? Email::normalize($this->option('email')) : $this->askEmail();
+
+        if ($email === null) {
+            $this->error('Invalid email address given with --email.');
+
+            return [null, null];
+        }
+
+        try {
+            $response = $this->post($url.'/api/auth/code', ['email' => $email]);
+
+            if ($response->failed()) {
+                $this->failWith($response);
+
+                return [null, null];
+            }
+
+            $this->line("We sent a login code to {$email}.");
+
+            $code = $this->askCode();
+
+            if ($code === null) {
+                $this->error('No login code given. Run `memry setup` interactively to enter the code from the email.');
+
+                return [null, null];
+            }
+
+            $response = $this->post($url.'/api/auth/token', ['email' => $email, 'code' => $code]);
+
+            if ($response->failed()) {
+                $this->failWith($response);
+
+                return [null, null];
+            }
+        } catch (ConnectionException) {
+            $this->error("Could not reach the memry server at {$url}.");
+
+            return [null, null];
+        }
+
+        $token = $response->json('token');
+
+        if (! is_string($token) || $token === '') {
+            $this->error('The memry server did not return a token.');
+
+            return [null, null];
+        }
+
+        return [$token, "Logged in as {$email}."];
     }
 
     /**
@@ -202,6 +300,37 @@ class SetupCommand extends Command
     }
 
     /**
+     * The first option given without the value it needs, if any. Once none
+     * is, an option's value is null exactly when the option is absent. A
+     * valueless --token is fine: it means asking for the token.
+     */
+    private function optionWithoutValue(): ?string
+    {
+        foreach (['url', 'email', 'agents'] as $name) {
+            if ($this->input->hasParameterOption("--{$name}") && $this->option($name) === null) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the URL is an http(s) address that API paths can be appended
+     * to: a host, no whitespace, no query and no fragment.
+     */
+    private function isServerUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+
+        return is_array($parts)
+            && in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true)
+            && ($parts['host'] ?? '') !== ''
+            && ! isset($parts['query']) && ! isset($parts['fragment'])
+            && preg_match('/\s/', $url) !== 1;
+    }
+
+    /**
      * The agent keys of a comma-separated list, trimmed, without empty ones.
      *
      * @return list<string>
@@ -216,12 +345,10 @@ class SetupCommand extends Command
         return Http::acceptJson()->timeout(10)->post($url, $data);
     }
 
-    private function failWith(Response $response): int
+    private function failWith(Response $response): void
     {
         $this->error($response->tooManyRequests()
             ? 'Too many attempts, try again later.'
             : $response->json('message') ?? "The memry server returned an unexpected error (HTTP {$response->status()}).");
-
-        return self::FAILURE;
     }
 }

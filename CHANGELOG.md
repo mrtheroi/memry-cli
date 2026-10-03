@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `memry setup --token` logs in with a token created by the admin of a self-hosted server, instead of the email login (no email prompt and no login code). It requires `--url`: without it, setup prints "Pass --url with --token, the address of your memry server." and exits with code 1 before asking for the token or sending anything. The token is asked with a hidden prompt; `--token=<value>` skips the prompt for non-interactive use, but leaves the token in the shell history. The token is trimmed and checked with `GET <url>/api/context?project=memry` (`Authorization: Bearer`) before it is saved: only a 2xx answer accepts it; a 401 prints "The token was rejected by <url>.", any other answer (including a redirect, which is not followed) prints the server's message and an unreachable server prints "Could not reach the memry server at <url>."; each exits with code 1 without saving anything. On success the URL and token are saved like a login, a different previous token is revoked, and setup continues with the agent selection. An empty token prints "The token is empty.", `--token` without a value when not interactive prints "Pass --token=<value> when running without interaction." and `--email` with `--token` (either with or without a value) prints "Use either --email or --token, not both."; each exits with code 1 before sending anything. The token is never printed.
+
+### Fixed
+
+- `memry setup` no longer ignores `--url`, `--email` or `--agents` given without a value (which used to fall back to the default server, the email prompt or the agent prompt): it prints "The --<option> option needs a value." and exits with code 1 before asking or sending anything.
+- `memry setup` rejects a `--url` that is not an `http://` or `https://` address with a host and no query or fragment (including an empty one), printing "Invalid server address given with --url. Use an http:// or https:// URL." and exiting with code 1 before asking or sending anything.
+
 ## [0.5.0] - 2026-09-30
 
 ### Added

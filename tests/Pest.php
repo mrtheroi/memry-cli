@@ -48,10 +48,14 @@ expect()->extend('toBeOne', function () {
 /**
  * Fake the auth endpoints. POST /api/auth/token logs in; DELETE revokes the
  * token used, answering with $revoke (or failing to connect when it is null).
+ * GET /api/context answers with $context (or fails to connect when it is null).
  */
-function fakeServer(array $code = [202, ['message' => 'If the email is valid, a login code has been sent.']], array $token = [200, ['token' => 'secret-token']], ?array $revoke = [204, '']): void
+function fakeServer(array $code = [202, ['message' => 'If the email is valid, a login code has been sent.']], array $token = [200, ['token' => 'secret-token']], ?array $revoke = [204, ''], ?array $context = [200, '']): void
 {
     Http::fake([
+        '*/api/context*' => fn ($request) => $context === null
+            ? Http::failedConnection()($request)
+            : Http::response($context[1], $context[0]),
         '*/api/auth/code' => Http::response($code[1], $code[0]),
         '*/api/auth/token' => fn ($request) => match (true) {
             $request->method() !== 'DELETE' => Http::response($token[1], $token[0]),

@@ -34,6 +34,20 @@ memry setup --agents=claude-code,codex
 
 Run `memry setup` again to change the selection; memry is removed from agents you deselect.
 
+### Self-hosted
+
+On a self-hosted memry server, your admin creates a token for you instead of the email login.
+Connect with:
+
+```bash
+memry setup --url https://memry.company.internal --token
+```
+
+`--url` is required with `--token`, so the token is never sent to the public server. Setup asks for
+the token without showing it, checks it with the server before saving it, then asks
+which agents you use as usual. For scripts, `--token=<token>` passes it without the prompt, but the
+token then lands in your shell history.
+
 ## Supported agents
 
 | Agent                                                            | Key           | What `memry setup` adds                                                                         |

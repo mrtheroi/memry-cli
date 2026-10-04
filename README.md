@@ -45,8 +45,16 @@ memry setup --url https://memry.company.internal --token
 
 `--url` is required with `--token`, so the token is never sent to the public server. Setup asks for
 the token without showing it, checks it with the server before saving it, then asks
-which agents you use as usual. For scripts, `--token=<token>` passes it without the prompt, but the
-token then lands in your shell history.
+which agents you use as usual. For scripts, set the `MEMRY_TOKEN` environment variable: with
+`--token` and no value, setup uses it instead of the prompt, also with `--no-interaction`, and the
+token stays out of the process list. `--token=<token>` also skips the prompt (and wins over
+`MEMRY_TOKEN`), but the token then lands in your shell history and the process list.
+
+```bash
+MEMRY_TOKEN="$token" memry setup --url https://memry.company.internal --token --no-interaction
+```
+
+`MEMRY_TOKEN` is only read together with `--token`, so it never changes the email login.
 
 ## Supported agents
 

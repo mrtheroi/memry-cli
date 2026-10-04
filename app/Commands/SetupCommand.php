@@ -22,7 +22,7 @@ class SetupCommand extends Command
     protected $signature = 'setup
         {--url= : The memry server URL}
         {--email= : The email to log in with}
-        {--token= : Log in with a token created by the server admin, asked with a hidden prompt (or given as --token=<value>)}
+        {--token= : Log in with a token created by the server admin, read from MEMRY_TOKEN or asked with a hidden prompt (or given as --token=<value>)}
         {--agents= : Comma-separated keys of the agents to wire memry into}';
 
     protected $description = 'Log in to memry with an email one-time code or a token';
@@ -66,13 +66,15 @@ class SetupCommand extends Command
                 return self::FAILURE;
             }
 
-            if ($this->option('token') === null && ! $this->input->isInteractive()) {
+            $given = $this->option('token') ?? (trim((string) getenv('MEMRY_TOKEN')) ?: null);
+
+            if ($given === null && ! $this->input->isInteractive()) {
                 $this->error('Pass --token=<value> when running without interaction.');
 
                 return self::FAILURE;
             }
 
-            $token = trim((string) ($this->option('token') ?? $this->secret('Token')));
+            $token = trim((string) ($given ?? $this->secret('Token')));
 
             if ($token === '') {
                 $this->error('The token is empty.');

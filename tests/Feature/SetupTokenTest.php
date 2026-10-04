@@ -16,6 +16,8 @@ beforeEach(function () {
 
 afterEach(function () {
     putenv('MEMRY_CONFIG');
+    putenv('MEMRY_TOKEN');
+    unset($_ENV['MEMRY_TOKEN'], $_SERVER['MEMRY_TOKEN']);
     if (is_dir($this->tmpDir)) {
         exec('rm -rf '.escapeshellarg($this->tmpDir));
     }
@@ -247,3 +249,105 @@ it('accepts a plain http server url for self-hosted servers', function (string $
     'a service name' => 'http://memry_server',
     'a path' => 'https://tools.company.internal/memry',
 ]);
+
+it('uses the MEMRY_TOKEN environment variable when --token has no value and there is no interaction', function () {
+    putenv('MEMRY_TOKEN=env-token');
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => null, '--agents' => 'claude-code', '--no-interaction' => true])
+        ->doesntExpectOutputToContain('env-token')
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer env-token'));
+    expect(json_decode(file_get_contents($this->configPath), true)['token'])->toBe('env-token');
+});
+
+it('ignores a blank MEMRY_TOKEN environment variable', function () {
+    putenv("MEMRY_TOKEN=  \n");
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => null, '--agents' => 'claude-code'])
+        ->expectsQuestion('Token', 'admin-token')
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer admin-token'));
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => null, '--agents' => 'claude-code', '--no-interaction' => true])
+        ->expectsOutputToContain('Pass --token=<value> when running without interaction.')
+        ->assertExitCode(1);
+});
+
+it('uses the trimmed MEMRY_TOKEN instead of asking when --token has no value', function () {
+    putenv("MEMRY_TOKEN=  env-token \n");
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => null, '--agents' => 'claude-code'])
+        ->doesntExpectOutputToContain('env-token')
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer env-token'));
+    expect(json_decode(file_get_contents($this->configPath), true)['token'])->toBe('env-token');
+});
+
+it('prefers a --token value over the MEMRY_TOKEN environment variable', function () {
+    putenv('MEMRY_TOKEN=env-token');
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => 'admin-token', '--agents' => 'claude-code'])
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer admin-token'));
+    Http::assertNotSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer env-token'));
+    expect(json_decode(file_get_contents($this->configPath), true)['token'])->toBe('admin-token');
+});
+
+it('ignores the MEMRY_TOKEN environment variable when --token is not given', function () {
+    putenv('MEMRY_TOKEN=env-token');
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--email' => 'ana@example.com', '--agents' => 'claude-code'])
+        ->expectsQuestion('Login code', '123456')
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api/auth/token'));
+    Http::assertNotSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer env-token'));
+    expect(json_decode(file_get_contents($this->configPath), true)['token'])->toBe('secret-token');
+});
+
+it('still requires --url when MEMRY_TOKEN is set', function () {
+    putenv('MEMRY_TOKEN=env-token');
+    fakeServer();
+
+    $this->artisan('setup', ['--token' => null, '--agents' => 'claude-code', '--no-interaction' => true])
+        ->expectsOutputToContain('Pass --url with --token, the address of your memry server.')
+        ->assertExitCode(1);
+
+    Http::assertNothingSent();
+});
+
+it('uses a MEMRY_TOKEN of "0" instead of treating it as unset', function () {
+    putenv('MEMRY_TOKEN=0');
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => null, '--agents' => 'claude-code', '--no-interaction' => true])
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer 0'));
+});
+
+it('removes MEMRY_TOKEN from the environment subprocesses inherit once --token is given', function (?string $token) {
+    putenv('MEMRY_TOKEN=env-token');
+    $_ENV['MEMRY_TOKEN'] = $_SERVER['MEMRY_TOKEN'] = 'env-token';
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => $token, '--agents' => 'claude-code', '--no-interaction' => true])
+        ->assertExitCode(0);
+
+    $child = new Symfony\Component\Process\Process(['sh', '-c', 'printf %s "${MEMRY_TOKEN-unset}"']);
+    $child->run();
+
+    expect(getenv('MEMRY_TOKEN'))->toBeFalse()
+        ->and($_ENV)->not->toHaveKey('MEMRY_TOKEN')
+        ->and($_SERVER)->not->toHaveKey('MEMRY_TOKEN')
+        ->and($child->getOutput())->toBe('unset');
+})->with(['token from MEMRY_TOKEN' => [null], 'token from --token' => ['admin-token']]);

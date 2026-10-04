@@ -17,6 +17,7 @@ beforeEach(function () {
 afterEach(function () {
     putenv('MEMRY_CONFIG');
     putenv('MEMRY_TOKEN');
+    unset($_ENV['MEMRY_TOKEN'], $_SERVER['MEMRY_TOKEN']);
     if (is_dir($this->tmpDir)) {
         exec('rm -rf '.escapeshellarg($this->tmpDir));
     }
@@ -323,3 +324,30 @@ it('still requires --url when MEMRY_TOKEN is set', function () {
 
     Http::assertNothingSent();
 });
+
+it('uses a MEMRY_TOKEN of "0" instead of treating it as unset', function () {
+    putenv('MEMRY_TOKEN=0');
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => null, '--agents' => 'claude-code', '--no-interaction' => true])
+        ->assertExitCode(0);
+
+    Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer 0'));
+});
+
+it('removes MEMRY_TOKEN from the environment subprocesses inherit once --token is given', function (?string $token) {
+    putenv('MEMRY_TOKEN=env-token');
+    $_ENV['MEMRY_TOKEN'] = $_SERVER['MEMRY_TOKEN'] = 'env-token';
+    fakeServer();
+
+    $this->artisan('setup', ['--url' => 'https://memry.test', '--token' => $token, '--agents' => 'claude-code', '--no-interaction' => true])
+        ->assertExitCode(0);
+
+    $child = new Symfony\Component\Process\Process(['sh', '-c', 'printf %s "${MEMRY_TOKEN-unset}"']);
+    $child->run();
+
+    expect(getenv('MEMRY_TOKEN'))->toBeFalse()
+        ->and($_ENV)->not->toHaveKey('MEMRY_TOKEN')
+        ->and($_SERVER)->not->toHaveKey('MEMRY_TOKEN')
+        ->and($child->getOutput())->toBe('unset');
+})->with(['token from MEMRY_TOKEN' => [null], 'token from --token' => ['admin-token']]);

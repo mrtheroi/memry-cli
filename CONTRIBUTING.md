@@ -52,7 +52,7 @@ Hidden commands are run by AI agents, not by users: `memry mcp-headers` (the Cla
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `MEMRY_URL`         | Default server URL when `--url` is not given (default `https://api.memry.com.mx`).                                       |
 | `MEMRY_CONFIG`      | Alternative config file path (default `~/.config/memry/config.json`). Passed on to the `headersHelper` and the SessionStart hook. |
-| `MEMRY_TOKEN`       | Token `memry setup --url <url> --token` uses when `--token` has no value, instead of the hidden prompt (also without interaction). Trimmed; ignored when blank or when `--token` is not given. `--token=<value>` wins over it. |
+| `MEMRY_TOKEN`       | Token `memry setup --url <url> --token` uses when `--token` has no value, instead of the hidden prompt (also without interaction). Trimmed; ignored when blank or when `--token` is not given. `--token=<value>` wins over it. Removed from setup's environment once read, so subprocesses never inherit it. |
 | `MEMRY_EXECUTABLE`  | Path of the memry executable agents run (default: the running memry executable). Set by the Homebrew wrapper. Agents that take a command and its arguments separately get it as the command, so it must be a plain path. |
 | `CLAUDE_CONFIG_DIR` | Claude Code config directory where the hook is installed (default `~/.claude`).                                         |
 | `CODEX_HOME`        | Codex home directory, when it is an absolute path (default `~/.codex`), as Codex resolves it.                           |
@@ -78,7 +78,8 @@ before asking or sending anything. (`--token` without a value is different: it a
    With `--token` (self-hosted servers, where the admin creates the token), there is no email
    login: setup takes the token from `--token=<value>` (which leaves it in the shell history and the
    process list), else from a non-blank `MEMRY_TOKEN` (meant for scripts, also without interaction),
-   else asks for it with a hidden prompt; `MEMRY_TOKEN` is only read with `--token`. It trims it and checks it with `GET <url>/api/context?project=memry`
+   else asks for it with a hidden prompt; `MEMRY_TOKEN` is only read with `--token`, and is then removed
+   from the environment (`getenv()`, `$_ENV`, `$_SERVER`) so no subprocess setup runs inherits it. It trims it and checks it with `GET <url>/api/context?project=memry`
    (`Authorization: Bearer <token>`, `Accept: application/json`, redirects not followed) before
    saving it the same way. Only a 2xx answer accepts the token: a 401 prints "The token was rejected by <url>.", any other
    answer (including a redirect) prints the server's message, and

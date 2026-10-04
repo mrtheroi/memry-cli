@@ -66,7 +66,14 @@ class SetupCommand extends Command
                 return self::FAILURE;
             }
 
-            $given = $this->option('token') ?? (trim((string) getenv('MEMRY_TOKEN')) ?: null);
+            $fromEnv = trim((string) getenv('MEMRY_TOKEN'));
+
+            // Keep the token away from the agent CLIs setup runs: Symfony Process
+            // passes on getenv(), $_ENV and $_SERVER to every subprocess.
+            putenv('MEMRY_TOKEN');
+            unset($_ENV['MEMRY_TOKEN'], $_SERVER['MEMRY_TOKEN']);
+
+            $given = $this->option('token') ?? ($fromEnv !== '' ? $fromEnv : null);
 
             if ($given === null && ! $this->input->isInteractive()) {
                 $this->error('Pass --token=<value> when running without interaction.');

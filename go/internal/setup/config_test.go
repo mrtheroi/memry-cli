@@ -11,7 +11,8 @@ import (
 // existing config file".
 func TestOverwritesURLAndTokenButKeepsOtherKeys(t *testing.T) {
 	h, s := newHarness(t), newServer(t)
-	if err := os.WriteFile(h.configPath, []byte(`{"url":"https://old.test","token":"old-token","project":"kept"}`), 0o600); err != nil {
+	previous := `{"url":"` + unreachableURL(t) + `","token":"old-token","project":"kept"}`
+	if err := os.WriteFile(h.configPath, []byte(previous), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

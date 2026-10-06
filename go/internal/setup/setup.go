@@ -104,7 +104,13 @@ func Run(env Env) int {
 
 	path := config.Path(env.getenv)
 	cfg, err := config.LoadOrEmpty(path)
+	var previousURL, previousToken string
+	var hadLogin bool
 	if err == nil {
+		var hasURL, hasToken bool
+		previousURL, hasURL = cfg.URL()
+		previousToken, hasToken = cfg.Token()
+		hadLogin = hasURL && hasToken
 		cfg.Set("url", plan.URL)
 		cfg.Set("token", token)
 		cfg.Set("agents", plan.Agents)
@@ -115,6 +121,9 @@ func Run(env Env) int {
 		return failure
 	}
 	env.line("Logged in as " + address + ". Credentials saved to " + path + ".")
+	if hadLogin && previousToken != token {
+		env.revokePreviousToken(previousURL, previousToken)
+	}
 	return success
 }
 
@@ -216,23 +225,50 @@ func (r response) jsonString(key string) (string, bool) {
 	return value, ok
 }
 
+// revokePreviousToken revokes the token of the previous login on the
+// server it belongs to. A failure never fails setup: the new login is
+// already saved.
+func (env Env) revokePreviousToken(url, token string) {
+	resp, err := env.send(http.MethodDelete, url+"/api/auth/token", token, nil)
+	if err == nil && resp.succeeded() {
+		env.line("Revoked the previous memry token.")
+	} else {
+		env.line("Could not revoke the previous memry token.")
+	}
+}
+
 // post sends data as JSON.
 func (env Env) post(url string, data any) (response, error) {
-	payload, err := json.Marshal(data)
-	if err != nil {
-		return response{}, err
+	return env.send(http.MethodPost, url, "", data)
+}
+
+// send sends a request that accepts JSON, with the bearer token if any and
+// data as a JSON body if any.
+func (env Env) send(method, url, token string, data any) (response, error) {
+	var body io.Reader
+	if data != nil {
+		payload, err := json.Marshal(data)
+		if err != nil {
+			return response{}, err
+		}
+		body = bytes.NewReader(payload)
 	}
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
 		return response{}, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
+	if data != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := env.HTTP.Do(req)
 	if err != nil {
 		return response{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
-	return response{resp.StatusCode, body}, err
+	payload, err := io.ReadAll(resp.Body)
+	return response{resp.StatusCode, payload}, err
 }

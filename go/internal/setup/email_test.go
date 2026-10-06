@@ -172,6 +172,10 @@ func TestAsksForTheLoginCodeAgainUntilItHasSixDigits(t *testing.T) {
 	}
 }
 
+// abortedBlock is how the PHP CLI renders its "Aborted." error, without
+// the colors.
+const abortedBlock = "\n            \n  Aborted.  \n            \n\n"
+
 // The PHP CLI aborts with "Aborted." (exit 1) when the input ends before
 // an answer, as with `memry setup < /dev/null`; it never asks forever.
 func TestAbortsWhenTheInputEndsBeforeAnAnswer(t *testing.T) {
@@ -181,9 +185,9 @@ func TestAbortsWhenTheInputEndsBeforeAnAnswer(t *testing.T) {
 		answers []answer
 		want    string
 	}{
-		{"email", []string{"--agents", "claude-code"}, []answer{{label: "Email", aborted: true}}, "Aborted.\n"},
+		{"email", []string{"--agents", "claude-code"}, []answer{{label: "Email", aborted: true}}, abortedBlock},
 		{"login code", []string{"--email", "ana@example.com"}, []answer{{label: "Login code", aborted: true}},
-			"We sent a login code to ana@example.com.\nAborted.\n"},
+			"We sent a login code to ana@example.com.\n" + abortedBlock},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

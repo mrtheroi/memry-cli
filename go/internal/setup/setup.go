@@ -254,9 +254,10 @@ func phpTrim(s string) string {
 	return strings.Trim(s, " \t\n\r\x00\x0B")
 }
 
-// aborted fails like Symfony when the input ends before an answer.
+// aborted fails like Symfony when the input ends before an answer, which
+// renders "Aborted." as an error block (here without its colors).
 func (env Env) aborted() bool {
-	env.line("Aborted.")
+	_, _ = io.WriteString(env.Out, "\n            \n  Aborted.  \n            \n\n")
 	return false
 }
 

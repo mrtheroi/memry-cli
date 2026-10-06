@@ -91,6 +91,23 @@ func TestResolveRejectsAURLThatIsNotAnHTTPAddress(t *testing.T) {
 	}
 }
 
+// PHP's parse_url rejects a port longer than five digits or above 65535,
+// which Go's url.Parse accepts. Port 0 can never be connected to, so it is
+// rejected too.
+func TestResolveRejectsAPortOutOfRange(t *testing.T) {
+	urls := []string{
+		"https://memry.test:99999", "https://memry.test:65536", "https://memry.test:000065535",
+		"http://[::1]:99999", "https://memry.test:99999/memry", "https://memry.test:0", "https://memry.test:00000",
+	}
+	logins := [][]string{{"--email=ana@example.com"}, {"--token=admin-token"}}
+	for _, url := range urls {
+		for _, login := range logins {
+			assertError(t, append([]string{"--url=" + url}, login...), nil,
+				"Invalid server address given with --url. Use an http:// or https:// URL.")
+		}
+	}
+}
+
 // Ported from "accepts a plain http server url for self-hosted servers" and
 // "strips a trailing slash from the server url".
 func TestResolveAcceptsAnHTTPServerURLWithoutItsTrailingSlash(t *testing.T) {
@@ -101,6 +118,10 @@ func TestResolveAcceptsAnHTTPServerURLWithoutItsTrailingSlash(t *testing.T) {
 		"https://tools.company.internal/memry": "https://tools.company.internal/memry",
 		"https://memry.test//":                 "https://memry.test",
 		"HTTPS://memry.test":                   "HTTPS://memry.test",
+		"https://memry.test:65535":             "https://memry.test:65535",
+		"https://memry.test:00080/":            "https://memry.test:00080",
+		"http://[::1]:8000":                    "http://[::1]:8000",
+		"https://memry.test:":                  "https://memry.test:",
 	}
 	for given, want := range tests {
 		for _, argv := range [][]string{{"--url=" + given, "--token=admin-token"}, {"--url", given, "--email", "ana@example.com"}} {

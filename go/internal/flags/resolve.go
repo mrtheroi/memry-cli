@@ -3,6 +3,7 @@ package flags
 import (
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -155,13 +156,26 @@ func tokenSource(args Args, lookupEnv func(string) (string, bool)) (string, Toke
 }
 
 // isServerURL reports whether url is an http(s) address that API paths can
-// be appended to: a host, no whitespace, no query and no fragment.
+// be appended to: a host, a valid port if any, no whitespace, no query and
+// no fragment.
 func isServerURL(raw string) bool {
 	if strings.ContainsAny(raw, " \t\n\v\f\r?#") {
 		return false
 	}
 	parsed, err := url.Parse(raw)
-	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != ""
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != "" &&
+		isPort(parsed.Port())
+}
+
+// isPort reports whether port is empty or a port PHP's parse_url accepts:
+// at most five digits (url.Parse has checked they are digits), and here
+// also within 1-65535.
+func isPort(port string) bool {
+	if port == "" {
+		return true
+	}
+	n, err := strconv.Atoi(port)
+	return err == nil && len(port) <= 5 && n >= 1 && n <= 65535
 }
 
 // splitKeys returns the agent keys of a comma-separated list, trimmed,

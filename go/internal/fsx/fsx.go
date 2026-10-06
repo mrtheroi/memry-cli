@@ -22,10 +22,11 @@ func WriteAtomic(path string, data []byte, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(temp.Name())
+	// Once renamed, there is nothing left to remove.
+	defer func() { _ = os.Remove(temp.Name()) }()
 
 	if _, err := temp.Write(data); err != nil {
-		temp.Close()
+		_ = temp.Close()
 		return err
 	}
 	if err := temp.Close(); err != nil {

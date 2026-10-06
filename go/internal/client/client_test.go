@@ -29,7 +29,7 @@ func TestNeverFollowsARedirect(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusFound {
 		t.Errorf("status = %d, want 302", resp.StatusCode)
@@ -68,7 +68,7 @@ func TestSendsTheMemryUserAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if want := "memry/v1.2.3"; got != want {
 		t.Errorf("User-Agent = %q, want %q", got, want)
@@ -85,7 +85,7 @@ func TestGivesUpAfterTheTimeout(t *testing.T) {
 
 	resp, err := client.New("dev", 50*time.Millisecond).Get(server.URL)
 	if err == nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatal("Get succeeded, want a timeout error")
 	}
 }

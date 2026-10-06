@@ -10,11 +10,15 @@ spec: a Go test that ports one names it in a comment.
 | Package             | Responsibility                                                              |
 | ------------------- | --------------------------------------------------------------------------- |
 | `cmd/memry`         | Entry point; the version is set with `-ldflags "-X main.version=<version>"` |
-| `internal/commands` | Cobra commands (only the root command and `--version` so far)               |
+| `internal/commands` | Cobra commands: the root command, `--version` and `setup`                   |
 | `internal/config`   | `config.json` path, load and save, in the PHP CLI's format                  |
 | `internal/fsx`      | Atomic file writes                                                          |
 | `internal/client`   | The HTTP client: no redirects, 2xx-only success, timeout, User-Agent        |
-| `internal/flags`    | The pure resolver of `memry setup` options                                  |
+| `internal/flags`    | The pure resolver of `memry setup` options, interaction and verbosity       |
+| `internal/setup`    | `memry setup`: the email and token logins (agent wiring is not ported yet)  |
+| `internal/prompt`   | Terminal questions read like Symfony's, with a hidden prompt                |
+| `internal/email`    | Email validation matching PHP's `FILTER_VALIDATE_EMAIL`                     |
+| `internal/agents`   | The agent registry interface; a stub of the PHP agent keys for now          |
 
 ## Running the tests
 

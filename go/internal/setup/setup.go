@@ -122,8 +122,7 @@ func (env Env) loginWithEmail(plan flags.Plan) (token, loggedIn string, ok bool)
 	} else {
 		address = a
 	}
-	resp, ok := env.request(plan.URL, http.MethodPost, "/api/auth/code", "", map[string]string{"email": address})
-	if !ok {
+	if _, ok := env.request(plan.URL, http.MethodPost, "/api/auth/code", "", map[string]string{"email": address}); !ok {
 		return "", "", false
 	}
 	env.line("We sent a login code to " + address + ".")
@@ -135,7 +134,7 @@ func (env Env) loginWithEmail(plan flags.Plan) (token, loggedIn string, ok bool)
 		env.line("No login code given. Run `memry setup` interactively to enter the code from the email.")
 		return "", "", false
 	}
-	resp, ok = env.request(plan.URL, http.MethodPost, "/api/auth/token", "", struct {
+	resp, ok := env.request(plan.URL, http.MethodPost, "/api/auth/token", "", struct {
 		Email string `json:"email"`
 		Code  string `json:"code"`
 	}{address, code})

@@ -20,7 +20,7 @@ func TestWritesTheURLAndTokenToTheConfigFileOnSuccess(t *testing.T) {
 	output, code := h.run(emailArgs(s.URL), code123456)
 
 	assertExit(t, code, 0, output)
-	want := map[string]any{"url": s.URL, "token": "secret-token", "agents": []any{"claude-code"}}
+	want := map[string]any{"url": s.URL, "token": "secret-token"}
 	if got := h.config(); !reflect.DeepEqual(got, want) {
 		t.Errorf("config = %v, want %v", got, want)
 	}

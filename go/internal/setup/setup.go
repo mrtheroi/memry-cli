@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
@@ -173,11 +172,11 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	}
 	previousURL, hasURL := cfg.URL()
 	previousToken, hasToken := cfg.Token()
-	saved, hasSaved := cfg.Agents()
-	selected := env.selectAgents(plan, saved, hasSaved)
+	// The saved agent selection is left as it is until the Go build wires
+	// agents (phase 4): the PHP CLI reads this file too and would unwire
+	// agents dropped from it.
 	cfg.Set("url", plan.URL)
 	cfg.Set("token", token)
-	cfg.Set("agents", selected)
 	if err := cfg.Save(); err != nil {
 		return env.notSaved(path, err)
 	}
@@ -186,26 +185,9 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	if hasURL && hasToken && previousToken != token {
 		env.revokePreviousToken(previousURL, previousToken)
 	}
-	if len(selected) == 0 {
-		env.line("No agents selected; memry is not wired into any agent. Run `memry setup` again to choose some.")
-	}
 	env.line("")
-	if len(selected) > 0 || len(env.deselected(saved, selected)) > 0 {
-		env.line("Agent wiring is not implemented in the Go build yet; no agent was set up or removed.")
-	}
+	env.line("Agent wiring is not implemented in the Go build yet: no agent was set up or removed, and the saved agent selection was left unchanged.")
 	return success
-}
-
-// deselected returns the saved agents this version supports that are no
-// longer selected: the ones the PHP CLI removes memry from.
-func (env Env) deselected(saved, selected []string) []string {
-	var keys []string
-	for _, key := range env.Agents.Keys() {
-		if slices.Contains(saved, key) && !slices.Contains(selected, key) {
-			keys = append(keys, key)
-		}
-	}
-	return keys
 }
 
 // notSaved fails because the config at path could not be saved.
@@ -305,30 +287,6 @@ func (r response) jsonString(key string) (string, bool) {
 	}
 	value, ok := body[key].(string)
 	return value, ok
-}
-
-// selectAgents returns the agents given with --agents, else the saved
-// selection without the agents this version does not support, else the
-// installed agents. Asking for them comes with the agents.
-func (env Env) selectAgents(plan flags.Plan, saved []string, hasSaved bool) []string {
-	if plan.AgentsGiven {
-		return plan.Agents
-	}
-	selected := []string{}
-	if hasSaved {
-		for _, key := range saved {
-			if slices.Contains(env.Agents.Keys(), key) {
-				selected = append(selected, key)
-			}
-		}
-		return selected
-	}
-	for _, key := range env.Agents.Keys() {
-		if env.Agents.IsInstalled(key) {
-			selected = append(selected, key)
-		}
-	}
-	return selected
 }
 
 // revokePreviousToken revokes the token of the previous login on the

@@ -37,7 +37,7 @@ func TestChecksTheTokenAgainstTheServerAndSavesIt(t *testing.T) {
 	}
 	assertContains(t, output, "Connected to "+s.URL+". Credentials saved to "+h.configPath+".\n")
 	assertNotContains(t, output, "admin-token")
-	want := map[string]any{"url": s.URL, "token": "admin-token", "agents": []any{"claude-code"}}
+	want := map[string]any{"url": s.URL, "token": "admin-token"}
 	if got := h.config(); !reflect.DeepEqual(got, want) {
 		t.Errorf("config = %v, want %v", got, want)
 	}

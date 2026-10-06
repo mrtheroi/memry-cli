@@ -14,14 +14,21 @@ type Option struct {
 // Args are the setup options found on the command line.
 type Args struct {
 	URL, Email, Token, Agents Option
-	NoInteraction             bool
-	Rest                      []string
+	// NoInteraction is set by -n or --no-interaction.
+	NoInteraction bool
+	// Quiet is set by -q, --quiet or --silent.
+	Quiet bool
+	// Verbose is set by -v, -vv, -vvv or --verbose.
+	Verbose bool
+	Rest    []string
 }
 
 // Scan reads the setup options from argv the way the PHP CLI (Symfony
 // Console) does: --name=value, or --name followed by its value when the
 // next argument is empty or does not start with "-". The last occurrence
-// wins. Any other argument, and everything from "--" on, is kept in Rest.
+// wins. The interaction and verbosity options are found like Symfony does
+// (see hasParameterOption). Any other argument, and everything from "--"
+// on, is kept in Rest.
 func Scan(argv []string) Args {
 	var args Args
 	for i := 0; i < len(argv); i++ {
@@ -30,8 +37,7 @@ func Scan(argv []string) Args {
 			args.Rest = append(args.Rest, argv[i:]...)
 			break
 		}
-		if arg == "--no-interaction" || arg == "-n" {
-			args.NoInteraction = true
+		if hasParameterOption([]string{arg}, interactionOptions...) {
 			continue
 		}
 		name, value, hasValue := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
@@ -46,7 +52,36 @@ func Scan(argv []string) Args {
 		}
 		*option = Option{Present: true, HasValue: hasValue, Value: value}
 	}
+	args.NoInteraction = hasParameterOption(argv, "--no-interaction", "-n")
+	args.Quiet = hasParameterOption(argv, "--silent", "--quiet", "-q")
+	args.Verbose = hasParameterOption(argv, "--verbose", "-v")
 	return args
+}
+
+// interactionOptions are the Symfony options that set the interaction and
+// the verbosity.
+var interactionOptions = []string{"--no-interaction", "-n", "--silent", "--quiet", "-q", "--verbose", "-v"}
+
+// hasParameterOption reports whether argv has one of the options, like
+// Symfony's ArgvInput::hasParameterOption with $onlyParams: a token that is
+// the option, or starts with it ("-vvv" for -v, "--verbose=2" for
+// --verbose), before any "--".
+func hasParameterOption(argv []string, options ...string) bool {
+	for _, token := range argv {
+		if token == "--" {
+			return false
+		}
+		for _, option := range options {
+			leading := option
+			if strings.HasPrefix(option, "--") {
+				leading += "="
+			}
+			if token == option || strings.HasPrefix(token, leading) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *Args) option(name string) *Option {

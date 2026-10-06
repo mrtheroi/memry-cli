@@ -52,6 +52,10 @@ func Run(env Env) int {
 	if flags.IsQuiet(args, env.LookupEnv) {
 		env.Out = io.Discard
 	}
+	if message, ok := unexpectedArgument(args.Rest); ok {
+		env.errorBlock(message)
+		return failure
+	}
 	plan, err := flags.Resolve(args, env.LookupEnv, env.Agents.Keys())
 	if args.Token.Present {
 		// Resolve has read the token; keep it away from every subprocess
@@ -236,11 +240,46 @@ func phpTrim(s string) string {
 	return strings.Trim(s, " \t\n\r\x00\x0B")
 }
 
-// aborted fails like Symfony when the input ends before an answer, which
-// renders "Aborted." as an error block (here without its colors).
+// aborted fails like Symfony when the input ends before an answer.
 func (env Env) aborted() bool {
-	_, _ = io.WriteString(env.Out, "\n            \n  Aborted.  \n            \n\n")
+	env.errorBlock("Aborted.")
 	return false
+}
+
+// errorBlock renders an error the way Symfony does, as a padded block
+// (here without its colors).
+func (env Env) errorBlock(message string) {
+	blank := strings.Repeat(" ", len(message)+4)
+	_, _ = io.WriteString(env.Out, "\n"+blank+"\n  "+message+"  \n"+blank+"\n\n")
+}
+
+// unexpectedArgument returns the error Symfony gives for the first option
+// setup does not know or the first argument (setup takes none), if any.
+// --ansi and --no-ansi are global options the PHP CLI accepts.
+func unexpectedArgument(rest []string) (string, bool) {
+	for i, token := range rest {
+		switch {
+		case token == "--":
+			if i+1 < len(rest) {
+				return noArguments(rest[i+1]), true
+			}
+			return "", false
+		case token == "--ansi" || token == "--no-ansi":
+			continue
+		case strings.HasPrefix(token, "--"):
+			name, _, _ := strings.Cut(token, "=")
+			return `The "` + name + `" option does not exist.`, true
+		case len(token) > 1 && token[0] == '-':
+			return `The "` + token[:2] + `" option does not exist.`, true
+		default:
+			return noArguments(token), true
+		}
+	}
+	return "", false
+}
+
+func noArguments(argument string) string {
+	return `No arguments expected for "setup" command, got "` + argument + `".`
 }
 
 // line prints one line of output.

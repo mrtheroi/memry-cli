@@ -2,6 +2,7 @@ package commands
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -34,6 +35,12 @@ func newSetup(version string) *cobra.Command {
 				return cmd.Help()
 			}
 			out := cmd.OutOrStdout()
+			// Symfony's --version, a global option the PHP CLI accepts on
+			// every command.
+			if flags.HasParameterOption(args, "--version", "-V") {
+				_, err := fmt.Fprintf(out, "Memry %s\n", version)
+				return err
+			}
 			code := setup.Run(setup.Env{
 				Args:      args,
 				LookupEnv: os.LookupEnv,

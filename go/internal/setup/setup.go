@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
@@ -54,77 +55,123 @@ func Run(env Env) int {
 		env.line(usage.Message)
 		return usage.ExitCode
 	}
-	var address string
+	token, loggedIn, ok := env.loginWithEmail(plan)
+	if !ok {
+		return failure
+	}
+	return env.saveLogin(plan, token, loggedIn)
+}
+
+// loginWithEmail logs in with an email one-time code, returning the token
+// and the confirmation to show, or false (after telling why) when it
+// fails.
+func (env Env) loginWithEmail(plan flags.Plan) (token, loggedIn string, ok bool) {
 	if !plan.EmailGiven && !plan.Interactive {
 		env.line("Pass --email when running without interaction.")
-		return failure
+		return "", "", false
 	}
+	var address string
 	if plan.EmailGiven {
-		var ok bool
 		if address, ok = email.Normalize(plan.Email); !ok {
 			env.line("Invalid email address given with --email.")
-			return failure
+			return "", "", false
 		}
-	} else if address, err = env.askEmail(); err != nil {
-		return env.aborted()
+	} else if a, err := env.askEmail(); err != nil {
+		return "", "", env.aborted()
+	} else {
+		address = a
 	}
-	resp, err := env.post(plan.URL+"/api/auth/code", map[string]string{"email": address})
-	if err != nil {
-		return env.unreachable(plan.URL)
-	}
-	if !resp.succeeded() {
-		env.failWith(resp)
-		return failure
+	resp, ok := env.request(plan.URL, http.MethodPost, "/api/auth/code", "", map[string]string{"email": address})
+	if !ok {
+		return "", "", false
 	}
 	env.line("We sent a login code to " + address + ".")
 	code, err := env.askCode(plan.Interactive)
 	if err != nil {
-		return env.aborted()
+		return "", "", env.aborted()
 	}
 	if code == "" {
 		env.line("No login code given. Run `memry setup` interactively to enter the code from the email.")
-		return failure
+		return "", "", false
 	}
-	resp, err = env.post(plan.URL+"/api/auth/token", struct {
+	resp, ok = env.request(plan.URL, http.MethodPost, "/api/auth/token", "", struct {
 		Email string `json:"email"`
 		Code  string `json:"code"`
 	}{address, code})
+	if !ok {
+		return "", "", false
+	}
+	if token, ok = resp.jsonString("token"); !ok || token == "" {
+		env.line("The memry server did not return a token.")
+		return "", "", false
+	}
+	return token, "Logged in as " + address + ".", true
+}
+
+// request sends a request to the memry server at url and returns its
+// successful response, or false after telling why it failed.
+func (env Env) request(url, method, path, token string, data any) (response, bool) {
+	resp, err := env.send(method, url+path, token, data)
 	if err != nil {
-		return env.unreachable(plan.URL)
+		env.line("Could not reach the memry server at " + url + ".")
+		return response{}, false
 	}
 	if !resp.succeeded() {
 		env.failWith(resp)
-		return failure
+		return response{}, false
 	}
-	token, ok := resp.jsonString("token")
-	if !ok || token == "" {
-		env.line("The memry server did not return a token.")
-		return failure
-	}
+	return resp, true
+}
 
+// saveLogin saves the url, the token and the agent selection, keeping the
+// other keys of the config, then revokes the token of the previous login.
+func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	path := config.Path(env.getenv)
 	cfg, err := config.LoadOrEmpty(path)
-	var previousURL, previousToken string
-	var hadLogin bool
-	if err == nil {
-		var hasURL, hasToken bool
-		previousURL, hasURL = cfg.URL()
-		previousToken, hasToken = cfg.Token()
-		hadLogin = hasURL && hasToken
-		cfg.Set("url", plan.URL)
-		cfg.Set("token", token)
-		cfg.Set("agents", plan.Agents)
-		err = cfg.Save()
-	}
 	if err != nil {
-		env.line(fmt.Sprintf("Could not save the credentials to %s: %v.", path, err))
-		return failure
+		return env.notSaved(path, err)
 	}
-	env.line("Logged in as " + address + ". Credentials saved to " + path + ".")
-	if hadLogin && previousToken != token {
+	previousURL, hasURL := cfg.URL()
+	previousToken, hasToken := cfg.Token()
+	saved, hasSaved := cfg.Agents()
+	selected := env.selectAgents(plan, saved, hasSaved)
+	cfg.Set("url", plan.URL)
+	cfg.Set("token", token)
+	cfg.Set("agents", selected)
+	if err := cfg.Save(); err != nil {
+		return env.notSaved(path, err)
+	}
+
+	env.line(loggedIn + " Credentials saved to " + path + ".")
+	if hasURL && hasToken && previousToken != token {
 		env.revokePreviousToken(previousURL, previousToken)
 	}
+	if len(selected) == 0 {
+		env.line("No agents selected; memry is not wired into any agent. Run `memry setup` again to choose some.")
+	}
+	env.line("")
+	if len(selected) > 0 || len(env.deselected(saved, selected)) > 0 {
+		env.line("Agent wiring is not implemented in the Go build yet; no agent was set up or removed.")
+	}
 	return success
+}
+
+// deselected returns the saved agents this version supports that are no
+// longer selected: the ones the PHP CLI removes memry from.
+func (env Env) deselected(saved, selected []string) []string {
+	var keys []string
+	for _, key := range env.Agents.Keys() {
+		if slices.Contains(saved, key) && !slices.Contains(selected, key) {
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+// notSaved fails because the config at path could not be saved.
+func (env Env) notSaved(path string, err error) int {
+	env.line(fmt.Sprintf("Could not save the credentials to %s: %v.", path, err))
+	return failure
 }
 
 // askEmail asks for the email until it is a valid address.
@@ -167,16 +214,10 @@ func phpTrim(s string) string {
 	return strings.Trim(s, " \t\n\r\x00\x0B")
 }
 
-// unreachable fails because the server at url could not be reached.
-func (env Env) unreachable(url string) int {
-	env.line("Could not reach the memry server at " + url + ".")
-	return failure
-}
-
 // aborted fails like Symfony when the input ends before an answer.
-func (env Env) aborted() int {
+func (env Env) aborted() bool {
 	env.line("Aborted.")
-	return failure
+	return false
 }
 
 // line prints one line of output.
@@ -225,6 +266,30 @@ func (r response) jsonString(key string) (string, bool) {
 	return value, ok
 }
 
+// selectAgents returns the agents given with --agents, else the saved
+// selection without the agents this version does not support, else the
+// installed agents. Asking for them comes with the agents.
+func (env Env) selectAgents(plan flags.Plan, saved []string, hasSaved bool) []string {
+	if plan.AgentsGiven {
+		return plan.Agents
+	}
+	selected := []string{}
+	if hasSaved {
+		for _, key := range saved {
+			if slices.Contains(env.Agents.Keys(), key) {
+				selected = append(selected, key)
+			}
+		}
+		return selected
+	}
+	for _, key := range env.Agents.Keys() {
+		if env.Agents.IsInstalled(key) {
+			selected = append(selected, key)
+		}
+	}
+	return selected
+}
+
 // revokePreviousToken revokes the token of the previous login on the
 // server it belongs to. A failure never fails setup: the new login is
 // already saved.
@@ -235,11 +300,6 @@ func (env Env) revokePreviousToken(url, token string) {
 	} else {
 		env.line("Could not revoke the previous memry token.")
 	}
-}
-
-// post sends data as JSON.
-func (env Env) post(url string, data any) (response, error) {
-	return env.send(http.MethodPost, url, "", data)
 }
 
 // send sends a request that accepts JSON, with the bearer token if any and

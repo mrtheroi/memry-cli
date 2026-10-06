@@ -178,6 +178,17 @@ type harness struct {
 	configPath string
 	env        map[string]string
 	agents     fakeAgents
+	// processEnv makes setup read and change the process environment.
+	processEnv bool
+}
+
+// useProcessEnv makes setup use the process environment, with h's
+// variables set for the test.
+func (h *harness) useProcessEnv(t *testing.T) {
+	for key, value := range h.env {
+		t.Setenv(key, value)
+	}
+	h.processEnv = true
 }
 
 func newHarness(t *testing.T) *harness {
@@ -193,20 +204,25 @@ func (h *harness) run(argv []string, answers ...answer) (string, int) {
 	h.t.Helper()
 	var out bytes.Buffer
 	p := &prompter{t: h.t, answers: answers}
+	lookupEnv := func(key string) (string, bool) {
+		value, ok := h.env[key]
+		return value, ok
+	}
+	unsetenv := func(key string) error {
+		delete(h.env, key)
+		return nil
+	}
+	if h.processEnv {
+		lookupEnv, unsetenv = os.LookupEnv, os.Unsetenv
+	}
 	code := setup.Run(setup.Env{
-		Args: argv,
-		LookupEnv: func(key string) (string, bool) {
-			value, ok := h.env[key]
-			return value, ok
-		},
-		Unsetenv: func(key string) error {
-			delete(h.env, key)
-			return nil
-		},
-		Out:      &out,
-		Prompter: p,
-		Agents:   h.agents,
-		HTTP:     client.New("test", 5*time.Second),
+		Args:      argv,
+		LookupEnv: lookupEnv,
+		Unsetenv:  unsetenv,
+		Out:       &out,
+		Prompter:  p,
+		Agents:    h.agents,
+		HTTP:      client.New("test", 5*time.Second),
 	})
 	if len(p.answers) > 0 {
 		h.t.Errorf("questions never asked: %+v", p.answers)

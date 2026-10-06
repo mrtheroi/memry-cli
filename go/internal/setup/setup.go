@@ -49,17 +49,55 @@ const (
 
 // Run runs setup and returns its exit code.
 func Run(env Env) int {
-	plan, err := flags.Resolve(flags.Scan(env.Args), env.LookupEnv, env.Agents.Keys())
+	args := flags.Scan(env.Args)
+	plan, err := flags.Resolve(args, env.LookupEnv, env.Agents.Keys())
+	if args.Token.Present {
+		// Resolve has read the token; keep it away from every subprocess
+		// from now on, whether this login succeeds or not. Unsetenv only
+		// fails on a malformed name, which this is not.
+		_ = env.Unsetenv("MEMRY_TOKEN")
+	}
 	var usage *flags.Error
 	if errors.As(err, &usage) {
 		env.line(usage.Message)
 		return usage.ExitCode
 	}
-	token, loggedIn, ok := env.loginWithEmail(plan)
+	login := env.loginWithEmail
+	if plan.Login == flags.LoginToken {
+		login = env.loginWithToken
+	}
+	token, loggedIn, ok := login(plan)
 	if !ok {
 		return failure
 	}
 	return env.saveLogin(plan, token, loggedIn)
+}
+
+// loginWithToken logs in with a token created by the server admin, once
+// the server accepts it. Any authenticated endpoint would do; the context
+// is a cheap read.
+func (env Env) loginWithToken(plan flags.Plan) (token, loggedIn string, ok bool) {
+	token = plan.Token
+	if plan.TokenSource == flags.TokenFromPrompt {
+		var err error
+		if token, err = flags.CheckToken(env.Prompter.Secret("Token")); err != nil {
+			env.line(err.Error())
+			return "", "", false
+		}
+	}
+	resp, err := env.send(http.MethodGet, plan.URL+"/api/context?project=memry", token, nil)
+	switch {
+	case err != nil:
+		env.line("Could not reach the memry server at " + plan.URL + ".")
+		return "", "", false
+	case resp.status == http.StatusUnauthorized:
+		env.line("The token was rejected by " + plan.URL + ".")
+		return "", "", false
+	case !resp.succeeded():
+		env.failWith(resp)
+		return "", "", false
+	}
+	return token, "Connected to " + plan.URL + ".", true
 }
 
 // loginWithEmail logs in with an email one-time code, returning the token

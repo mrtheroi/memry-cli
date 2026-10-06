@@ -50,6 +50,9 @@ const (
 // Run runs setup and returns its exit code.
 func Run(env Env) int {
 	args := flags.Scan(env.Args)
+	if flags.IsQuiet(args, env.LookupEnv) {
+		env.Out = io.Discard
+	}
 	plan, err := flags.Resolve(args, env.LookupEnv, env.Agents.Keys())
 	if args.Token.Present {
 		// Resolve has read the token; keep it away from every subprocess

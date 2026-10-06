@@ -46,3 +46,33 @@ func TestFailsWithoutAskingOrSendingAnythingOnAnOptionError(t *testing.T) {
 		t.Errorf("sent %d requests, want none", len(sent))
 	}
 }
+
+// Symfony's quiet and silent verbosities hide every line setup prints,
+// errors included, and keep the exit code.
+func TestPrintsNothingWhenQuiet(t *testing.T) {
+	s := newServer(t)
+	tests := []struct {
+		argv []string
+		env  map[string]string
+		exit int
+	}{
+		{[]string{"--url", s.URL, "--token=admin-token", "-q"}, nil, 0},
+		{[]string{"--url", s.URL, "--token=admin-token", "--silent"}, nil, 0},
+		{[]string{"--url", s.URL, "--email", "ana@example.com", "--quiet"}, nil, 1},
+		{[]string{"--url", "ftp://memry.test", "--email", "ana@example.com", "-q"}, nil, 1},
+		{[]string{"--url", s.URL, "--token=admin-token"}, map[string]string{"SHELL_VERBOSITY": "-1"}, 0},
+	}
+	for _, tt := range tests {
+		h := newHarness(t)
+		for key, value := range tt.env {
+			h.env[key] = value
+		}
+
+		output, code := h.run(tt.argv)
+
+		assertExit(t, code, tt.exit, output)
+		if output != "" {
+			t.Errorf("setup %q printed %q, want nothing", tt.argv, output)
+		}
+	}
+}

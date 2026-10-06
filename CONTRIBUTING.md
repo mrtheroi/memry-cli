@@ -30,6 +30,13 @@ through the `mrtheroi/homebrew-tap` Homebrew tap.
 Record every user-visible change under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md), following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Go rewrite
+
+The CLI is being rewritten in Go under [`go/`](go/README.md), as a drop-in replacement for the
+PHP CLI. Until the cutover, the PHP CLI is what ships, and its Pest tests are the spec the Go code
+ports. The Go code has its own tests and CI workflow (`.github/workflows/go.yml`); see
+[go/README.md](go/README.md) for how to run them.
+
 ## Commands
 
 ```bash

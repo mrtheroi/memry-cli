@@ -104,13 +104,14 @@ func Run(env Env) int {
 
 	path := config.Path(env.getenv)
 	cfg, err := config.LoadOrEmpty(path)
-	if err != nil {
-		return failure
+	if err == nil {
+		cfg.Set("url", plan.URL)
+		cfg.Set("token", token)
+		cfg.Set("agents", plan.Agents)
+		err = cfg.Save()
 	}
-	cfg.Set("url", plan.URL)
-	cfg.Set("token", token)
-	cfg.Set("agents", plan.Agents)
-	if err := cfg.Save(); err != nil {
+	if err != nil {
+		env.line(fmt.Sprintf("Could not save the credentials to %s: %v.", path, err))
 		return failure
 	}
 	env.line("Logged in as " + address + ". Credentials saved to " + path + ".")

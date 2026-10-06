@@ -13,5 +13,6 @@ func NewRoot(version string) *cobra.Command {
 	}
 	root.Flags().BoolP("version", "V", false, "Display this application version")
 	root.SetVersionTemplate("Memry {{.Version}}\n")
+	root.AddCommand(newSetup(version))
 	return root
 }

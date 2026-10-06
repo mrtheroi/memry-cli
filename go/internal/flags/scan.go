@@ -27,7 +27,7 @@ type Args struct {
 // Console) does: --name=value, or --name followed by its value when the
 // next argument is empty or does not start with "-". The last occurrence
 // wins. The interaction and verbosity options are found like Symfony does
-// (see hasParameterOption). Any other argument, and everything from "--"
+// (see HasParameterOption). Any other argument, and everything from "--"
 // on, is kept in Rest.
 func Scan(argv []string) Args {
 	var args Args
@@ -37,7 +37,7 @@ func Scan(argv []string) Args {
 			args.Rest = append(args.Rest, argv[i:]...)
 			break
 		}
-		if hasParameterOption([]string{arg}, interactionOptions...) {
+		if HasParameterOption([]string{arg}, interactionOptions...) {
 			continue
 		}
 		name, value, hasValue := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
@@ -52,9 +52,9 @@ func Scan(argv []string) Args {
 		}
 		*option = Option{Present: true, HasValue: hasValue, Value: value}
 	}
-	args.NoInteraction = hasParameterOption(argv, "--no-interaction", "-n")
-	args.Quiet = hasParameterOption(argv, "--silent", "--quiet", "-q")
-	args.Verbose = hasParameterOption(argv, "--verbose", "-v")
+	args.NoInteraction = HasParameterOption(argv, "--no-interaction", "-n")
+	args.Quiet = HasParameterOption(argv, "--silent", "--quiet", "-q")
+	args.Verbose = HasParameterOption(argv, "--verbose", "-v")
 	return args
 }
 
@@ -62,11 +62,11 @@ func Scan(argv []string) Args {
 // the verbosity.
 var interactionOptions = []string{"--no-interaction", "-n", "--silent", "--quiet", "-q", "--verbose", "-v"}
 
-// hasParameterOption reports whether argv has one of the options, like
-// Symfony's ArgvInput::hasParameterOption with $onlyParams: a token that is
+// HasParameterOption reports whether argv has one of the options, like
+// Symfony's ArgvInput::HasParameterOption with $onlyParams: a token that is
 // the option, or starts with it ("-vvv" for -v, "--verbose=2" for
 // --verbose), before any "--".
-func hasParameterOption(argv []string, options ...string) bool {
+func HasParameterOption(argv []string, options ...string) bool {
 	for _, token := range argv {
 		if token == "--" {
 			return false

@@ -30,14 +30,19 @@ func newSetup(version string) *cobra.Command {
 		SilenceErrors:         true,
 		SilenceUsage:          true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Symfony's --help, which cobra does not see without parsing.
-			if flags.HasParameterOption(args, "--help", "-h") {
-				return cmd.Help()
-			}
 			out := cmd.OutOrStdout()
-			// Symfony's --version, a global option the PHP CLI accepts on
-			// every command.
-			if flags.HasParameterOption(args, "--version", "-V") {
+			// Symfony's --help and --version, which cobra does not see
+			// without parsing. Like Symfony they match by prefix (--help=x
+			// still shows the help), and quiet or silent hides them.
+			showsHelp := flags.HasParameterOption(args, "--help", "-h")
+			showsVersion := flags.HasParameterOption(args, "--version", "-V")
+			if showsHelp || showsVersion {
+				if flags.IsQuiet(flags.Scan(args), os.LookupEnv) {
+					return nil
+				}
+				if showsHelp {
+					return cmd.Help()
+				}
 				_, err := fmt.Fprintf(out, "Memry %s\n", version)
 				return err
 			}

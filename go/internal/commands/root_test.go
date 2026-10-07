@@ -81,3 +81,39 @@ func TestDescription(t *testing.T) {
 		t.Errorf("Short = %q, want %q", got, want)
 	}
 }
+
+// Like the PHP CLI, quiet and silent hide setup's help and version output
+// (exit 0); malformed help/version tokens still show them, as Symfony
+// matches those options by prefix.
+func TestSetupHelpAndVersionFollowQuietMode(t *testing.T) {
+	tests := []struct {
+		argv      []string
+		env       string
+		wantEmpty bool
+	}{
+		{[]string{"--quiet", "--version"}, "", true},
+		{[]string{"--silent", "--help"}, "", true},
+		{[]string{"-q", "--help"}, "", true},
+		{[]string{"--version"}, "-1", true},
+		{[]string{"--version=x"}, "", false},
+		{[]string{"-hfoo"}, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(strings.Join(tt.argv, " ")+" "+tt.env, func(t *testing.T) {
+			t.Setenv("SHELL_VERBOSITY", tt.env)
+			var out bytes.Buffer
+			root := commands.NewRoot("v0.8.0")
+			root.SetOut(&out)
+			root.SetErr(&out)
+			root.SetArgs(append([]string{"setup"}, tt.argv...))
+
+			if err := root.Execute(); err != nil {
+				t.Fatalf("Execute: %v (output %q)", err, out.String())
+			}
+
+			if empty := out.Len() == 0; empty != tt.wantEmpty {
+				t.Errorf("output = %q, want empty %v", out.String(), tt.wantEmpty)
+			}
+		})
+	}
+}

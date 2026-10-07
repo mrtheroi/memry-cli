@@ -96,7 +96,9 @@ func (env Env) forward(message []byte) []byte {
 	return bytes.Map(dropLineBreaks, body)
 }
 
-// maxReplyBytes bounds every reply the proxy reads.
+// maxReplyBytes bounds every reply the proxy reads, so a misbehaving
+// server cannot make it buffer an unbounded body. MCP replies carry whole
+// memories and search results, so the limit is far above setup's 1 MiB.
 const maxReplyBytes = 16 << 20
 
 func (env Env) getenv(key string) string {

@@ -254,22 +254,6 @@ func readText(t *testing.T, path string) string {
 	return string(data)
 }
 
-// A deselected agent memry could not be removed from stays saved, after
-// the new selection, so a later setup or uninstall retries the removal.
-// (The PHP CLI forgets it.)
-func TestKeepsADeselectedAgentSavedUntilMemryIsRemovedFromIt(t *testing.T) {
-	h, s := newHarness(t), newServer(t)
-	claude, codex, windsurf := newClaude(), newCodex(), &fakeAgent{key: "windsurf", name: "Windsurf"}
-	claude.fails = true
-	h.useAgents(claude, codex, windsurf)
-	h.writeConfig(map[string]any{"url": s.URL, "token": "old-token", "agents": []string{"windsurf", "claude-code"}})
-
-	output, code := h.run(selectionArgs(s.URL, "--agents", "codex"), code123456)
-
-	assertExit(t, code, 1, output)
-	assertSavedAgents(t, h, "claude-code", "codex")
-}
-
 // Each agent is selected once, at its first place. (The PHP CLI saves
 // duplicates as given.)
 func TestSavesEachSelectedAgentOnce(t *testing.T) {

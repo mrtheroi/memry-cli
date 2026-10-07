@@ -202,6 +202,7 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	previousURL, hasURL := cfg.URL()
 	previousToken, hasToken := cfg.Token()
 	saved, hasSaved := cfg.Agents()
+	toRemove, _ := cfg.AgentsToRemove()
 	selected, err := env.selectAgents(plan, saved, hasSaved)
 	if err != nil {
 		return unsaved()
@@ -209,6 +210,9 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	cfg.Set("url", plan.URL)
 	cfg.Set("token", token)
 	cfg.Set("agents", selected)
+	// An agent selected again is installed, no longer removed.
+	toRemove = slices.DeleteFunc(slices.Clone(toRemove), func(key string) bool { return slices.Contains(selected, key) })
+	setAgentsToRemove(cfg, toRemove)
 	if err := cfg.Save(); err != nil {
 		env.notSaved(path, err)
 		return unsaved()
@@ -221,11 +225,13 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	if len(selected) == 0 {
 		env.line("No agents selected; memry is not wired into any agent. Run `memry setup` again to choose some.")
 	}
-	code, pending := env.wire(plan.URL, selected, saved)
-	if len(pending) > 0 {
+	// The saved agents no longer selected are removed, and the removals
+	// that failed before are retried.
+	code, pending := env.wire(plan.URL, selected, append(slices.Clone(saved), toRemove...))
+	if len(toRemove) > 0 || len(pending) > 0 {
 		// Keep the agents memry could not be removed from, so a later
 		// setup or uninstall retries the removal.
-		cfg.Set("agents", env.inRegistryOrder(append(slices.Clone(selected), pending...)))
+		setAgentsToRemove(cfg, pending)
 		if err := cfg.Save(); err != nil {
 			return env.notSaved(path, err)
 		}
@@ -233,14 +239,15 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	return code
 }
 
-// inRegistryOrder returns the supported agents among keys, once each, in
-// display order.
-func (env Env) inRegistryOrder(keys []string) []string {
-	ordered := []string{}
-	for _, agent := range env.Agents.Only(keys) {
-		ordered = append(ordered, agent.Key())
+// setAgentsToRemove saves the agents memry could not be removed from in
+// agents_to_remove, or removes the key when there are none, so the file
+// is then the one the PHP CLI writes.
+func setAgentsToRemove(cfg *config.File, keys []string) {
+	if len(keys) == 0 {
+		cfg.Delete("agents_to_remove")
+		return
 	}
-	return ordered
+	cfg.Set("agents_to_remove", keys)
 }
 
 // selectAgents returns the agents given with --agents, else asks which

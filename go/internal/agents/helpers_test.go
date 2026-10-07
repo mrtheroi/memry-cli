@@ -26,6 +26,8 @@ type testEnv struct {
 	vars   map[string]string
 	onPath []string
 	runner *fakeRunner
+	// looked are the commands looked up on the PATH, in order.
+	looked []string
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -43,6 +45,8 @@ func (e *testEnv) env() agents.Env {
 	return agents.Env{
 		Getenv: getenv,
 		LookPath: func(name string) (string, error) {
+			e.looked = append(e.looked, name)
+			e.runner.ran = append(e.runner.ran, []string{"lookpath", name})
 			if slices.Contains(e.onPath, name) {
 				return "/fake/bin/" + name, nil
 			}

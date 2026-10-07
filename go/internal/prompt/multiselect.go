@@ -28,12 +28,13 @@ func (t *Terminal) MultiSelect(label, hint string, choices []Choice, defaults []
 		return defaults, nil
 	}
 	defer restore()
-	m := &multiSelect{label: label, hint: hint, choices: choices, values: slices.Clone(defaults)}
+	m := &multiSelect{label: label, hint: hint, choices: choices, values: slices.Clone(defaults), state: "active"}
 	screen := &screen{out: t.out}
 	_, _ = io.WriteString(t.out, hideCursor)
 	defer func() { _, _ = io.WriteString(t.out, showCursor) }()
 	screen.draw(m.render())
-	buf := make([]byte, 16)
+	buf := make([]byte, 64)
+	var pending []byte
 	for {
 		n, err := t.in.Read(buf)
 		if err != nil {
@@ -41,7 +42,13 @@ func (t *Terminal) MultiSelect(label, hint string, choices []Choice, defaults []
 			screen.draw(m.render())
 			return nil, ErrAborted
 		}
-		m.press(string(buf[:n]))
+		var keys []string
+		keys, pending = splitKeys(append(pending, buf[:n]...))
+		for _, key := range keys {
+			if m.press(key); m.state != "active" {
+				break
+			}
+		}
 		screen.draw(m.render())
 		switch m.state {
 		case "submit":
@@ -50,6 +57,53 @@ func (t *Terminal) MultiSelect(label, hint string, choices []Choice, defaults []
 			return nil, ErrAborted
 		}
 	}
+}
+
+// splitKeys splits the bytes read from the terminal into whole keys: an
+// escape sequence (ESC [ ... final byte, or ESC O and one byte), a UTF-8
+// character or a single byte. It returns the bytes of an incomplete key
+// at the end, to complete with the next read.
+func splitKeys(data []byte) (keys []string, rest []byte) {
+	for len(data) > 0 {
+		size := keySize(data)
+		if size == 0 {
+			return keys, data
+		}
+		keys = append(keys, string(data[:size]))
+		data = data[size:]
+	}
+	return keys, nil
+}
+
+// keySize is the length of the key data starts with, or 0 when data holds
+// only its start.
+func keySize(data []byte) int {
+	if data[0] != '\x1b' {
+		if !utf8.FullRune(data) {
+			return 0
+		}
+		_, size := utf8.DecodeRune(data)
+		return size
+	}
+	if len(data) < 2 {
+		return 0
+	}
+	switch data[1] {
+	case 'O':
+		if len(data) < 3 {
+			return 0
+		}
+		return 3
+	case '[':
+		// Parameter and intermediate bytes, then a final byte.
+		for i := 2; i < len(data); i++ {
+			if data[i] >= 0x40 && data[i] <= 0x7e {
+				return i + 1
+			}
+		}
+		return 0
+	}
+	return 1
 }
 
 // The keys Laravel Prompts' multiselect knows.

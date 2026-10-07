@@ -202,3 +202,27 @@ func TestMultiSelectListsTheSelectedLabelsInTheOrderOfTheChoices(t *testing.T) {
 		t.Errorf("output does not list Claude Code before Windsurf:\n%s", plain)
 	}
 }
+
+// One read may hold several keys, or only part of an escape sequence:
+// the keys are split out of the bytes read, an incomplete sequence kept
+// for the next read. (Laravel Prompts takes each read for one key.)
+func TestMultiSelectSplitsTheKeysOfEachRead(t *testing.T) {
+	tests := []struct {
+		name    string
+		pressed []string
+		want    []string
+	}{
+		{"two keys in one read", []string{"j ", "\r"}, []string{"codex"}},
+		{"an arrow split across reads", []string{"\x1b[", "B", " ", "\r"}, []string{"codex"}},
+		{"an escape alone, then the rest", []string{"\x1b", "[B", " \r"}, []string{"codex"}},
+		{"a pasted sequence", []string{"j j \x1b[A\x1bOB\x1b[A \r"}, []string{"windsurf"}},
+		{"keys after enter are left", []string{" \rj "}, []string{"claude-code"}},
+	}
+	for _, tt := range tests {
+		selected, _, err := multiSelect(t, nil, tt.pressed...)
+
+		if err != nil || !reflect.DeepEqual(selected, tt.want) {
+			t.Errorf("%s: MultiSelect = %q, %v; want %q", tt.name, selected, err, tt.want)
+		}
+	}
+}

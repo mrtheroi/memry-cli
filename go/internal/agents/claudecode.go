@@ -1,6 +1,9 @@
 package agents
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/mrtheroi/memry-cli/internal/agentfiles"
 	"github.com/mrtheroi/memry-cli/internal/executable"
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
@@ -144,8 +147,8 @@ func (a *claudeCode) Uninstall() Result {
 }
 
 // removeMCPServers removes the memry MCP server and the legacy one of
-// earlier versions. A remove that exits non-zero only means the server was
-// not registered; one that could not run fails the uninstall.
+// earlier versions. A server that is not registered is fine; any other
+// failure to remove one fails the uninstall (see removeServer).
 func (a *claudeCode) removeMCPServers(lines *lines) bool {
 	if !a.IsInstalled() {
 		lines.say("warn", "Claude Code CLI not found; skipped removing the "+mcpServer+" MCP server.")
@@ -169,19 +172,48 @@ func (a *claudeCode) removeMCPServers(lines *lines) bool {
 }
 
 // removeServer runs `claude mcp remove` for the user-scope server name. It
-// returns whether the server was removed, or why the removal failed: a
-// remove that ran and exited non-zero means the server was not
-// registered, as in the PHP CLI, but one that could not start or timed
-// out is a failure (the PHP CLI takes those for "not registered" too).
+// returns whether the server was removed, or why the removal failed:
+//
+//   - exit 0: removed;
+//   - a non-zero exit whose output contains "No MCP server found" (in any
+//     case): the server was not registered, as in the PHP CLI;
+//   - anything else (another non-zero exit, a command that could not start
+//     or timed out): a failure, with an excerpt of the output.
+//
+// The PHP CLI takes every failure for "not registered". The trade-off: if
+// Claude Code changes that message, removing a server that is not there
+// reports a false failure, which never claims a removal that did not
+// happen.
 func (a *claudeCode) removeServer(name string) (removed bool, failure string) {
 	result := a.env.Runner.Run([]string{"claude", "mcp", "remove", "--scope", "user", name})
 	switch {
+	case result.Succeeded():
+		return true, ""
 	case !result.Started:
 		return false, "`claude mcp remove` could not start."
 	case result.TimedOut:
-		return false, "`claude mcp remove` timed out."
+		return false, "`claude mcp remove` timed out" + excerpt(result.Output) + "."
+	case strings.Contains(strings.ToLower(result.Output), "no mcp server found"):
+		return false, ""
 	}
-	return result.ExitCode == 0, ""
+	return false, "`claude mcp remove` exited with " + strconv.Itoa(result.ExitCode) + excerpt(result.Output) + "."
+}
+
+// excerptLength is how many characters of a command's output a failure
+// shows.
+const excerptLength = 200
+
+// excerpt is the start of output on one line, in parentheses after a
+// space, or nothing when there is no output.
+func excerpt(output string) string {
+	text := []rune(strings.Join(strings.Fields(output), " "))
+	if len(text) == 0 {
+		return ""
+	}
+	if len(text) > excerptLength {
+		return " (" + string(text[:excerptLength]) + "…)"
+	}
+	return " (" + string(text) + ")"
 }
 
 // removeSessionStartHook removes the hook setup installed, identified

@@ -136,9 +136,11 @@ func TestClaudeCodeWarnsWithManualInstructionsAndSkipsRegistrationWhenTheCLIIsMi
 	}
 }
 
+// The PHP test fakes the remove with exit code 1 and "No MCP server found",
+// the output the hybrid rule takes for a server that is not registered.
 func TestClaudeCodeIgnoresFailuresToRemoveTheLegacyAndMemryEntriesWhenTheyDoNotExist(t *testing.T) {
 	e := claudeEnv(t)
-	e.runner.results = map[string]any{"remove": false}
+	e.runner.results = map[string]any{"remove": notFound}
 
 	result := e.agent(t, "claude-code").Install("https://memry.test")
 
@@ -340,7 +342,7 @@ func TestClaudeCodeRemovesTheMemryAndLegacyDbMemoryMCPServersOnUninstall(t *test
 
 func TestClaudeCodeIgnoresMCPServersThatAreNotRegisteredOnUninstall(t *testing.T) {
 	e := claudeEnv(t)
-	e.runner.results = map[string]any{"remove": false}
+	e.runner.results = map[string]any{"remove": notFound}
 
 	result := e.agent(t, "claude-code").Uninstall()
 
@@ -499,10 +501,10 @@ var (
 	notFound   = agents.RunResult{Started: true, ExitCode: 1, Output: "No MCP server found"}
 )
 
-// Codex review of PR #34, with the user's rule: a `claude mcp remove`
-// that could not start or timed out is a failure; one that ran and exited
-// non-zero means the server was not registered, as in PHP; exit 0 means
-// removed. PHP also takes the first two for "not registered".
+// Codex review of PR #34, with the user's hybrid rule for `claude mcp
+// remove`: exit 0 means removed; a non-zero exit whose output contains
+// "No MCP server found" (any case) means not registered, as in PHP; any
+// other outcome is a failure. PHP takes every failure for "not registered".
 func TestClaudeCodeFailsTheUninstallWhenRemovingMemryCouldNotStartOrTimedOut(t *testing.T) {
 	for name, tt := range map[string]struct {
 		result agents.RunResult
@@ -526,7 +528,7 @@ func TestClaudeCodeFailsTheUninstallWhenRemovingMemryCouldNotStartOrTimedOut(t *
 	}
 }
 
-func TestClaudeCodeTakesARemoveThatExitedNonZeroForANotRegisteredServer(t *testing.T) {
+func TestClaudeCodeTakesARemoveThatExitedNonZeroWithNoMCPServerFoundForANotRegisteredServer(t *testing.T) {
 	e := claudeEnv(t)
 	e.runner.results = map[string]any{"remove": notFound}
 
@@ -600,4 +602,81 @@ func TestClaudeCodeFailsTheRegistrationWhenARemoveBeforeItCouldNotStartOrTimedOu
 			}
 		})
 	}
+}
+
+// permissionDenied is a remove that ran and failed for another reason
+// than a missing server.
+var permissionDenied = agents.RunResult{Started: true, ExitCode: 1, Output: "Error: EACCES: permission denied, open '/x/.claude.json'\n"}
+
+const permissionDeniedWhy = "`claude mcp remove` exited with 1 (Error: EACCES: permission denied, open '/x/.claude.json')."
+
+func TestClaudeCodeFailsTheUninstallWhenARemoveExitedNonZeroWithoutNoMCPServerFound(t *testing.T) {
+	for name, tt := range map[string]struct {
+		results map[string]any
+		want    [][2]string
+	}{
+		"memry, with output": {
+			map[string]any{"remove memry": permissionDenied},
+			[][2]string{{"warn", "Could not remove the memry MCP server from Claude Code: " + permissionDeniedWhy}},
+		},
+		"memry, without output": {
+			map[string]any{"remove memry": false},
+			[][2]string{{"warn", "Could not remove the memry MCP server from Claude Code: `claude mcp remove` exited with 1."}},
+		},
+		"legacy": {
+			map[string]any{"remove db-memory": permissionDenied},
+			[][2]string{
+				{"warn", "Could not remove the db-memory MCP server from Claude Code: " + permissionDeniedWhy},
+				{"info", "Removed the memry MCP server from Claude Code."},
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := claudeEnv(t)
+			e.runner.results = tt.results
+
+			result := e.agent(t, "claude-code").Uninstall()
+
+			assertSuccessful(t, result, false)
+			assertLines(t, result, append(tt.want, [2]string{"line", "No memry SessionStart hook to remove."})...)
+		})
+	}
+}
+
+func TestClaudeCodeFailsTheRegistrationWhenARemoveBeforeItExitedNonZeroWithoutNoMCPServerFound(t *testing.T) {
+	for _, server := range []string{"db-memory", "memry"} {
+		t.Run(server, func(t *testing.T) {
+			e := claudeEnv(t)
+			e.runner.results = map[string]any{"remove " + server: permissionDenied}
+
+			result := e.agent(t, "claude-code").Install("https://memry.test")
+
+			assertSuccessful(t, result, false)
+			assertHasLine(t, result, "error", "Could not register the memry MCP server in Claude Code: "+permissionDeniedWhy)
+			for _, ran := range e.runner.ran {
+				if len(ran) > 2 && (ran[2] == "add-json" || ran[2] == "get") {
+					t.Errorf("ran %q after a failed remove", ran)
+				}
+			}
+		})
+	}
+}
+
+func TestClaudeCodeMatchesNoMCPServerFoundInAnyCaseWithinTheOutput(t *testing.T) {
+	e := claudeEnv(t)
+	e.runner.results = map[string]any{"remove": agents.RunResult{Started: true, ExitCode: 1, Output: "Error: no mcp server FOUND with name: memry\n"}}
+
+	result := e.agent(t, "claude-code").Uninstall()
+
+	assertSuccessful(t, result, true)
+	assertHasLine(t, result, "line", "The memry MCP server was not registered in Claude Code.")
+}
+
+func TestClaudeCodeShowsAShortExcerptOfTheOutputOfAFailedRemove(t *testing.T) {
+	e := claudeEnv(t)
+	e.runner.results = map[string]any{"remove memry": agents.RunResult{Started: true, ExitCode: 2, Output: "first line\n\tsecond " + strings.Repeat("é", 300)}}
+
+	result := e.agent(t, "claude-code").Uninstall()
+
+	assertHasLine(t, result, "warn", "Could not remove the memry MCP server from Claude Code: `claude mcp remove` exited with 2 (first line second "+strings.Repeat("é", 182)+"…).")
 }

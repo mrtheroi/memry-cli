@@ -10,6 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+
+	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
 // Removal is what removing memry's entry from a file did.
@@ -38,4 +40,11 @@ func readOrEmpty(path string) (string, error) {
 // returns, NUL bytes and vertical tabs.
 func phpTrim(s string) string {
 	return strings.Trim(s, " \t\n\r\x00\x0B")
+}
+
+// encodable reports whether json_encode can write value back: it cannot a
+// number too large for a float.
+func encodable(value *phpjson.Object) bool {
+	_, ok := phpjson.Encode(value, 0)
+	return ok
 }

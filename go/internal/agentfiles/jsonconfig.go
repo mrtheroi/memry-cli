@@ -58,7 +58,7 @@ func (c *JSONConfig) read() (*phpjson.Object, bool, error) {
 	if !ok {
 		return nil, false, nil
 	}
-	if _, ok := phpjson.Encode(config, 0); !ok {
+	if !encodable(config) {
 		return nil, false, nil
 	}
 	switch servers, _ := config.Get(c.key); servers.(type) {

@@ -1,9 +1,13 @@
 package uninstall_test
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/mrtheroi/memry-cli/internal/client"
+	"github.com/mrtheroi/memry-cli/internal/setup"
 	"github.com/mrtheroi/memry-cli/internal/uninstall"
 )
 
@@ -31,7 +35,7 @@ func TestUninstallKeepsTheLoginAndTheAgentsStillToCleanUpWhenAnAgentFails(t *tes
 	if got := s.received(); len(got) != 0 {
 		t.Errorf("sent %+v, want no revoke", got)
 	}
-	wantConfig := map[string]any{"url": s.URL, "token": "old-token", "project": "kept", "agents_to_remove": []any{"codex", "windsurf"}}
+	wantConfig := map[string]any{"url": s.URL, "token": "old-token", "project": "kept", "agents": []any{}, "agents_to_remove": []any{"codex", "windsurf"}}
 	if got := h.config(); !reflect.DeepEqual(got, wantConfig) {
 		t.Errorf("config = %v, want %v", got, wantConfig)
 	}
@@ -91,7 +95,7 @@ func TestDeleteAccountKeepsOnlyTheAgentsStillToCleanUpWhenAnAgentFails(t *testin
 	if output != want {
 		t.Errorf("output = %q, want %q", output, want)
 	}
-	if got, want := h.config(), map[string]any{"agents_to_remove": []any{"claude-code"}}; !reflect.DeepEqual(got, want) {
+	if got, want := h.config(), map[string]any{"agents": []any{}, "agents_to_remove": []any{"claude-code"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("config = %v, want %v", got, want)
 	}
 	if got := s.received(); len(got) != 1 {
@@ -131,4 +135,38 @@ func TestUninstallRetriesOnlyTheAgentsToRemoveOfAConfigWithoutAgents(t *testing.
 	assertExit(t, code, 0, output)
 	assertCalls(t, codex, "uninstall")
 	assertCalls(t, claude)
+}
+
+// A partial uninstall, then `setup -n`: the saved selection is empty, so
+// setup installs nothing and retries the pending removal, instead of
+// defaulting to every installed agent.
+func TestSetupAfterAPartialUninstallInstallsNothingAndRetriesTheRemoval(t *testing.T) {
+	h, s := newHarness(t), newServer(t)
+	claude, codex := &fakeAgent{key: "claude-code", name: "Claude Code", fails: true}, &fakeAgent{key: "codex", name: "Codex"}
+	h.useAgents(claude, codex)
+	h.previousConfig(map[string]any{"url": s.URL, "token": "admin-token", "agents": []string{"claude-code", "codex"}})
+
+	output, code := h.run(uninstall.Uninstall, force)
+	assertExit(t, code, 1, output)
+
+	claude.fails, claude.calls, codex.calls = false, nil, nil
+	var out bytes.Buffer
+	code = setup.Run(setup.Env{
+		Args: []string{"--url", s.URL, "--token=admin-token", "-n"},
+		LookupEnv: func(key string) (string, bool) {
+			value, ok := h.env[key]
+			return value, ok
+		},
+		Unsetenv: func(string) error { return nil },
+		Out:      &out,
+		Agents:   h.agents,
+		HTTP:     client.New("test", 5*time.Second),
+	})
+
+	assertExit(t, code, 0, out.String())
+	assertCalls(t, claude, "uninstall")
+	assertCalls(t, codex)
+	if got, want := h.config(), map[string]any{"url": s.URL, "token": "admin-token", "agents": []any{}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("config = %v, want %v", got, want)
+	}
 }

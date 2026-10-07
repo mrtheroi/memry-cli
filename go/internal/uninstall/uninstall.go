@@ -136,7 +136,7 @@ func (env Env) removeFromAgents() []string {
 }
 
 // keepForRetry saves the agents still to clean up in agents_to_remove,
-// with no agents selected any more, keeping the login or, without
+// with an empty agent selection, keeping the login or, without
 // keepLogin, nothing else, so `memry uninstall` can retry them. Without a config file there is
 // nothing to keep: a retry cleans up Claude Code again. It always fails.
 func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
@@ -153,7 +153,9 @@ func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
 		}
 	}
 	if err == nil {
-		cfg.Delete("agents")
+		// An explicit empty selection, not a missing one: setup would
+		// otherwise default to every installed agent and reinstall them.
+		cfg.Set("agents", []string{})
 		cfg.Set("agents_to_remove", pending)
 		err = cfg.Save()
 	}

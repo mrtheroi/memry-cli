@@ -100,8 +100,14 @@ func (a *claudeCode) registerMCPServer(url string, lines *lines) bool {
 		return failWithManualRegistration(string(server), lines)
 	}
 
-	a.claude("mcp", "remove", "--scope", "user", legacyMCPServer)
-	a.claude("mcp", "remove", "--scope", "user", mcpServer)
+	// A server that was not registered is fine to "remove"; a remove that
+	// could not run leaves a registration memry must not add over.
+	for _, name := range []string{legacyMCPServer, mcpServer} {
+		if _, failure := a.removeServer(name); failure != "" {
+			lines.say("error", "Could not register the "+mcpServer+" MCP server in Claude Code: "+failure)
+			return failWithManualRegistration(string(server), lines)
+		}
+	}
 	if !a.claude("mcp", "add-json", "--scope", "user", mcpServer, string(server)) || !a.claude("mcp", "get", mcpServer) {
 		lines.say("error", "Could not register the "+mcpServer+" MCP server in Claude Code.")
 		return failWithManualRegistration(string(server), lines)
@@ -125,7 +131,7 @@ func failWithManualRegistration(server string, lines *lines) bool {
 
 // claude runs the claude CLI with args, reporting whether it succeeded.
 func (a *claudeCode) claude(args ...string) bool {
-	return a.env.Runner.Run(append([]string{"claude"}, args...))
+	return a.env.Runner.Run(append([]string{"claude"}, args...)).Succeeded()
 }
 
 // Uninstall removes the memry MCP servers and the hook.
@@ -138,20 +144,44 @@ func (a *claudeCode) Uninstall() Result {
 }
 
 // removeMCPServers removes the memry MCP server and the legacy one of
-// earlier versions. Failing to remove one only means it was not
-// registered.
+// earlier versions. A remove that exits non-zero only means the server was
+// not registered; one that could not run fails the uninstall.
 func (a *claudeCode) removeMCPServers(lines *lines) bool {
 	if !a.IsInstalled() {
 		lines.say("warn", "Claude Code CLI not found; skipped removing the "+mcpServer+" MCP server.")
 		return false
 	}
-	a.claude("mcp", "remove", "--scope", "user", legacyMCPServer)
-	if a.claude("mcp", "remove", "--scope", "user", mcpServer) {
+	ok := true
+	if _, failure := a.removeServer(legacyMCPServer); failure != "" {
+		lines.say("warn", "Could not remove the "+legacyMCPServer+" MCP server from Claude Code: "+failure)
+		ok = false
+	}
+	switch removed, failure := a.removeServer(mcpServer); {
+	case failure != "":
+		lines.say("warn", "Could not remove the "+mcpServer+" MCP server from Claude Code: "+failure)
+		return false
+	case removed:
 		lines.say("info", "Removed the "+mcpServer+" MCP server from Claude Code.")
-	} else {
+	default:
 		lines.say("line", "The "+mcpServer+" MCP server was not registered in Claude Code.")
 	}
-	return true
+	return ok
+}
+
+// removeServer runs `claude mcp remove` for the user-scope server name. It
+// returns whether the server was removed, or why the removal failed: a
+// remove that ran and exited non-zero means the server was not
+// registered, as in the PHP CLI, but one that could not start or timed
+// out is a failure (the PHP CLI takes those for "not registered" too).
+func (a *claudeCode) removeServer(name string) (removed bool, failure string) {
+	result := a.env.Runner.Run([]string{"claude", "mcp", "remove", "--scope", "user", name})
+	switch {
+	case !result.Started:
+		return false, "`claude mcp remove` could not start."
+	case result.TimedOut:
+		return false, "`claude mcp remove` timed out."
+	}
+	return result.ExitCode == 0, ""
 }
 
 // removeSessionStartHook removes the hook setup installed, identified

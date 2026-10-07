@@ -73,19 +73,29 @@ func (e *testEnv) path(parts ...string) string {
 }
 
 // fakeRunner records the commands it is asked to run, answering with the
-// result set for their subcommand (argv[2], like `claude mcp <sub>`),
-// success by default.
+// result set for their subcommand and last argument ("remove memry"), else
+// for their subcommand (argv[2], like `claude mcp <sub>`): true exits with
+// 0, false with 1, and a RunResult as it is. Success by default.
 type fakeRunner struct {
 	ran     [][]string
-	results map[string]bool
+	results map[string]any
 }
 
-func (r *fakeRunner) Run(argv []string) bool {
+func (r *fakeRunner) Run(argv []string) agents.RunResult {
 	r.ran = append(r.ran, argv)
-	if ok, set := r.results[argv[2]]; set {
-		return ok
+	result, set := r.results[argv[2]+" "+argv[len(argv)-1]]
+	if !set {
+		result = r.results[argv[2]]
 	}
-	return true
+	switch result := result.(type) {
+	case agents.RunResult:
+		return result
+	case bool:
+		if !result {
+			return agents.RunResult{Started: true, ExitCode: 1}
+		}
+	}
+	return agents.RunResult{Started: true}
 }
 
 func writeFile(t *testing.T, path, contents string) {

@@ -48,9 +48,25 @@ type Line struct {
 // Runner runs a command, like the PHP CLI's Process::run with a list of
 // arguments.
 type Runner interface {
-	// Run runs argv without a shell, discarding its output, and reports
-	// whether it exited successfully.
-	Run(argv []string) bool
+	// Run runs argv without a shell and reports how it went.
+	Run(argv []string) RunResult
+}
+
+// RunResult is how running a command went.
+type RunResult struct {
+	// Started is whether the command started at all.
+	Started bool
+	// ExitCode is its exit status, -1 when it did not start or was killed.
+	ExitCode int
+	// TimedOut is whether it was stopped after the runner's timeout.
+	TimedOut bool
+	// Output is its stdout and stderr, at most maxOutput bytes.
+	Output string
+}
+
+// Succeeded reports whether the command started and exited with 0.
+func (r RunResult) Succeeded() bool {
+	return r.Started && !r.TimedOut && r.ExitCode == 0
 }
 
 // Env is what the agents run with. Every path derives from Getenv (HOME

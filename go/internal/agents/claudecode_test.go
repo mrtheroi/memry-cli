@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mrtheroi/memry-cli/internal/agents"
 	"github.com/mrtheroi/memry-cli/internal/executable"
 )
 
@@ -88,7 +89,7 @@ func TestClaudeCodeLooksUpClaudeRemovesTheLegacyAndExistingEntriesAddsMemryAndVe
 
 func TestClaudeCodeFailsWithManualInstructionsWhenAddingTheMCPServerFails(t *testing.T) {
 	e := claudeEnv(t)
-	e.runner.results = map[string]bool{"add-json": false}
+	e.runner.results = map[string]any{"add-json": false}
 
 	result := e.agent(t, "claude-code").Install("https://memry.test")
 
@@ -100,7 +101,7 @@ func TestClaudeCodeFailsWithManualInstructionsWhenAddingTheMCPServerFails(t *tes
 
 func TestClaudeCodeFailsWithManualInstructionsWhenTheMCPServerCannotBeVerified(t *testing.T) {
 	e := claudeEnv(t)
-	e.runner.results = map[string]bool{"get": false}
+	e.runner.results = map[string]any{"get": false}
 
 	result := e.agent(t, "claude-code").Install("https://memry.test")
 
@@ -137,7 +138,7 @@ func TestClaudeCodeWarnsWithManualInstructionsAndSkipsRegistrationWhenTheCLIIsMi
 
 func TestClaudeCodeIgnoresFailuresToRemoveTheLegacyAndMemryEntriesWhenTheyDoNotExist(t *testing.T) {
 	e := claudeEnv(t)
-	e.runner.results = map[string]bool{"remove": false}
+	e.runner.results = map[string]any{"remove": false}
 
 	result := e.agent(t, "claude-code").Install("https://memry.test")
 
@@ -339,7 +340,7 @@ func TestClaudeCodeRemovesTheMemryAndLegacyDbMemoryMCPServersOnUninstall(t *test
 
 func TestClaudeCodeIgnoresMCPServersThatAreNotRegisteredOnUninstall(t *testing.T) {
 	e := claudeEnv(t)
-	e.runner.results = map[string]bool{"remove": false}
+	e.runner.results = map[string]any{"remove": false}
 
 	result := e.agent(t, "claude-code").Uninstall()
 
@@ -490,4 +491,113 @@ func TestClaudeCodePrintsNoEmptyHookGroupWhenTheCommandCannotBeEncoded(t *testin
 		[2]string{"error", "Could not install the memry SessionStart hook: " + settings + " is not valid JSON."},
 		[2]string{"line", "Set them to valid UTF-8 paths, then run `memry setup` again."},
 	)
+}
+
+var (
+	notStarted = agents.RunResult{ExitCode: -1}
+	timedOut   = agents.RunResult{Started: true, ExitCode: -1, TimedOut: true}
+	notFound   = agents.RunResult{Started: true, ExitCode: 1, Output: "No MCP server found"}
+)
+
+// Codex review of PR #34, with the user's rule: a `claude mcp remove`
+// that could not start or timed out is a failure; one that ran and exited
+// non-zero means the server was not registered, as in PHP; exit 0 means
+// removed. PHP also takes the first two for "not registered".
+func TestClaudeCodeFailsTheUninstallWhenRemovingMemryCouldNotStartOrTimedOut(t *testing.T) {
+	for name, tt := range map[string]struct {
+		result agents.RunResult
+		why    string
+	}{
+		"could not start": {notStarted, "`claude mcp remove` could not start."},
+		"timed out":       {timedOut, "`claude mcp remove` timed out."},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := claudeEnv(t)
+			e.runner.results = map[string]any{"remove memry": tt.result}
+
+			result := e.agent(t, "claude-code").Uninstall()
+
+			assertSuccessful(t, result, false)
+			assertLines(t, result,
+				[2]string{"warn", "Could not remove the memry MCP server from Claude Code: " + tt.why},
+				[2]string{"line", "No memry SessionStart hook to remove."},
+			)
+		})
+	}
+}
+
+func TestClaudeCodeTakesARemoveThatExitedNonZeroForANotRegisteredServer(t *testing.T) {
+	e := claudeEnv(t)
+	e.runner.results = map[string]any{"remove": notFound}
+
+	result := e.agent(t, "claude-code").Uninstall()
+
+	assertSuccessful(t, result, true)
+	assertHasLine(t, result, "line", "The memry MCP server was not registered in Claude Code.")
+}
+
+func TestClaudeCodeTakesARemoveThatExitedWith0ForARemovedServer(t *testing.T) {
+	e := claudeEnv(t)
+	e.runner.results = map[string]any{"remove": agents.RunResult{Started: true}}
+
+	result := e.agent(t, "claude-code").Uninstall()
+
+	assertSuccessful(t, result, true)
+	assertHasLine(t, result, "info", "Removed the memry MCP server from Claude Code.")
+}
+
+// The same rule for the legacy db-memory server, which does not stop the
+// memry one from being removed.
+func TestClaudeCodeFailsTheUninstallWhenRemovingTheLegacyServerCouldNotStartOrTimedOut(t *testing.T) {
+	for name, tt := range map[string]struct {
+		result agents.RunResult
+		why    string
+	}{
+		"could not start": {notStarted, "`claude mcp remove` could not start."},
+		"timed out":       {timedOut, "`claude mcp remove` timed out."},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := claudeEnv(t)
+			e.runner.results = map[string]any{"remove db-memory": tt.result}
+
+			result := e.agent(t, "claude-code").Uninstall()
+
+			assertSuccessful(t, result, false)
+			assertLines(t, result,
+				[2]string{"warn", "Could not remove the db-memory MCP server from Claude Code: " + tt.why},
+				[2]string{"info", "Removed the memry MCP server from Claude Code."},
+				[2]string{"line", "No memry SessionStart hook to remove."},
+			)
+		})
+	}
+}
+
+// The same rule for the removes setup runs before adding memry: if one
+// could not start or timed out, memry is not added over a registration it
+// could not clear.
+func TestClaudeCodeFailsTheRegistrationWhenARemoveBeforeItCouldNotStartOrTimedOut(t *testing.T) {
+	for name, tt := range map[string]struct {
+		server string
+		result agents.RunResult
+		why    string
+	}{
+		"legacy could not start": {"db-memory", notStarted, "`claude mcp remove` could not start."},
+		"memry timed out":        {"memry", timedOut, "`claude mcp remove` timed out."},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := claudeEnv(t)
+			e.runner.results = map[string]any{"remove " + tt.server: tt.result}
+
+			result := e.agent(t, "claude-code").Install("https://memry.test")
+
+			assertSuccessful(t, result, false)
+			assertHasLine(t, result, "error", "Could not register the memry MCP server in Claude Code: "+tt.why)
+			assertHasLine(t, result, "line", "  claude mcp add-json --scope user memry "+executable.EscapeShellArg(e.claudeServer(e.memryCommand("mcp-headers"))))
+			for _, ran := range e.runner.ran {
+				if len(ran) > 2 && (ran[2] == "add-json" || ran[2] == "get") {
+					t.Errorf("ran %q after a failed remove", ran)
+				}
+			}
+		})
+	}
 }

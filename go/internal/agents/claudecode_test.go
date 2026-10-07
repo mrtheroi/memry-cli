@@ -3,6 +3,7 @@ package agents_test
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/executable"
@@ -438,4 +439,55 @@ func TestClaudeCodeFailsTheHookStepWhenItCannotReadTheSettings(t *testing.T) {
 	assertHasLine(t, install, "error", "Could not install the memry SessionStart hook: open "+settings+": not a directory.")
 	assertSuccessful(t, uninstall, false)
 	assertHasLine(t, uninstall, "warn", "Could not remove the memry SessionStart hook: open "+settings+": not a directory.")
+}
+
+// Codex review of PR #34: a server JSON that cannot be encoded (an
+// executable path or MEMRY_CONFIG that is not valid UTF-8) must fail
+// before any lookup or claude command, so the existing registration is
+// never removed, and never print an add-json line with an empty payload.
+func TestClaudeCodeFailsWithoutRunningAnythingWhenTheServerCannotBeEncoded(t *testing.T) {
+	for name, vars := range map[string]map[string]string{
+		"executable": {"MEMRY_EXECUTABLE": "/opt/\xffmemry"},
+		"config":     {"MEMRY_CONFIG": "/tmp/\xffconfig.json"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := claudeEnv(t)
+			for k, v := range vars {
+				e.vars[k] = v
+			}
+
+			result := e.agent(t, "claude-code").Install("https://memry.test")
+
+			assertSuccessful(t, result, false)
+			if len(e.runner.ran) != 0 {
+				t.Errorf("ran %q, want no lookup and no command", e.runner.ran)
+			}
+			assertHasLine(t, result, "error", "Could not register the memry MCP server in Claude Code: the memry executable path or MEMRY_CONFIG is not valid UTF-8.")
+			assertHasLine(t, result, "line", "Set them to valid UTF-8 paths, then run `memry setup` again.")
+			for _, line := range result.Lines {
+				if strings.Contains(line.Text, "add-json") {
+					t.Errorf("printed %q, want no manual add-json line", line.Text)
+				}
+			}
+		})
+	}
+}
+
+// The hook's manual instructions never hold an empty group either.
+func TestClaudeCodePrintsNoEmptyHookGroupWhenTheCommandCannotBeEncoded(t *testing.T) {
+	e := claudeEnv(t)
+	e.vars["MEMRY_EXECUTABLE"] = "/opt/\xffmemry"
+	settings := e.path("claude", "settings.json")
+	writeFile(t, settings, "{not json")
+
+	result := e.agent(t, "claude-code").Install("https://memry.test")
+
+	assertSuccessful(t, result, false)
+	assertContents(t, settings, "{not json")
+	assertLines(t, result,
+		[2]string{"error", "Could not register the memry MCP server in Claude Code: the memry executable path or MEMRY_CONFIG is not valid UTF-8."},
+		[2]string{"line", "Set them to valid UTF-8 paths, then run `memry setup` again."},
+		[2]string{"error", "Could not install the memry SessionStart hook: " + settings + " is not valid JSON."},
+		[2]string{"line", "Set them to valid UTF-8 paths, then run `memry setup` again."},
+	)
 }

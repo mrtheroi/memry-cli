@@ -65,8 +65,12 @@ func (a *claudeCode) installSessionStartHook(lines *lines) bool {
 	}
 	if !installed {
 		lines.say("error", "Could not install the memry SessionStart hook: "+settings.Path()+" is not valid JSON.")
+		snippet, ok := phpjson.Encode(group, phpjson.PrettyPrint|phpjson.UnescapedSlashes)
+		if !ok {
+			lines.say("line", fixNotUTF8)
+			return false
+		}
 		lines.say("line", `Fix the file, then add this group to the "hooks.SessionStart" array by hand:`)
-		snippet, _ := phpjson.Encode(group, phpjson.PrettyPrint|phpjson.UnescapedSlashes)
 		lines.say("line", string(snippet))
 		return false
 	}
@@ -78,11 +82,18 @@ func (a *claudeCode) installSessionStartHook(lines *lines) bool {
 // Claude Code. The token stays in the config file; Claude Code gets it
 // from the headers helper.
 func (a *claudeCode) registerMCPServer(url string, lines *lines) bool {
-	server, _ := phpjson.Encode(phpjson.NewObject(
+	server, ok := phpjson.Encode(phpjson.NewObject(
 		"type", "http",
 		"url", url+"/mcp/memory",
 		"headersHelper", a.env.Executable.Command("mcp-headers"),
 	), phpjson.UnescapedSlashes)
+	// Checked before any claude command: removing the registration and
+	// then adding an empty one would delete a working server.
+	if !ok {
+		lines.say("error", "Could not register the "+mcpServer+" MCP server in Claude Code: "+notUTF8)
+		lines.say("line", fixNotUTF8)
+		return false
+	}
 
 	if !a.IsInstalled() {
 		lines.say("warn", "Claude Code CLI not found; skipped MCP registration.")
@@ -98,6 +109,13 @@ func (a *claudeCode) registerMCPServer(url string, lines *lines) bool {
 	lines.say("info", "Registered the "+mcpServer+" MCP server in Claude Code (user scope).")
 	return true
 }
+
+// What memry says when a command it writes for an agent cannot be
+// encoded as JSON. PHP's json_encode fails on the same values.
+const (
+	notUTF8    = "the memry executable path or MEMRY_CONFIG is not valid UTF-8."
+	fixNotUTF8 = "Set them to valid UTF-8 paths, then run `memry setup` again."
+)
 
 func failWithManualRegistration(server string, lines *lines) bool {
 	lines.say("line", "Your login was saved. Register the server manually with:")

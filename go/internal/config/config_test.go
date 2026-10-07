@@ -274,3 +274,40 @@ func TestLoginNeedsANonEmptyURLAndToken(t *testing.T) {
 		t.Error("Login() without a config file = logged in")
 	}
 }
+
+// Like PHP's json_decode, a config with invalid UTF-8 or a lone surrogate
+// escape is not JSON at all. Go's decoder would silently replace those with
+// U+FFFD and send an altered URL or token; instead the config is invalid
+// (Load), empty (LoadOrEmpty) and logged out (Login).
+func TestAConfigThatIsNotValidUTF8JSONIsNeverAccepted(t *testing.T) {
+	configs := map[string]string{
+		"invalid UTF-8 in the token": "{\"url\":\"https://memry.test\",\"token\":\"sec\xffret\"}",
+		"lone surrogate in the url":  `{"url":"https://memry.test\ud800","token":"secret"}`,
+	}
+	for name, content := range configs {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := config.Load(path); err == nil {
+				t.Error("Load: want an error, got none")
+			}
+			if f, err := config.LoadOrEmpty(path); err != nil {
+				t.Errorf("LoadOrEmpty: %v", err)
+			} else if _, ok := f.Token(); ok {
+				t.Error("LoadOrEmpty: want an empty config, got a token")
+			}
+			getenv := func(key string) string {
+				if key == "MEMRY_CONFIG" {
+					return path
+				}
+				return ""
+			}
+			if _, _, ok := config.Login(getenv); ok {
+				t.Error("Login: want logged out, got a login")
+			}
+		})
+	}
+}

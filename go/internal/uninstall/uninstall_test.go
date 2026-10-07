@@ -198,7 +198,10 @@ func TestWarnsKeepsGoingAndFailsWhenTheClaudeCodeCLIIsNotFound(t *testing.T) {
 
 	assertExit(t, code, 1, output)
 	assertContains(t, output, "Claude Code CLI not found; skipped removing the memry MCP server.\n")
-	assertContains(t, output, "Deleted "+h.configPath+".\n")
+	// Unlike the PHP CLI, which deletes the config anyway, the login and
+	// the agent are kept for a retry (see retry_test.go).
+	assertContains(t, output, "No memry SessionStart hook to remove.\n")
+	assertContains(t, output, retryHint)
 	if len(h.claude.ran) != 0 {
 		t.Errorf("ran %q, want no claude command", h.claude.ran)
 	}

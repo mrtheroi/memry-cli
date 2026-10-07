@@ -5,7 +5,9 @@ package uninstall
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 
@@ -62,14 +64,29 @@ func Uninstall(env Env) int {
 			return failure
 		}
 	}
-	// Each step runs even when an earlier one fails.
+	// The agents go first: when memry cannot be removed from one, the
+	// login stays for a retry. Their lines are shown after the revoke's,
+	// in the order of the PHP CLI.
+	var agentLines bytes.Buffer
+	pending := env.withOut(&agentLines).removeFromAgents()
+	if len(pending) > 0 {
+		_, _ = env.Out.Write(agentLines.Bytes())
+		return env.keepForRetry(pending, true, "Kept the login and the agents still to clean up in ")
+	}
 	revoked := env.revokeToken()
-	removed := env.removeLocalInstall()
+	_, _ = env.Out.Write(agentLines.Bytes())
+	deleted := env.deleteConfig()
 	env.line("Run `brew uninstall memry` to remove the CLI.")
-	if revoked && removed {
+	if revoked && deleted {
 		return success
 	}
 	return failure
+}
+
+// withOut returns env printing to out.
+func (env Env) withOut(out io.Writer) Env {
+	env.Out = out
+	return env
 }
 
 // start checks the arguments of command, which takes only the global
@@ -98,21 +115,52 @@ func (env Env) aborted() int {
 	return failure
 }
 
-// removeLocalInstall removes what `memry setup` left on this machine:
-// memry in every agent it wired, and the config file with the login.
-// Every step runs, even when an earlier one fails; it reports whether all
-// of them succeeded.
-func (env Env) removeLocalInstall() bool {
+// removeFromAgents removes memry from every agent setup wired, even when
+// an earlier one fails, and returns the agents it could not be removed
+// from.
+func (env Env) removeFromAgents() []string {
 	saved, hasSaved := env.loadConfig().Agents()
 	if !hasSaved {
 		// Setup saves no agents up to 0.4.0, when it only wired Claude Code.
 		saved = []string{"claude-code"}
 	}
-	removed := true
+	var pending []string
 	for _, agent := range env.Agents.Only(saved) {
-		removed = env.report(agent.Uninstall()) && removed
+		if !env.report(agent.Uninstall()) {
+			pending = append(pending, agent.Key())
+		}
 	}
-	return env.deleteConfig() && removed
+	return pending
+}
+
+// keepForRetry saves the agents still to clean up as the only agents of
+// the config, keeping the login or, without keepLogin, nothing else, so
+// `memry uninstall` can retry them. Without a config file there is
+// nothing to keep: a retry cleans up Claude Code again. It always fails.
+func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
+	path := config.Path(env.getenv)
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		env.line("Fix the problems above, then run `memry uninstall` again.")
+		return failure
+	}
+	cfg, err := config.LoadOrEmpty(path)
+	if err == nil && !keepLogin {
+		// Start from an empty config at the same path.
+		if err = os.Remove(path); err == nil || errors.Is(err, fs.ErrNotExist) {
+			cfg, err = config.LoadOrEmpty(path)
+		}
+	}
+	if err == nil {
+		cfg.Set("agents", pending)
+		err = cfg.Save()
+	}
+	if err != nil {
+		env.line("Could not save the agents still to clean up to " + path + ": " + err.Error() + ".")
+	} else {
+		env.line(kept + path + ".")
+	}
+	env.line("Fix the problems above, then run `memry uninstall` again.")
+	return failure
 }
 
 // report prints the lines of an agent result and returns whether it
@@ -264,10 +312,14 @@ func DeleteAccount(env Env) int {
 		return failure
 	}
 	env.line("Deleted your memry account and all its memories.")
-	// The token was deleted with the account, so there is nothing to revoke.
-	removed := env.removeLocalInstall()
+	// The token was deleted with the account, so there is nothing to
+	// revoke, nor a login to keep for a retry.
+	if pending := env.removeFromAgents(); len(pending) > 0 {
+		return env.keepForRetry(pending, false, "Kept only the agents still to clean up in ")
+	}
+	deleted := env.deleteConfig()
 	env.line("Run `brew uninstall memry` to remove the CLI.")
-	if removed {
+	if deleted {
 		return success
 	}
 	return failure

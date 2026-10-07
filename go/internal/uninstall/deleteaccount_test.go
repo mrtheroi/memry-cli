@@ -177,7 +177,10 @@ func TestDeleteAccountKeepsCleaningUpAndFailsWhenALocalStepFails(t *testing.T) {
 	assertExit(t, code, 1, output)
 	assertContains(t, output, "Deleted your memry account and all its memories.\n")
 	assertContains(t, output, "Claude Code CLI not found; skipped removing the memry MCP server.\n")
-	assertContains(t, output, "Deleted "+h.configPath+".\n")
+	// Unlike the PHP CLI, which deletes the config anyway, the agent is
+	// kept for `memry uninstall` to retry (see retry_test.go).
+	assertContains(t, output, "No memry SessionStart hook to remove.\n")
+	assertContains(t, output, retryHint)
 }
 
 func TestDeleteAccountRemovesMemryFromTheAgentsSavedBySetup(t *testing.T) {

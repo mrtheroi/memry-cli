@@ -118,6 +118,7 @@ func (f *fakeClaude) lookPath(name string) (string, error) {
 // FakeAgent.
 type fakeAgent struct {
 	key, name string
+	fails     bool
 	calls     []string
 }
 
@@ -130,6 +131,9 @@ func (f *fakeAgent) Install(url string) agents.Result {
 }
 func (f *fakeAgent) Uninstall() agents.Result {
 	f.calls = append(f.calls, "uninstall")
+	if f.fails {
+		return agents.Result{Lines: []agents.Line{{Style: "warn", Text: "Could not unwire " + f.name + "."}}}
+	}
 	return agents.Result{Successful: true, Lines: []agents.Line{{Style: "info", Text: "Unwired " + f.name + "."}}}
 }
 
@@ -313,4 +317,14 @@ func assertCalls(t *testing.T, agent *fakeAgent, want ...string) {
 	if len(agent.calls) != len(want) || (len(want) > 0 && !reflect.DeepEqual(agent.calls, want)) {
 		t.Errorf("%s calls = %q, want %q", agent.key, agent.calls, want)
 	}
+}
+
+// config returns the decoded config file.
+func (h *harness) config() map[string]any {
+	h.t.Helper()
+	var values map[string]any
+	if err := json.Unmarshal([]byte(readText(h.t, h.configPath)), &values); err != nil {
+		h.t.Fatal(err)
+	}
+	return values
 }

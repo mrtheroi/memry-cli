@@ -324,8 +324,11 @@ func tomlValue(value any) string {
 }
 
 // tomlString is a TOML basic string: JSON's escapes are all valid TOML
-// escapes.
+// escapes. TOML forbids unescaped U+0000 to U+001F (except tab) and
+// U+007F; JSON escapes all the former but leaves DEL as it is, so it is
+// escaped here. A 0x7F byte is always DEL in UTF-8, never part of another
+// character. The PHP CLI writes DEL as it is, making the file invalid.
 func tomlString(value string) string {
 	encoded, _ := phpjson.Encode(value, phpjson.UnescapedSlashes|phpjson.UnescapedUnicode)
-	return string(encoded)
+	return strings.ReplaceAll(string(encoded), "\x7f", `\u007f`)
 }

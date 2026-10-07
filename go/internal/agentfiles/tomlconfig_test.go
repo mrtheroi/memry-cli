@@ -284,3 +284,16 @@ func TestTOMLConfigReplacesAMemryTableNamedWithSharedEscapes(t *testing.T) {
 
 	assertContents(t, path, tomlTable)
 }
+
+// Codex review of PR #34: TOML basic strings forbid U+007F (DEL) and the
+// control characters unescaped, which JSON's escaping would leave as they
+// are (DEL). Every string memry writes, keys and values, escapes them.
+func TestTOMLConfigEscapesTheCharactersTOMLForbidsInBasicStrings(t *testing.T) {
+	path := tomlPath(t)
+	server := memryServer()
+	server.Set("env", phpjson.NewObject("A\x7fB", "/tmp/a\x7fb\x01c\td.json"))
+
+	putTOMLServer(t, path, server)
+
+	assertContents(t, path, tomlTable+"env = { \"A\\u007fB\" = \"/tmp/a\\u007fb\\u0001c\\td.json\" }\n")
+}

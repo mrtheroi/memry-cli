@@ -185,23 +185,33 @@ func (env Env) request(url, method, path, token string, data any) (response, boo
 // other keys of the config, revokes the token of the previous login, then
 // wires memry into the selected agents.
 func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
+	// The token of an email login was issued for this setup: unless it is
+	// saved, no one could use or revoke it. A given token is the user's.
+	unsaved := func() int {
+		if plan.Login == flags.LoginEmail {
+			env.revokeNewToken(plan.URL, token)
+		}
+		return failure
+	}
 	path := config.Path(env.getenv)
 	cfg, err := config.LoadOrEmpty(path)
 	if err != nil {
-		return env.notSaved(path, err)
+		env.notSaved(path, err)
+		return unsaved()
 	}
 	previousURL, hasURL := cfg.URL()
 	previousToken, hasToken := cfg.Token()
 	saved, hasSaved := cfg.Agents()
 	selected, err := env.selectAgents(plan, saved, hasSaved)
 	if err != nil {
-		return failure
+		return unsaved()
 	}
 	cfg.Set("url", plan.URL)
 	cfg.Set("token", token)
 	cfg.Set("agents", selected)
 	if err := cfg.Save(); err != nil {
-		return env.notSaved(path, err)
+		env.notSaved(path, err)
+		return unsaved()
 	}
 
 	env.line(loggedIn + " Credentials saved to " + path + ".")
@@ -416,6 +426,18 @@ func (r response) jsonString(key string) (string, bool) {
 	}
 	value, ok := body[key].(string)
 	return value, ok
+}
+
+// revokeNewToken revokes the token setup was just issued, when it stops
+// without saving it. A 401 means it is no longer valid: as good as
+// revoked.
+func (env Env) revokeNewToken(url, token string) {
+	resp, err := env.send(http.MethodDelete, url+"/api/auth/token", token, nil)
+	if err == nil && (resp.succeeded() || resp.status == http.StatusUnauthorized) {
+		env.line("Revoked the new memry token.")
+	} else {
+		env.line("Could not revoke the new memry token.")
+	}
 }
 
 // revokePreviousToken revokes the token of the previous login on the

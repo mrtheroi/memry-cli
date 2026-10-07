@@ -212,8 +212,21 @@ func newAntigravity(env Env) Agent {
 	return a
 }
 
+// newWindsurf is Windsurf (now Devin Desktop): the memry MCP server in
+// ~/.codeium/windsurf/mcp_config.json and the memry instructions in its
+// global rules, ~/.codeium/windsurf/memories/global_rules.md.
 func newWindsurf(env Env) Agent {
-	return &configFileAgent{key: "windsurf", name: "Windsurf", env: env}
+	directory := func() string { return env.Getenv("HOME") + "/.codeium/windsurf" }
+	a := &configFileAgent{key: "windsurf", name: "Windsurf", env: env}
+	a.mcpConfig = func() agentfiles.MCPConfig {
+		return agentfiles.NewJSONConfig(directory()+"/mcp_config.json", "mcpServers")
+	}
+	a.server = a.commandServer
+	a.rulesFile = func() *agentfiles.RulesFile {
+		return agentfiles.NewRulesFile(directory() + "/memories/global_rules.md")
+	}
+	a.installed = func() bool { return isDir(directory()) }
+	return a
 }
 
 // lines are the lines a Result shows.

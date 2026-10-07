@@ -92,3 +92,23 @@ func TestSecretReadsWithEchoOffOnATerminal(t *testing.T) {
 		t.Errorf("Ask after Secret = %q, want the line Secret left: visible", answer)
 	}
 }
+
+// Symfony's confirmation question: the default (no) is shown, and only an
+// answer starting with y (in any case) confirms.
+func TestConfirmAsksAYesNoQuestionDefaultingToNo(t *testing.T) {
+	answers := map[string]bool{"yes\n": true, "y\n": true, " Yes \n": true, "YES\n": true, "no\n": false, "\n": false, "nope\n": false, "sure\n": false}
+	for input, want := range answers {
+		var out bytes.Buffer
+		confirmed, err := prompt.New(strings.NewReader(input), &out).Confirm("Remove memry?")
+
+		if err != nil || confirmed != want {
+			t.Errorf("Confirm(%q) = %v, %v; want %v", input, confirmed, err, want)
+		}
+		if want := "\n Remove memry? (yes/no) [no]:\n > \n"; out.String() != want {
+			t.Errorf("output = %q, want %q", out.String(), want)
+		}
+	}
+	if _, err := prompt.New(strings.NewReader(""), &bytes.Buffer{}).Confirm("Remove memry?"); !errors.Is(err, prompt.ErrAborted) {
+		t.Errorf("Confirm at the end of the input = %v, want ErrAborted", err)
+	}
+}

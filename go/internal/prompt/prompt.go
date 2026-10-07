@@ -109,3 +109,16 @@ func (t *Terminal) Secret(label string) string {
 	_, _ = io.WriteString(t.out, "\n\n")
 	return phpTrim(line)
 }
+
+// Confirm asks a yes/no question like Symfony's confirmation question
+// whose default is no: only an answer starting with y or Y confirms.
+func (t *Terminal) Confirm(label string) (bool, error) {
+	_, _ = fmt.Fprintf(t.out, "\n %s (yes/no) [no]:\n > ", label)
+	line, err := t.readLine()
+	if err != nil {
+		return false, err
+	}
+	_, _ = io.WriteString(t.out, "\n")
+	answer := phpTrim(line)
+	return answer != "" && (answer[0] == 'y' || answer[0] == 'Y'), nil
+}

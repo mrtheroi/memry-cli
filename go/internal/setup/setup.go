@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/console"
 	"github.com/mrtheroi/memry-cli/internal/email"
 	"github.com/mrtheroi/memry-cli/internal/flags"
+	"github.com/mrtheroi/memry-cli/internal/prompt"
 )
 
 // Prompter asks the questions setup needs.
@@ -28,6 +30,9 @@ type Prompter interface {
 	Ask(label string) (string, error)
 	// Secret returns the trimmed answer, typed without being shown.
 	Secret(label string) string
+	// MultiSelect returns the values of the choices picked, starting
+	// from defaults, or an error when the question was cancelled.
+	MultiSelect(label, hint string, choices []prompt.Choice, defaults []string) ([]string, error)
 }
 
 // Env is what setup runs with.
@@ -187,7 +192,11 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	}
 	previousURL, hasURL := cfg.URL()
 	previousToken, hasToken := cfg.Token()
-	selected := plan.Agents
+	saved, hasSaved := cfg.Agents()
+	selected, err := env.selectAgents(plan, saved, hasSaved)
+	if err != nil {
+		return failure
+	}
 	cfg.Set("url", plan.URL)
 	cfg.Set("token", token)
 	cfg.Set("agents", selected)
@@ -199,18 +208,69 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	if hasURL && hasToken && previousToken != token {
 		env.revokePreviousToken(previousURL, previousToken)
 	}
-	return env.wire(plan.URL, selected)
+	if len(selected) == 0 {
+		env.line("No agents selected; memry is not wired into any agent. Run `memry setup` again to choose some.")
+	}
+	return env.wire(plan.URL, selected, saved)
 }
 
-// wire installs memry in the selected agents. Every agent is handled,
-// even when an earlier one fails; a summary line per agent ends the
-// output.
-func (env Env) wire(url string, selected []string) int {
+// selectAgents returns the agents given with --agents, else asks which
+// agents to wire, defaulting to the saved selection without the agents
+// this version does not support, else to the installed ones. The default
+// is the answer when not interactive.
+func (env Env) selectAgents(plan flags.Plan, saved []string, hasSaved bool) ([]string, error) {
+	if plan.AgentsGiven {
+		return plan.Agents, nil
+	}
+	var choices []prompt.Choice
+	installed := []string{}
+	for _, agent := range env.Agents.All() {
+		if agent.IsInstalled() {
+			choices = append(choices, prompt.Choice{Value: agent.Key(), Label: agent.Name()})
+			installed = append(installed, agent.Key())
+		} else {
+			choices = append(choices, prompt.Choice{Value: agent.Key(), Label: agent.Name() + " (not installed)"})
+		}
+	}
+	defaults := installed
+	if hasSaved {
+		// Like PHP's array_intersect: the saved order, duplicates kept.
+		defaults = []string{}
+		for _, key := range saved {
+			if slices.Contains(env.Agents.Keys(), key) {
+				defaults = append(defaults, key)
+			}
+		}
+	}
+	if !plan.Interactive {
+		return defaults, nil
+	}
+	return env.Prompter.MultiSelect("Which agents do you use?", "Space to select, enter to confirm.", choices, defaults)
+}
+
+// wire installs memry in the selected agents and removes it from the
+// saved ones no longer selected. Every agent is handled, even when an
+// earlier one fails; a summary line per agent ends the output.
+func (env Env) wire(url string, selected, saved []string) int {
 	var summary []agents.Line
 	failed := false
 	for _, agent := range env.Agents.Only(selected) {
 		if env.report(agent.Install(url)) {
 			summary = append(summary, agents.Line{Style: "info", Text: agent.Name() + ": memry is set up."})
+		} else {
+			failed = true
+			summary = append(summary, agents.Line{Style: "error", Text: agent.Name() + ": failed; see the messages above."})
+		}
+	}
+	var deselected []string
+	for _, key := range saved {
+		if !slices.Contains(selected, key) {
+			deselected = append(deselected, key)
+		}
+	}
+	for _, agent := range env.Agents.Only(deselected) {
+		if env.report(agent.Uninstall()) {
+			summary = append(summary, agents.Line{Style: "info", Text: agent.Name() + ": memry was removed."})
 		} else {
 			failed = true
 			summary = append(summary, agents.Line{Style: "error", Text: agent.Name() + ": failed; see the messages above."})

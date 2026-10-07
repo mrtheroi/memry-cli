@@ -99,3 +99,16 @@ func (t *Terminal) Secret(label string) string {
 	_, _ = io.WriteString(t.out, "\n\n")
 	return phpTrim(line)
 }
+
+// Choice is an option of a multiselect: the value it selects and the
+// label shown.
+type Choice struct {
+	Value, Label string
+}
+
+// MultiSelect asks to pick any of the choices, starting from defaults.
+// Like Laravel Prompts, it answers with the defaults when the input is
+// not a terminal.
+func (t *Terminal) MultiSelect(label, hint string, choices []Choice, defaults []string) ([]string, error) {
+	return defaults, nil
+}

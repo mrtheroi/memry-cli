@@ -21,6 +21,8 @@ func tokenArgs(url string, token ...string) []string {
 // url and token and wires the agents without printing the token".
 func TestChecksTheTokenAgainstTheServerAndSavesIt(t *testing.T) {
 	h, s := newHarness(t), newServer(t)
+	claude := newClaude()
+	h.useAgents(claude)
 
 	output, code := h.run(tokenArgs(s.URL, "admin-token"))
 
@@ -36,11 +38,13 @@ func TestChecksTheTokenAgainstTheServerAndSavesIt(t *testing.T) {
 		}
 	}
 	assertContains(t, output, "Connected to "+s.URL+". Credentials saved to "+h.configPath+".\n")
+	assertContains(t, output, "Claude Code: memry is set up.\n")
 	assertNotContains(t, output, "admin-token")
 	want := map[string]any{"url": s.URL, "token": "admin-token", "agents": []any{"claude-code"}}
 	if got := h.config(); !reflect.DeepEqual(got, want) {
 		t.Errorf("config = %v, want %v", got, want)
 	}
+	assertCalls(t, claude, "install "+s.URL)
 }
 
 // Ported from "fails without saving anything when the server rejects the
@@ -62,6 +66,8 @@ func TestFailsWithoutSavingAnythingWhenTheTokenCheckFails(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newHarness(t)
+			claude := newClaude()
+			h.useAgents(claude)
 			s := newServer(t, func(s *server) { s.context = tt.context })
 
 			output, code := h.run(tokenArgs(s.URL, "admin-token"))
@@ -71,6 +77,7 @@ func TestFailsWithoutSavingAnythingWhenTheTokenCheckFails(t *testing.T) {
 				t.Errorf("output = %q, want %q", output, want)
 			}
 			h.assertNoConfig()
+			assertCalls(t, claude)
 		})
 	}
 	if len(login.received()) != 0 {

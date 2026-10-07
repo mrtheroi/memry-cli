@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -125,10 +126,16 @@ func unreachableURL(t *testing.T) string {
 	return s.URL
 }
 
-// answer is one scripted prompt answer, like Pest's expectsQuestion.
+// answer is one scripted prompt answer, like Pest's expectsQuestion, or
+// expectsChoice when choices is set: the choices offered, and selected
+// the values picked.
 type answer struct {
 	label, value string
 	aborted      bool
+	choices      []prompt.Choice
+	selected     []string
+	// defaults, when set, are the values the question must start from.
+	defaults []string
 }
 
 // prompter answers the questions in order and fails the test on any
@@ -161,6 +168,24 @@ func (p *prompter) Ask(label string) (string, error) {
 
 func (p *prompter) Secret(label string) string {
 	return p.next(label).value
+}
+
+func (p *prompter) MultiSelect(label, hint string, choices []prompt.Choice, defaults []string) ([]string, error) {
+	p.t.Helper()
+	a := p.next(label)
+	if hint != "Space to select, enter to confirm." {
+		p.t.Errorf("hint = %q", hint)
+	}
+	if !reflect.DeepEqual(choices, a.choices) {
+		p.t.Errorf("choices = %+v, want %+v", choices, a.choices)
+	}
+	if a.defaults != nil && !reflect.DeepEqual(defaults, a.defaults) {
+		p.t.Errorf("defaults = %q, want %q", defaults, a.defaults)
+	}
+	if a.aborted {
+		return nil, prompt.ErrAborted
+	}
+	return a.selected, nil
 }
 
 // fakeAgent is an agent that records the calls it gets and succeeds

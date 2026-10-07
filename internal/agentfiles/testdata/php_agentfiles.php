@@ -4,6 +4,11 @@
 // Each line is one case: the file kind, its contents before (null for no
 // file), and what put and remove return and leave in the file, each run on
 // a fresh copy in a temporary directory.
+//
+// It needs the PHP CLI's classes, removed in 1.0.0: check out its last PHP
+// commit, f819d83d1fd8447ae1d6023ac7f2ce27becd06b0, run `composer install`, then run
+// this script from go/internal/agentfiles/testdata, where it lived then, and
+// copy the output here.
 require __DIR__.'/../../../../vendor/autoload.php';
 
 use App\Support\JsonMcpConfig;

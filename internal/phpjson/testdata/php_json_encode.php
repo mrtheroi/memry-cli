@@ -1,5 +1,6 @@
 <?php
 // Generates php_json_encode.txt: run `php php_json_encode.php > php_json_encode.txt`.
+// It needs only PHP, not the PHP CLI removed in 1.0.0.
 // Each line: the JSON input and what json_encode(json_decode($input, true), JSON_UNESCAPED_SLASHES)
 // returns for it ("false" when it fails), both JSON-quoted, separated by a tab.
 $cases = [

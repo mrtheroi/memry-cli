@@ -1,5 +1,6 @@
 <?php
 // Generates php_filter_validate_email.txt: run `php php_filter_validate_email.php > php_filter_validate_email.txt`.
+// It needs only PHP, not the PHP CLI removed in 1.0.0.
 $c = [
  'ana@example.com','not-an-email',"ana@example.co\xc3m",'','@','ana@','@example.com','ana@example','ana@localhost',
  'a.b@example.com','a..b@example.com','.ab@example.com','ab.@example.com','a+b@example.com','a_b-c@sub.example.co.uk',

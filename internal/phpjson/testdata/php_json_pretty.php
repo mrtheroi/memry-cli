@@ -1,5 +1,6 @@
 <?php
 // Generates php_json_pretty.txt: run `php php_json_pretty.php > php_json_pretty.txt`.
+// It needs only PHP, not the PHP CLI removed in 1.0.0.
 // Each line: the JSON input, then what json_encode(json_decode($input), $flags) returns for it with
 // JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE and with JSON_PRETTY_PRINT |
 // JSON_UNESCAPED_SLASHES ("false" when json_decode gives null or json_encode fails), all JSON-quoted,

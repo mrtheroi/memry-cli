@@ -105,39 +105,38 @@ func (m *multiSelect) press(key string) {
 	}
 }
 
-// ANSI sequences the question is drawn with.
+// The styles of Laravel Prompts' default theme, as ANSI sequences.
+func gray(s string) string   { return "\x1b[90m" + s + "\x1b[39m" }
+func cyan(s string) string   { return "\x1b[36m" + s + "\x1b[39m" }
+func red(s string) string    { return "\x1b[31m" + s + "\x1b[39m" }
+func dim(s string) string    { return "\x1b[2m" + s + "\x1b[22m" }
+func struck(s string) string { return "\x1b[9m" + s + "\x1b[29m" }
+
 const (
 	hideCursor = "\x1b[?25l"
 	showCursor = "\x1b[?25h"
-	cyan       = "\x1b[36m"
-	gray       = "\x1b[90m"
-	red        = "\x1b[31m"
-	dim        = "\x1b[2m"
-	reset      = "\x1b[0m"
 )
 
 // render draws the question like Laravel Prompts' default theme.
 func (m *multiSelect) render() []string {
 	switch m.state {
 	case "submit":
-		// The labels in the order the values were selected.
+		// The labels in the order of the choices.
 		var body []string
-		for _, value := range m.values {
-			for _, choice := range m.choices {
-				if choice.Value == value {
-					body = append(body, choice.Label)
-				}
+		for _, choice := range m.choices {
+			if slices.Contains(m.values, choice.Value) {
+				body = append(body, choice.Label)
 			}
 		}
 		if len(body) == 0 {
-			body = []string{gray + "None" + reset}
+			body = []string{gray("None")}
 		}
 		// Like Laravel Prompts, a blank line follows an answered question.
-		return append(box(dim+m.label+reset, body, gray), "")
+		return append(box(dim(m.label), body, gray), "")
 	case "cancel":
-		return append(box(m.label, m.options(), red), red+"  ⚠ Cancelled."+reset, "")
+		return append(box(m.label, m.options(), red), red("  ⚠ Cancelled."), "")
 	}
-	return append(box(cyan+m.label+reset, m.options(), gray), gray+"  "+m.hint+reset)
+	return append(box(cyan(m.label), m.options(), gray), gray("  "+m.hint))
 }
 
 // options are the lines of the choices.
@@ -147,23 +146,22 @@ func (m *multiSelect) options() []string {
 		active, selected := i == m.highlighted, slices.Contains(m.values, choice.Value)
 		switch {
 		case m.state == "cancel":
-			mark := "◻"
-			if selected {
-				mark = "◼"
-			}
-			pointer := " "
+			pointer, mark := " ", "◻"
 			if active {
 				pointer = "›"
 			}
-			lines[i] = dim + pointer + " " + mark + " " + choice.Label + "  " + reset
+			if selected {
+				mark = "◼"
+			}
+			lines[i] = dim(pointer + " " + mark + " " + struck(choice.Label) + "  ")
 		case active && selected:
-			lines[i] = cyan + "› ◼" + reset + " " + choice.Label + "  "
+			lines[i] = cyan("› ◼") + " " + choice.Label + "  "
 		case active:
-			lines[i] = cyan + "›" + reset + " ◻ " + choice.Label + "  "
+			lines[i] = cyan("›") + " ◻ " + choice.Label + "  "
 		case selected:
-			lines[i] = "  " + cyan + "◼" + reset + " " + dim + choice.Label + reset + "  "
+			lines[i] = "  " + cyan("◼") + " " + dim(choice.Label) + "  "
 		default:
-			lines[i] = "  " + dim + "◻" + reset + " " + dim + choice.Label + reset + "  "
+			lines[i] = "  " + dim("◻") + " " + dim(choice.Label) + "  "
 		}
 	}
 	return lines
@@ -173,16 +171,16 @@ func (m *multiSelect) options() []string {
 const minBoxWidth = 60
 
 // box draws title and body in a box at least minBoxWidth wide.
-func box(title string, body []string, color string) []string {
+func box(title string, body []string, color func(string) string) []string {
 	width := max(minBoxWidth, visibleWidth(title))
 	for _, line := range body {
 		width = max(width, visibleWidth(line))
 	}
-	lines := []string{color + " ┌" + reset + " " + title + " " + color + strings.Repeat("─", width-visibleWidth(title)) + "┐" + reset}
+	lines := []string{color(" ┌") + " " + title + " " + color(strings.Repeat("─", width-visibleWidth(title))+"┐")}
 	for _, line := range body {
-		lines = append(lines, color+" │"+reset+" "+line+strings.Repeat(" ", width-visibleWidth(line))+" "+color+"│"+reset)
+		lines = append(lines, color(" │")+" "+line+strings.Repeat(" ", width-visibleWidth(line))+" "+color("│"))
 	}
-	return append(lines, color+" └"+strings.Repeat("─", width+2)+"┘"+reset)
+	return append(lines, color(" └"+strings.Repeat("─", width+2)+"┘"))
 }
 
 // visibleWidth is the number of characters of s shown, without its ANSI
@@ -205,24 +203,27 @@ func visibleWidth(s string) int {
 	return width
 }
 
-// screen redraws a frame of lines in place. In raw mode a newline does
+// screen redraws a frame of lines in place, like Laravel Prompts: only
+// when it changes, from a blank line above it. In raw mode a newline does
 // not return the cursor, so lines end with "\r\n".
 type screen struct {
-	out   io.Writer
+	out      io.Writer
+	previous string
+	// lines is how many lines the previous frame took, its blank line
+	// included.
 	lines int
 }
 
 func (s *screen) draw(frame []string) {
-	var b strings.Builder
-	if s.lines == 0 {
-		b.WriteString("\r\n")
-	} else {
-		// Back to the first line of the previous frame, which is cleared.
-		b.WriteString("\x1b[" + strconv.Itoa(s.lines) + "A\r\x1b[J")
+	text := strings.Join(frame, "\r\n") + "\r\n"
+	if text == s.previous {
+		return
 	}
-	for _, line := range frame {
-		b.WriteString(line + "\r\n")
+	prefix := "\r\n"
+	if s.lines > 0 {
+		// Back to the blank line of the previous frame, then clear.
+		prefix = "\x1b[1G\x1b[" + strconv.Itoa(s.lines) + "A\x1b[J\r\n"
 	}
-	s.lines = len(frame)
-	_, _ = io.WriteString(s.out, b.String())
+	_, _ = io.WriteString(s.out, prefix+text)
+	s.previous, s.lines = text, len(frame)+1
 }

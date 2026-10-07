@@ -142,3 +142,63 @@ func TestMultiSelectDrawsTheQuestionLikeLaravelPrompts(t *testing.T) {
 		}
 	}
 }
+
+// The bytes Laravel Prompts writes on a terminal for the same keys,
+// recorded from the PHP CLI under a pseudo-terminal: its colors, how it
+// redraws the question in place (only when it changes) and the blank line
+// after it.
+func TestMultiSelectWritesWhatLaravelPromptsWrites(t *testing.T) {
+	var out bytes.Buffer
+	terminal := prompt.NewTerminalForTest(&keys{pressed: []string{"x", "j", "\r"}}, &out)
+	choices := []prompt.Choice{{Value: "claude-code", Label: "Claude Code"}, {Value: "codex", Label: "Codex (not installed)"}}
+
+	if _, err := terminal.MultiSelect("Which agents do you use?", hint, choices, []string{"claude-code"}); err != nil {
+		t.Fatal(err)
+	}
+
+	gray := func(s string) string { return "\x1b[90m" + s + "\x1b[39m" }
+	cyan := func(s string) string { return "\x1b[36m" + s + "\x1b[39m" }
+	dim := func(s string) string { return "\x1b[2m" + s + "\x1b[22m" }
+	pad := func(s string, width int) string { return s + strings.Repeat(" ", 60-width) }
+	top := func(title string) string {
+		return gray(" ┌") + " " + title + " " + gray(strings.Repeat("─", 60-len("Which agents do you use?"))+"┐") + "\r\n"
+	}
+	row := func(s string, width int) string {
+		return gray(" │") + " " + pad(s, width) + " " + gray("│") + "\r\n"
+	}
+	bottom := gray(" └"+strings.Repeat("─", 62)+"┘") + "\r\n"
+	redraw := "\x1b[1G\x1b[6A\x1b[J\r\n"
+	want := "\x1b[?25l\r\n" +
+		top(cyan("Which agents do you use?")) +
+		row(cyan("› ◼")+" Claude Code  ", 17) +
+		row("  "+dim("◻")+" "+dim("Codex (not installed)")+"  ", 27) +
+		bottom + gray("  "+hint) + "\r\n" +
+		redraw +
+		top(cyan("Which agents do you use?")) +
+		row("  "+cyan("◼")+" "+dim("Claude Code")+"  ", 17) +
+		row(cyan("›")+" ◻ Codex (not installed)  ", 27) +
+		bottom + gray("  "+hint) + "\r\n" +
+		"\x1b[1G\x1b[6A\x1b[J\r\n" +
+		top(dim("Which agents do you use?")) +
+		row("Claude Code", 11) +
+		bottom + "\r\n" +
+		"\x1b[?25h"
+	if out.String() != want {
+		t.Errorf("output =\n%q\nwant\n%q", out.String(), want)
+	}
+}
+
+// Like Laravel Prompts, the answered question lists the selected labels
+// in the order of the choices, while the answer keeps the order they were
+// selected in.
+func TestMultiSelectListsTheSelectedLabelsInTheOrderOfTheChoices(t *testing.T) {
+	selected, output, _ := multiSelect(t, []string{"windsurf"}, " ", "\r")
+
+	if !reflect.DeepEqual(selected, []string{"windsurf", "claude-code"}) {
+		t.Errorf("MultiSelect = %q, want [windsurf claude-code]", selected)
+	}
+	plain := ansi.ReplaceAllString(output, "")
+	if !strings.Contains(plain, " │ Claude Code"+strings.Repeat(" ", 49)+" │\r\n │ Windsurf ") {
+		t.Errorf("output does not list Claude Code before Windsurf:\n%s", plain)
+	}
+}

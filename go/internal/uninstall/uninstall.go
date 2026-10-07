@@ -115,17 +115,19 @@ func (env Env) aborted() int {
 	return failure
 }
 
-// removeFromAgents removes memry from every agent setup wired, even when
-// an earlier one fails, and returns the agents it could not be removed
-// from.
+// removeFromAgents removes memry from every agent setup wired, and from
+// the ones a failed removal left in agents_to_remove, even when an earlier
+// one fails. It returns the agents it could not be removed from.
 func (env Env) removeFromAgents() []string {
-	saved, hasSaved := env.loadConfig().Agents()
-	if !hasSaved {
+	cfg := env.loadConfig()
+	saved, hasSaved := cfg.Agents()
+	toRemove, hasToRemove := cfg.AgentsToRemove()
+	if !hasSaved && !hasToRemove {
 		// Setup saves no agents up to 0.4.0, when it only wired Claude Code.
 		saved = []string{"claude-code"}
 	}
 	var pending []string
-	for _, agent := range env.Agents.Only(saved) {
+	for _, agent := range env.Agents.Only(append(saved, toRemove...)) {
 		if !env.report(agent.Uninstall()) {
 			pending = append(pending, agent.Key())
 		}
@@ -133,9 +135,9 @@ func (env Env) removeFromAgents() []string {
 	return pending
 }
 
-// keepForRetry saves the agents still to clean up as the only agents of
-// the config, keeping the login or, without keepLogin, nothing else, so
-// `memry uninstall` can retry them. Without a config file there is
+// keepForRetry saves the agents still to clean up in agents_to_remove,
+// with no agents selected any more, keeping the login or, without
+// keepLogin, nothing else, so `memry uninstall` can retry them. Without a config file there is
 // nothing to keep: a retry cleans up Claude Code again. It always fails.
 func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
 	path := config.Path(env.getenv)
@@ -151,7 +153,8 @@ func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
 		}
 	}
 	if err == nil {
-		cfg.Set("agents", pending)
+		cfg.Delete("agents")
+		cfg.Set("agents_to_remove", pending)
 		err = cfg.Save()
 	}
 	if err != nil {

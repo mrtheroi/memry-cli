@@ -8,9 +8,9 @@ import (
 )
 
 // When memry cannot be removed from an agent, uninstall keeps what a retry
-// needs: the login and the agents still to clean up. It neither revokes
-// the token nor deletes the config. (The PHP CLI revokes the token and
-// deletes the config anyway, forgetting the agents.)
+// needs: the login, and the agents still to clean up in agents_to_remove.
+// It neither revokes the token nor deletes the config. (The PHP CLI
+// revokes the token and deletes the config anyway, forgetting the agents.)
 
 const retryHint = "Fix the problems above, then run `memry uninstall` again.\n"
 
@@ -31,7 +31,7 @@ func TestUninstallKeepsTheLoginAndTheAgentsStillToCleanUpWhenAnAgentFails(t *tes
 	if got := s.received(); len(got) != 0 {
 		t.Errorf("sent %+v, want no revoke", got)
 	}
-	wantConfig := map[string]any{"url": s.URL, "token": "old-token", "project": "kept", "agents": []any{"codex", "windsurf"}}
+	wantConfig := map[string]any{"url": s.URL, "token": "old-token", "project": "kept", "agents_to_remove": []any{"codex", "windsurf"}}
 	if got := h.config(); !reflect.DeepEqual(got, wantConfig) {
 		t.Errorf("config = %v, want %v", got, wantConfig)
 	}
@@ -91,10 +91,44 @@ func TestDeleteAccountKeepsOnlyTheAgentsStillToCleanUpWhenAnAgentFails(t *testin
 	if output != want {
 		t.Errorf("output = %q, want %q", output, want)
 	}
-	if got, want := h.config(), map[string]any{"agents": []any{"claude-code"}}; !reflect.DeepEqual(got, want) {
+	if got, want := h.config(), map[string]any{"agents_to_remove": []any{"claude-code"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("config = %v, want %v", got, want)
 	}
 	if got := s.received(); len(got) != 1 {
 		t.Errorf("requests = %+v, want only the deletion", got)
 	}
+}
+
+// Uninstall removes memry from the selected agents and from the ones a
+// failed removal left in agents_to_remove.
+func TestUninstallAlsoRemovesTheAgentsToRemove(t *testing.T) {
+	h, s := newHarness(t), newServer(t)
+	claude, codex, windsurf := &fakeAgent{key: "claude-code", name: "Claude Code"}, &fakeAgent{key: "codex", name: "Codex"}, &fakeAgent{key: "windsurf", name: "Windsurf"}
+	h.useAgents(claude, codex, windsurf)
+	h.previousConfig(map[string]any{"url": s.URL, "token": "old-token", "agents": []string{"windsurf"}, "agents_to_remove": []string{"codex", "windsurf"}})
+
+	output, code := h.run(uninstall.Uninstall, force)
+
+	assertExit(t, code, 0, output)
+	assertCalls(t, codex, "uninstall")
+	assertCalls(t, windsurf, "uninstall")
+	assertCalls(t, claude)
+	if h.configExists() {
+		t.Error("the config file still exists")
+	}
+}
+
+// What delete-account leaves is only agents_to_remove: uninstall then
+// retries those agents, not Claude Code as for a config from before 0.4.0.
+func TestUninstallRetriesOnlyTheAgentsToRemoveOfAConfigWithoutAgents(t *testing.T) {
+	h := newHarness(t)
+	claude, codex := &fakeAgent{key: "claude-code", name: "Claude Code"}, &fakeAgent{key: "codex", name: "Codex"}
+	h.useAgents(claude, codex)
+	h.previousConfig(map[string]any{"agents_to_remove": []string{"codex"}})
+
+	output, code := h.run(uninstall.Uninstall, force)
+
+	assertExit(t, code, 0, output)
+	assertCalls(t, codex, "uninstall")
+	assertCalls(t, claude)
 }

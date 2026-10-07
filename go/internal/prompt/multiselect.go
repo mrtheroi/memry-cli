@@ -28,7 +28,7 @@ func (t *Terminal) MultiSelect(label, hint string, choices []Choice, defaults []
 		return defaults, nil
 	}
 	defer restore()
-	m := &multiSelect{label: label, hint: hint, choices: choices, values: slices.Clone(defaults), state: "active"}
+	m := &multiSelect{label: label, hint: hint, choices: choices, values: unique(defaults), state: "active"}
 	screen := &screen{out: t.out}
 	_, _ = io.WriteString(t.out, hideCursor)
 	defer func() { _, _ = io.WriteString(t.out, showCursor) }()
@@ -106,6 +106,27 @@ func keySize(data []byte) int {
 	return 1
 }
 
+// unique returns values without repeats, each at its first place.
+func unique(values []string) []string {
+	once := []string{}
+	for _, value := range values {
+		if !slices.Contains(once, value) {
+			once = append(once, value)
+		}
+	}
+	return once
+}
+
+// allSelected reports whether every choice is selected.
+func (m *multiSelect) allSelected() bool {
+	for _, choice := range m.choices {
+		if !slices.Contains(m.values, choice.Value) {
+			return false
+		}
+	}
+	return true
+}
+
 // The keys Laravel Prompts' multiselect knows.
 var (
 	previousKeys = []string{"\x1b[A", "\x1bOA", "\x1b[D", "\x1bOD", "\x1b[Z", "\x10", "\x02", "k", "h"}
@@ -144,7 +165,7 @@ func (m *multiSelect) press(key string) {
 			m.values = append(m.values, value)
 		}
 	case key == "\x01":
-		if len(m.values) == count {
+		if m.allSelected() {
 			m.values = []string{}
 		} else {
 			m.values = []string{}

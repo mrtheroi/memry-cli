@@ -226,3 +226,22 @@ func TestMultiSelectSplitsTheKeysOfEachRead(t *testing.T) {
 		}
 	}
 }
+
+// Repeated defaults are one selection: toggling the choice unselects it,
+// and Ctrl+A checks which choices are selected, not how many values.
+func TestMultiSelectTakesRepeatedDefaultsOnce(t *testing.T) {
+	selected, _, _ := multiSelect(t, []string{"codex", "codex"}, "j", " ", "\r")
+	if len(selected) != 0 {
+		t.Errorf("MultiSelect after unselecting = %q, want none", selected)
+	}
+
+	selected, _, _ = multiSelect(t, []string{"codex", "codex", "windsurf"}, "\x01", "\r")
+	if !reflect.DeepEqual(selected, []string{"claude-code", "codex", "windsurf"}) {
+		t.Errorf("MultiSelect after Ctrl+A = %q, want all", selected)
+	}
+
+	selected, _, _ = multiSelect(t, []string{"codex", "codex"}, "\r")
+	if !reflect.DeepEqual(selected, []string{"codex"}) {
+		t.Errorf("MultiSelect = %q, want [codex]", selected)
+	}
+}

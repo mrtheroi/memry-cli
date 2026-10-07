@@ -249,7 +249,7 @@ func (env Env) inRegistryOrder(keys []string) []string {
 // is the answer when not interactive.
 func (env Env) selectAgents(plan flags.Plan, saved []string, hasSaved bool) ([]string, error) {
 	if plan.AgentsGiven {
-		return plan.Agents, nil
+		return unique(plan.Agents), nil
 	}
 	var choices []prompt.Choice
 	installed := []string{}
@@ -263,9 +263,9 @@ func (env Env) selectAgents(plan flags.Plan, saved []string, hasSaved bool) ([]s
 	}
 	defaults := installed
 	if hasSaved {
-		// Like PHP's array_intersect: the saved order, duplicates kept.
+		// The saved order, each agent once (PHP keeps duplicates).
 		defaults = []string{}
-		for _, key := range saved {
+		for _, key := range unique(saved) {
 			if slices.Contains(env.Agents.Keys(), key) {
 				defaults = append(defaults, key)
 			}
@@ -275,6 +275,17 @@ func (env Env) selectAgents(plan flags.Plan, saved []string, hasSaved bool) ([]s
 		return defaults, nil
 	}
 	return env.Prompter.MultiSelect("Which agents do you use?", "Space to select, enter to confirm.", choices, defaults)
+}
+
+// unique returns keys without repeats, each at its first place.
+func unique(keys []string) []string {
+	once := []string{}
+	for _, key := range keys {
+		if !slices.Contains(once, key) {
+			once = append(once, key)
+		}
+	}
+	return once
 }
 
 // wire installs memry in the selected agents and removes it from the

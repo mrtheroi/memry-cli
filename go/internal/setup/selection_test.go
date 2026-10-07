@@ -269,3 +269,36 @@ func TestKeepsADeselectedAgentSavedUntilMemryIsRemovedFromIt(t *testing.T) {
 	assertExit(t, code, 1, output)
 	assertSavedAgents(t, h, "claude-code", "codex")
 }
+
+// Each agent is selected once, at its first place. (The PHP CLI saves
+// duplicates as given.)
+func TestSavesEachSelectedAgentOnce(t *testing.T) {
+	h, s := newHarness(t), newServer(t)
+	h.useAgents(newClaude(), newCodex())
+
+	output, code := h.run([]string{"--url", s.URL, "--token=admin-token", "--agents=codex,codex,claude-code"})
+
+	assertExit(t, code, 0, output)
+	assertSavedAgents(t, h, "codex", "claude-code")
+
+	h.writeConfig(map[string]any{"url": s.URL, "token": "admin-token", "agents": []string{"codex", "cursor", "codex"}})
+	output, code = h.run([]string{"--url", s.URL, "--token=admin-token", "-n"})
+
+	assertExit(t, code, 0, output)
+	assertSavedAgents(t, h, "codex")
+}
+
+func TestAsksWithEachSavedAgentOnceAsTheDefault(t *testing.T) {
+	h, s := newHarness(t), newServer(t)
+	h.useAgents(newClaude(), newCodex())
+	h.writeConfig(map[string]any{"url": s.URL, "token": "admin-token", "agents": []string{"codex", "codex"}})
+
+	output, code := h.run([]string{"--url", s.URL, "--token=admin-token"}, answer{
+		label:    whichAgents,
+		choices:  []prompt.Choice{{Value: "claude-code", Label: "Claude Code"}, {Value: "codex", Label: "Codex"}},
+		defaults: []string{"codex"},
+		selected: []string{"codex"},
+	})
+
+	assertExit(t, code, 0, output)
+}

@@ -7,18 +7,24 @@ import (
 
 // UnexpectedArgument returns the error Symfony gives for the first option
 // in rest the command does not know or its first argument (memry's
-// commands take none), if any. --ansi and --no-ansi are global options the
-// PHP CLI accepts.
+// commands take none), if any. --ansi, --no-ansi and --env are global
+// options the PHP CLI accepts.
 func UnexpectedArgument(command string, rest []string) (string, bool) {
-	for i, token := range rest {
-		switch {
+	for i := 0; i < len(rest); i++ {
+		switch token := rest[i]; {
 		case token == "--":
 			if i+1 < len(rest) {
 				return noArguments(command, rest[i+1]), true
 			}
 			return "", false
-		case IsGlobalOption(token):
+		case IsGlobalOption(token), strings.HasPrefix(token, "--env="):
 			continue
+		case token == "--env":
+			// Laravel Zero's --env[=ENV], whose optional value may be the
+			// next argument.
+			if i+1 < len(rest) && (rest[i+1] == "" || rest[i+1][0] != '-') {
+				i++
+			}
 		case strings.HasPrefix(token, "--"):
 			name, _, _ := strings.Cut(token, "=")
 			if slices.Contains(GlobalOptions, name) {

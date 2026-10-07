@@ -91,6 +91,23 @@ func TestResolveRejectsAURLThatIsNotAnHTTPAddress(t *testing.T) {
 	}
 }
 
+// PHP's parse_url rejects a port longer than five digits or above 65535,
+// which Go's url.Parse accepts. Port 0 can never be connected to, so it is
+// rejected too.
+func TestResolveRejectsAPortOutOfRange(t *testing.T) {
+	urls := []string{
+		"https://memry.test:99999", "https://memry.test:65536", "https://memry.test:000065535",
+		"http://[::1]:99999", "https://memry.test:99999/memry", "https://memry.test:0", "https://memry.test:00000",
+	}
+	logins := [][]string{{"--email=ana@example.com"}, {"--token=admin-token"}}
+	for _, url := range urls {
+		for _, login := range logins {
+			assertError(t, append([]string{"--url=" + url}, login...), nil,
+				"Invalid server address given with --url. Use an http:// or https:// URL.")
+		}
+	}
+}
+
 // Ported from "accepts a plain http server url for self-hosted servers" and
 // "strips a trailing slash from the server url".
 func TestResolveAcceptsAnHTTPServerURLWithoutItsTrailingSlash(t *testing.T) {
@@ -101,6 +118,10 @@ func TestResolveAcceptsAnHTTPServerURLWithoutItsTrailingSlash(t *testing.T) {
 		"https://tools.company.internal/memry": "https://tools.company.internal/memry",
 		"https://memry.test//":                 "https://memry.test",
 		"HTTPS://memry.test":                   "HTTPS://memry.test",
+		"https://memry.test:65535":             "https://memry.test:65535",
+		"https://memry.test:00080/":            "https://memry.test:00080",
+		"http://[::1]:8000":                    "http://[::1]:8000",
+		"https://memry.test:":                  "https://memry.test:",
 	}
 	for given, want := range tests {
 		for _, argv := range [][]string{{"--url=" + given, "--token=admin-token"}, {"--url", given, "--email", "ana@example.com"}} {
@@ -265,5 +286,122 @@ func TestResolveCarriesTheEmailAgentsAndInteraction(t *testing.T) {
 				t.Errorf("Resolve(%q) = %+v, want %+v", tt.argv, plan, tt.want)
 			}
 		})
+	}
+}
+
+// Symfony's Application::configureIO turns interaction off for -n and
+// --no-interaction, and for the quiet (-q, --quiet) and silent (--silent)
+// verbosities, which also hide every line setup prints.
+func TestResolveTurnsInteractionOffWhenQuietOrSilent(t *testing.T) {
+	tests := []struct {
+		argv            []string
+		wantInteractive bool
+		wantQuiet       bool
+	}{
+		{[]string{"--email=ana@example.com"}, true, false},
+		{[]string{"--email=ana@example.com", "-n"}, false, false},
+		{[]string{"--email=ana@example.com", "--no-interaction"}, false, false},
+		{[]string{"--email=ana@example.com", "-q"}, false, true},
+		{[]string{"--email=ana@example.com", "--quiet"}, false, true},
+		{[]string{"--email=ana@example.com", "--silent"}, false, true},
+	}
+	for _, tt := range tests {
+		plan, err := resolve(tt.argv, nil)
+		if err != nil {
+			t.Fatalf("Resolve(%q): %v", tt.argv, err)
+		}
+		if plan.Interactive != tt.wantInteractive || plan.Quiet != tt.wantQuiet {
+			t.Errorf("Resolve(%q) Interactive, Quiet = %v, %v; want %v, %v",
+				tt.argv, plan.Interactive, plan.Quiet, tt.wantInteractive, tt.wantQuiet)
+		}
+	}
+}
+
+// The token prompt needs interaction, which -q and --silent turn off too.
+func TestResolveNeedsATokenValueWhenQuiet(t *testing.T) {
+	for _, quiet := range []string{"-q", "--quiet", "--silent"} {
+		assertError(t, []string{"--url=https://memry.test", "--token", quiet}, nil,
+			"Pass --token=<value> when running without interaction.")
+	}
+}
+
+// Without a verbosity option, Symfony reads SHELL_VERBOSITY as PHP's (int)
+// cast does: -1 is quiet and -2 silent, and any other value is the normal
+// verbosity, which keeps the interaction.
+func TestResolveReadsTheVerbosityFromShellVerbosity(t *testing.T) {
+	tests := []struct {
+		value string
+		quiet bool
+	}{
+		{"-1", true}, {"-2", true}, {" -1", true}, {"-1abc", true}, {"-1.9", true}, {"-2e0", true},
+		{"-3", false}, {"0", false}, {"1", false}, {"", false}, {"abc", false}, {"- 1", false}, {"-0.5", false},
+	}
+	for _, tt := range tests {
+		plan, err := resolve([]string{"--email=ana@example.com"}, map[string]string{"SHELL_VERBOSITY": tt.value})
+		if err != nil {
+			t.Fatalf("Resolve with SHELL_VERBOSITY=%q: %v", tt.value, err)
+		}
+		if plan.Interactive == tt.quiet || plan.Quiet != tt.quiet {
+			t.Errorf("SHELL_VERBOSITY=%q: Interactive, Quiet = %v, %v; want %v, %v",
+				tt.value, plan.Interactive, plan.Quiet, !tt.quiet, tt.quiet)
+		}
+	}
+}
+
+// A verbosity option wins over SHELL_VERBOSITY, and --silent and -q win
+// over -v, in Symfony's order.
+func TestResolvePrefersAVerbosityOptionOverShellVerbosity(t *testing.T) {
+	quietEnv := map[string]string{"SHELL_VERBOSITY": "-1"}
+	tests := []struct {
+		argv  []string
+		quiet bool
+	}{
+		{[]string{"-v"}, false},
+		{[]string{"-vv"}, false},
+		{[]string{"-vvv"}, false},
+		{[]string{"--verbose"}, false},
+		{[]string{"--verbose=2"}, false},
+		{[]string{"-v", "-q"}, true},
+		{[]string{"--verbose", "--silent"}, true},
+	}
+	for _, tt := range tests {
+		argv := append([]string{"--email=ana@example.com"}, tt.argv...)
+		plan, err := resolve(argv, quietEnv)
+		if err != nil {
+			t.Fatalf("Resolve(%q): %v", argv, err)
+		}
+		if plan.Interactive == tt.quiet || plan.Quiet != tt.quiet {
+			t.Errorf("Resolve(%q) with SHELL_VERBOSITY=-1: Interactive, Quiet = %v, %v; want %v, %v",
+				argv, plan.Interactive, plan.Quiet, !tt.quiet, tt.quiet)
+		}
+	}
+}
+
+// Symfony finds these options with ArgvInput::hasParameterOption, which
+// matches a short option at the start of a token ("-qn" is quiet, "-nq" is
+// only -n) and stops at "--".
+func TestResolveFindsInteractionOptionsLikeSymfony(t *testing.T) {
+	tests := []struct {
+		argv            []string
+		env             map[string]string
+		wantInteractive bool
+		wantQuiet       bool
+	}{
+		{[]string{"-qn"}, nil, false, true},
+		{[]string{"-nq"}, nil, false, false},
+		{[]string{"-vq"}, map[string]string{"SHELL_VERBOSITY": "-1"}, true, false},
+		{[]string{"--", "-q"}, nil, true, false},
+		{[]string{"--", "-n"}, nil, true, false},
+	}
+	for _, tt := range tests {
+		argv := append([]string{"--email=ana@example.com"}, tt.argv...)
+		plan, err := resolve(argv, tt.env)
+		if err != nil {
+			t.Fatalf("Resolve(%q): %v", argv, err)
+		}
+		if plan.Interactive != tt.wantInteractive || plan.Quiet != tt.wantQuiet {
+			t.Errorf("Resolve(%q) Interactive, Quiet = %v, %v; want %v, %v",
+				argv, plan.Interactive, plan.Quiet, tt.wantInteractive, tt.wantQuiet)
+		}
 	}
 }

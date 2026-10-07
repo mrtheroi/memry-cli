@@ -1,8 +1,11 @@
 package flags
 
 import (
+	"math"
 	"net/url"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -44,8 +47,10 @@ type Plan struct {
 	// Agents are the keys given with --agents, which may be none.
 	Agents      []string
 	AgentsGiven bool
-	// Interactive is false with --no-interaction.
+	// Interactive is false with --no-interaction, or when Quiet.
 	Interactive bool
+	// Quiet hides every line setup prints (see IsQuiet).
+	Quiet bool
 }
 
 // Login is how setup logs in.
@@ -106,20 +111,61 @@ func Resolve(args Args, lookupEnv func(string) (string, bool), agentKeys []strin
 		EmailGiven:  args.Email.HasValue,
 		Agents:      agents,
 		AgentsGiven: args.Agents.HasValue,
-		Interactive: !args.NoInteraction,
 	}
+	plan.Quiet = IsQuiet(args, lookupEnv)
+	plan.Interactive = !args.NoInteraction && !plan.Quiet
 	if !args.Token.Present {
 		return plan, nil
 	}
 	if !args.URL.Present {
 		return fail("Pass --url with --token, the address of your memry server.")
 	}
-	token, source, err := tokenSource(args, lookupEnv)
+	token, source, err := tokenSource(args, plan.Interactive, lookupEnv)
 	if err != nil {
 		return Plan{}, err
 	}
 	plan.Login, plan.Token, plan.TokenSource = LoginToken, token, source
 	return plan, nil
+}
+
+// IsQuiet reports whether the verbosity is quiet or silent, which hides
+// every line setup prints, errors included: -q, --quiet or --silent, else
+// a quiet SHELL_VERBOSITY unless a -v option is given. Setup needs it even
+// when Resolve fails.
+func IsQuiet(args Args, lookupEnv func(string) (string, bool)) bool {
+	return args.Quiet || (!args.Verbose && isQuietVerbosity(lookupEnv))
+}
+
+// IsSilent reports whether setup must not print even errors: Symfony's
+// --silent, or SHELL_VERBOSITY=-2. Unlike quiet, which hides messages only.
+func IsSilent(args Args, lookupEnv func(string) (string, bool)) bool {
+	if args.Silent {
+		return true
+	}
+	value, _ := lookupEnv("SHELL_VERBOSITY")
+	return !args.Verbose && phpInt(value) == -2
+}
+
+// isQuietVerbosity reports whether SHELL_VERBOSITY is quiet (-1) or silent
+// (-2), read like PHP's (int) cast. Symfony takes any other value as the
+// normal verbosity.
+func isQuietVerbosity(lookupEnv func(string) (string, bool)) bool {
+	value, _ := lookupEnv("SHELL_VERBOSITY")
+	n := phpInt(value)
+	return n == -1 || n == -2
+}
+
+// leadingNumber is the numeric prefix PHP's (int) cast reads.
+var leadingNumber = regexp.MustCompile(`^[ \t\n\r\v\f]*[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?`)
+
+// phpInt converts s like PHP's (int) cast: its leading number, truncated,
+// or 0.
+func phpInt(s string) int {
+	number, err := strconv.ParseFloat(strings.TrimLeft(leadingNumber.FindString(s), " \t\n\r\v\f"), 64)
+	if err != nil || math.IsInf(number, 0) {
+		return 0
+	}
+	return int(number)
 }
 
 // serverURL is the --url value, else MEMRY_URL, else the production
@@ -139,7 +185,7 @@ func serverURL(option Option, lookupEnv func(string) (string, bool)) string {
 // non-blank MEMRY_TOKEN, else the prompt when there is interaction.
 // MEMRY_TOKEN is only read here, once --token is given; setup must then
 // remove it from the environment its subprocesses inherit.
-func tokenSource(args Args, lookupEnv func(string) (string, bool)) (string, TokenSource, error) {
+func tokenSource(args Args, interactive bool, lookupEnv func(string) (string, bool)) (string, TokenSource, error) {
 	fromEnv, _ := lookupEnv("MEMRY_TOKEN")
 	switch {
 	case args.Token.HasValue:
@@ -147,7 +193,7 @@ func tokenSource(args Args, lookupEnv func(string) (string, bool)) (string, Toke
 		return token, TokenFromFlag, err
 	case phpTrim(fromEnv) != "":
 		return phpTrim(fromEnv), TokenFromEnv, nil
-	case args.NoInteraction:
+	case !interactive:
 		return "", NoToken, usageError("Pass --token=<value> when running without interaction.")
 	default:
 		return "", TokenFromPrompt, nil
@@ -155,13 +201,26 @@ func tokenSource(args Args, lookupEnv func(string) (string, bool)) (string, Toke
 }
 
 // isServerURL reports whether url is an http(s) address that API paths can
-// be appended to: a host, no whitespace, no query and no fragment.
+// be appended to: a host, a valid port if any, no whitespace, no query and
+// no fragment.
 func isServerURL(raw string) bool {
 	if strings.ContainsAny(raw, " \t\n\v\f\r?#") {
 		return false
 	}
 	parsed, err := url.Parse(raw)
-	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != ""
+	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Hostname() != "" &&
+		isPort(parsed.Port())
+}
+
+// isPort reports whether port is empty or a port PHP's parse_url accepts:
+// at most five digits (url.Parse has checked they are digits), and here
+// also within 1-65535.
+func isPort(port string) bool {
+	if port == "" {
+		return true
+	}
+	n, err := strconv.Atoi(port)
+	return err == nil && len(port) <= 5 && n >= 1 && n <= 65535
 }
 
 // splitKeys returns the agent keys of a comma-separated list, trimmed,

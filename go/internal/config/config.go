@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"unicode/utf8"
 
 	"github.com/mrtheroi/memry-cli/internal/fsx"
 )
@@ -33,6 +34,26 @@ type File struct {
 // Load reads the config file at path. A missing file is an empty config;
 // a file that is not a JSON object is an error.
 func Load(path string) (*File, error) {
+	return load(path, func([]byte) bool { return false })
+}
+
+// LoadOrEmpty is Load, except that a file the PHP CLI reads as empty is an
+// empty config: one that is not valid JSON (or not valid UTF-8), or is null
+// or []. Setup, which replaces the credentials anyway, then overwrites it,
+// like PHP's json_decode(...) ?? []. Other JSON that is not an object is
+// still an error.
+func LoadOrEmpty(path string) (*File, error) {
+	return load(path, func(data []byte) bool {
+		var list []any
+		return !utf8.Valid(data) || !json.Valid(data) ||
+			string(bytes.TrimSpace(data)) == "null" ||
+			(json.Unmarshal(data, &list) == nil && len(list) == 0)
+	})
+}
+
+// load reads the config file at path, or an empty config when it is
+// missing or isEmpty says so.
+func load(path string, isEmpty func([]byte) bool) (*File, error) {
 	f := &File{path: path, values: map[string]any{}}
 
 	data, err := os.ReadFile(path)
@@ -41,6 +62,9 @@ func Load(path string) (*File, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	if isEmpty(data) {
+		return f, nil
 	}
 	if err := f.decode(data); err != nil {
 		return nil, fmt.Errorf("%s is not a valid JSON object: %w", path, err)

@@ -207,3 +207,39 @@ func TestSaveLeavesHTMLCharactersUnescapedLikePHP(t *testing.T) {
 		t.Errorf("file = %q, want %q", got, want)
 	}
 }
+
+// PHP's ConfigFile::read() decodes with json_decode(...) ?? [], so a file
+// that is not valid JSON (which includes invalid UTF-8), or is null or [],
+// is an empty config, and setup overwrites it.
+func TestLoadOrEmptyTreatsWhatPHPReadsAsEmptyAsAnEmptyConfig(t *testing.T) {
+	for _, contents := range []string{"", "{not json", "null", "[]", " [ ] \n", "{\"url\": \"\xc3\"}", "\xef\xbb\xbf{}"} {
+		path := writeConfig(t, contents)
+		cfg, err := config.LoadOrEmpty(path)
+		if err != nil {
+			t.Fatalf("LoadOrEmpty(%q): %v", contents, err)
+		}
+		cfg.Set("token", "secret")
+		if err := cfg.Save(); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := os.ReadFile(path)
+		if want := "{\n    \"token\": \"secret\"\n}\n"; string(got) != want {
+			t.Errorf("after LoadOrEmpty(%q) and Save, file = %q, want %q", contents, got, want)
+		}
+	}
+}
+
+func TestLoadOrEmptyReadsAnObjectAndRejectsOtherJSONLikeLoad(t *testing.T) {
+	cfg, err := config.LoadOrEmpty(writeConfig(t, `{"url": "https://memry.test"}`))
+	if err != nil {
+		t.Fatalf("LoadOrEmpty: %v", err)
+	}
+	if url, _ := cfg.URL(); url != "https://memry.test" {
+		t.Errorf("URL() = %q, want https://memry.test", url)
+	}
+	for _, contents := range []string{`"text"`, `5`, `[1, 2]`} {
+		if _, err := config.LoadOrEmpty(writeConfig(t, contents)); err == nil {
+			t.Errorf("LoadOrEmpty(%q) error = nil, want an error", contents)
+		}
+	}
+}

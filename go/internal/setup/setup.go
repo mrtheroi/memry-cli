@@ -211,7 +211,26 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	if len(selected) == 0 {
 		env.line("No agents selected; memry is not wired into any agent. Run `memry setup` again to choose some.")
 	}
-	return env.wire(plan.URL, selected, saved)
+	code, pending := env.wire(plan.URL, selected, saved)
+	if len(pending) > 0 {
+		// Keep the agents memry could not be removed from, so a later
+		// setup or uninstall retries the removal.
+		cfg.Set("agents", env.inRegistryOrder(append(slices.Clone(selected), pending...)))
+		if err := cfg.Save(); err != nil {
+			return env.notSaved(path, err)
+		}
+	}
+	return code
+}
+
+// inRegistryOrder returns the supported agents among keys, once each, in
+// display order.
+func (env Env) inRegistryOrder(keys []string) []string {
+	ordered := []string{}
+	for _, agent := range env.Agents.Only(keys) {
+		ordered = append(ordered, agent.Key())
+	}
+	return ordered
 }
 
 // selectAgents returns the agents given with --agents, else asks which
@@ -250,8 +269,10 @@ func (env Env) selectAgents(plan flags.Plan, saved []string, hasSaved bool) ([]s
 
 // wire installs memry in the selected agents and removes it from the
 // saved ones no longer selected. Every agent is handled, even when an
-// earlier one fails; a summary line per agent ends the output.
-func (env Env) wire(url string, selected, saved []string) int {
+// earlier one fails; a summary line per agent ends the output. It returns
+// the exit code and the deselected agents memry could not be removed
+// from.
+func (env Env) wire(url string, selected, saved []string) (int, []string) {
 	var summary []agents.Line
 	failed := false
 	for _, agent := range env.Agents.Only(selected) {
@@ -268,11 +289,13 @@ func (env Env) wire(url string, selected, saved []string) int {
 			deselected = append(deselected, key)
 		}
 	}
+	var pending []string
 	for _, agent := range env.Agents.Only(deselected) {
 		if env.report(agent.Uninstall()) {
 			summary = append(summary, agents.Line{Style: "info", Text: agent.Name() + ": memry was removed."})
 		} else {
 			failed = true
+			pending = append(pending, agent.Key())
 			summary = append(summary, agents.Line{Style: "error", Text: agent.Name() + ": failed; see the messages above."})
 		}
 	}
@@ -281,9 +304,9 @@ func (env Env) wire(url string, selected, saved []string) int {
 		env.line(line.Text)
 	}
 	if failed {
-		return failure
+		return failure, pending
 	}
-	return success
+	return success, pending
 }
 
 // report prints the lines of an agent result and returns whether it

@@ -45,8 +45,7 @@ func TestWarnsAndFailsWhenTheTokenCannotBeRevoked(t *testing.T) {
 
 func TestDoesNotFollowARedirectFromTheRevokeToAPageThatAnswers200(t *testing.T) {
 	h := newHarness(t)
-	var s *server
-	s = newServer(t, func(s *server) { s.revoke = &reply{status: 302} })
+	s := newServer(t, func(s *server) { s.revoke = &reply{status: 302} })
 	s.revoke.location = s.URL + "/login"
 	h.previousConfig(map[string]any{"url": s.URL, "token": "old-token"})
 

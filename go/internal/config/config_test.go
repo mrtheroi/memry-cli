@@ -243,3 +243,34 @@ func TestLoadOrEmptyReadsAnObjectAndRejectsOtherJSONLikeLoad(t *testing.T) {
 		}
 	}
 }
+
+func TestLoginNeedsANonEmptyURLAndToken(t *testing.T) {
+	tests := map[string]bool{
+		`{"url":"https://memry.test","token":"secret-token"}`: true,
+		`{"token":"secret-token"}`:                            false,
+		`{"url":"https://memry.test","token":""}`:             false,
+		`{"url":"","token":"secret-token"}`:                   false,
+		`{"url":"https://memry.test","token":42}`:             false,
+		`not json`:   false,
+		`"a string"`: false,
+	}
+	for contents, want := range tests {
+		path := filepath.Join(t.TempDir(), "config.json")
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		getenv := func(key string) string { return map[string]string{"MEMRY_CONFIG": path}[key] }
+
+		url, token, ok := config.Login(getenv)
+
+		if ok != want || (ok && (url != "https://memry.test" || token != "secret-token")) {
+			t.Errorf("Login() with %s = %q, %q, %v; want logged in %v", contents, url, token, ok, want)
+		}
+	}
+	missing := func(key string) string {
+		return map[string]string{"MEMRY_CONFIG": filepath.Join(t.TempDir(), "none.json")}[key]
+	}
+	if _, _, ok := config.Login(missing); ok {
+		t.Error("Login() without a config file = logged in")
+	}
+}

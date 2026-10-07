@@ -198,3 +198,16 @@ func encode(buf *bytes.Buffer, value any) error {
 	buf.Truncate(buf.Len() - 1) // Encode ends with a newline.
 	return nil
 }
+
+// Login returns the saved server URL and token, or false when not logged
+// in: the PHP CLI needs both as non-empty strings, and reads a file that
+// is missing or not a JSON object as no login.
+func Login(getenv func(string) string) (url, token string, ok bool) {
+	cfg, err := Load(Path(getenv))
+	if err != nil {
+		return "", "", false
+	}
+	url, hasURL := cfg.URL()
+	token, hasToken := cfg.Token()
+	return url, token, hasURL && url != "" && hasToken && token != ""
+}

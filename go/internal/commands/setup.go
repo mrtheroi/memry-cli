@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
 	"github.com/mrtheroi/memry-cli/internal/client"
+	"github.com/mrtheroi/memry-cli/internal/executable"
 	"github.com/mrtheroi/memry-cli/internal/flags"
 	"github.com/mrtheroi/memry-cli/internal/prompt"
 	"github.com/mrtheroi/memry-cli/internal/setup"
@@ -40,7 +42,7 @@ func newSetup(version string) *cobra.Command {
 				Unsetenv:  os.Unsetenv,
 				Out:       out,
 				Prompter:  prompt.New(cmd.InOrStdin(), out),
-				Agents:    agents.Stub{},
+				Agents:    agents.New(agentsEnv()),
 				HTTP:      client.New(version, 10*time.Second),
 			})
 			if code != 0 {
@@ -58,6 +60,21 @@ func newSetup(version string) *cobra.Command {
 	options.BoolP("no-interaction", "n", false, "Do not ask any interactive question")
 	options.BoolP("quiet", "q", false, "Do not output any message")
 	return cmd
+}
+
+// agentsEnv is what the agents run with: this process's environment and
+// PATH, and its own binary as the memry executable agents run.
+func agentsEnv() agents.Env {
+	self, err := os.Executable()
+	if err != nil {
+		self = os.Args[0]
+	}
+	return agents.Env{
+		Getenv:     os.Getenv,
+		LookPath:   exec.LookPath,
+		Runner:     agents.ExecRunner{Timeout: 60 * time.Second},
+		Executable: executable.Executable{Getenv: os.Getenv, Self: self},
+	}
 }
 
 // helpOrVersion shows the help or the version for Symfony's --help and

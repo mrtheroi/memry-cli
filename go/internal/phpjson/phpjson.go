@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -69,24 +68,12 @@ func hex4(b []byte) uint64 {
 // characters as \u escapes, and "/" escaped unless unescapedSlashes
 // (JSON_UNESCAPED_SLASHES). s must be valid UTF-8.
 func EncodeString(s string, unescapedSlashes bool) []byte {
-	out := []byte{'"'}
-	for _, r := range s {
-		switch {
-		case r == '"' || r == '\\':
-			out = append(out, '\\', byte(r))
-		case r == '/' && !unescapedSlashes:
-			out = append(out, `\/`...)
-		case r < 0x20:
-			out = append(out, controlEscape(r)...)
-		case r < 0x80:
-			out = append(out, byte(r))
-		default:
-			for _, unit := range utf16.Encode([]rune{r}) {
-				out = fmt.Appendf(out, `\u%04x`, unit)
-			}
-		}
+	var flags Flags
+	if unescapedSlashes {
+		flags = UnescapedSlashes
 	}
-	return append(out, '"')
+	out, _ := encodeString(nil, s, flags)
+	return out
 }
 
 // controlEscape is how PHP's json_encode escapes a control character.

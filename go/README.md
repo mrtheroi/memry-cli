@@ -7,22 +7,24 @@ flags, messages and exit codes, so users only need to `brew upgrade`.
 The PHP CLI keeps shipping until a final cutover. Its Pest tests in `../tests` are the behavioral
 spec: a Go test that ports one names it in a comment.
 
-| Package             | Responsibility                                                              |
-| ------------------- | --------------------------------------------------------------------------- |
-| `cmd/memry`         | Entry point; the version is set with `-ldflags "-X main.version=<version>"` |
-| `internal/commands` | Cobra commands: the root command, `--version`, `setup` and the hidden ones  |
-| `internal/config`   | `config.json` path, load and save, in the PHP CLI's format                  |
-| `internal/fsx`      | Atomic file writes                                                          |
-| `internal/client`   | The HTTP client: no redirects, 2xx-only success, timeout, User-Agent        |
-| `internal/flags`    | Symfony-like options: the `setup` resolver, verbosity, argument checks      |
-| `internal/setup`    | `memry setup`: the email and token logins (agent wiring is not ported yet)  |
-| `internal/prompt`   | Terminal questions read like Symfony's, with a hidden prompt                |
-| `internal/email`    | Email validation matching PHP's `FILTER_VALIDATE_EMAIL`                     |
-| `internal/agents`   | The agent registry interface; a stub of the PHP agent keys for now          |
-| `internal/mcp`      | `memry mcp`, the stdio↔HTTP MCP proxy, and `memry mcp-headers`              |
-| `internal/hook`     | `memry hook:session-start`, Claude Code's SessionStart context hook         |
-| `internal/phpjson`  | JSON validation and encoding matching PHP's `json_validate`/`json_encode`   |
-| `internal/console`  | Output rendered like Symfony Console (the error block)                      |
+| Package               | Responsibility                                                              |
+| --------------------- | --------------------------------------------------------------------------- |
+| `cmd/memry`           | Entry point; the version is set with `-ldflags "-X main.version=<version>"` |
+| `internal/commands`   | Cobra commands: the root command, `--version`, `setup` and the hidden ones  |
+| `internal/config`     | `config.json` path, load and save, in the PHP CLI's format                  |
+| `internal/fsx`        | Atomic file writes                                                          |
+| `internal/client`     | The HTTP client: no redirects, 2xx-only success, timeout, User-Agent        |
+| `internal/flags`      | Symfony-like options: the `setup` resolver, verbosity, argument checks      |
+| `internal/setup`      | `memry setup`: the email and token logins (agents are not wired in yet)     |
+| `internal/prompt`     | Terminal questions read like Symfony's, with a hidden prompt                |
+| `internal/email`      | Email validation matching PHP's `FILTER_VALIDATE_EMAIL`                     |
+| `internal/agents`     | The agent adapters (Claude Code, Codex, OpenCode, Antigravity, Windsurf)    |
+| `internal/agentfiles` | Safe edits of agent files: rules blocks, JSON/TOML MCP configs, settings    |
+| `internal/executable` | The memry command agents run (`MEMRY_EXECUTABLE`, `MEMRY_CONFIG`)           |
+| `internal/mcp`        | `memry mcp`, the stdio↔HTTP MCP proxy, and `memry mcp-headers`              |
+| `internal/hook`       | `memry hook:session-start`, Claude Code's SessionStart context hook         |
+| `internal/phpjson`    | JSON validation and encoding matching PHP's `json_validate`/`json_encode`   |
+| `internal/console`    | Output rendered like Symfony Console (the error block)                      |
 
 ## Limits
 

@@ -48,7 +48,7 @@ const (
 // Uninstall runs `memry uninstall` and returns its exit code.
 func Uninstall(env Env) int {
 	interactive, ok := env.start("uninstall", "--force")
-	if !ok {
+	if !ok || !env.configReadable() {
 		return failure
 	}
 	if !flags.HasParameterOption(env.Args, "--force") {
@@ -267,6 +267,27 @@ func (env Env) send(method, url, token string, data any) (int, error) {
 	return resp.StatusCode, nil
 }
 
+// configReadable reports whether the config file is missing or can be
+// read, saying why not. A file that cannot be read may hold the login and
+// the agents: it is never taken for an empty config. Like the PHP CLI's
+// is_file, anything but a regular file is no config file.
+func (env Env) configReadable() bool {
+	path := config.Path(env.getenv)
+	if info, err := os.Stat(path); err == nil && !info.Mode().IsRegular() {
+		return true
+	}
+	_, err := os.ReadFile(path)
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
+		return true
+	}
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		err = pathErr.Err
+	}
+	env.line("Could not read " + path + ": " + err.Error() + ".")
+	return false
+}
+
 // loadConfig reads the config file. Like the PHP CLI, a file that is
 // missing or cannot be read as a JSON object is an empty config.
 func (env Env) loadConfig() *config.File {
@@ -291,7 +312,7 @@ func (env Env) getenv(key string) string {
 // DeleteAccount runs `memry delete-account` and returns its exit code.
 func DeleteAccount(env Env) int {
 	interactive, ok := env.start("delete-account")
-	if !ok {
+	if !ok || !env.configReadable() {
 		return failure
 	}
 	cfg := env.loadConfig()

@@ -115,3 +115,31 @@ func TestNeverRevokesAGivenTokenWhenTheCredentialsCannotBeSaved(t *testing.T) {
 		t.Errorf("revokes = %+v, want none", got)
 	}
 }
+
+// Setup overwrites a config that is not valid JSON, like the PHP CLI, but
+// never one it cannot read: that fails, keeping the file, and revokes the
+// new token. (The PHP CLI stops with an uncaught ErrorException.)
+func TestFailsWithoutOverwritingAConfigItCannotRead(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read a mode 000 file")
+	}
+	h, s := newHarness(t), newServer(t)
+	h.writeConfig(map[string]any{"url": s.URL, "token": "old-token", "agents": []string{"codex"}})
+	if err := os.Chmod(h.configPath, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(h.configPath, 0o600) })
+
+	output, code := h.run(emailArgs(s.URL), code123456)
+
+	assertExit(t, code, 1, output)
+	assertContains(t, output, "Could not save the credentials to "+h.configPath+": ")
+	assertContains(t, output, "permission denied")
+	if len(revokes(s)) != 1 {
+		t.Error("did not revoke the new token")
+	}
+	_ = os.Chmod(h.configPath, 0o600)
+	if got := h.config()["token"]; got != "old-token" {
+		t.Errorf("token = %v, want the file untouched", got)
+	}
+}

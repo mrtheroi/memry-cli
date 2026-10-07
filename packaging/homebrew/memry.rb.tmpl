@@ -1,0 +1,45 @@
+# Rendered by scripts/update-formula.sh <version>: copy the output to
+# Formula/memry.rb in mrtheroi/homebrew-tap.
+class Memry < Formula
+  desc "Log in to memry and wire its memory MCP into your AI agents"
+  homepage "https://github.com/mrtheroi/memry-cli"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/mrtheroi/memry-cli/releases/download/v@VERSION@/memry_@VERSION@_darwin_arm64.tar.gz"
+      sha256 "@SHA256_DARWIN_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/mrtheroi/memry-cli/releases/download/v@VERSION@/memry_@VERSION@_darwin_amd64.tar.gz"
+      sha256 "@SHA256_DARWIN_AMD64@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/mrtheroi/memry-cli/releases/download/v@VERSION@/memry_@VERSION@_linux_arm64.tar.gz"
+      sha256 "@SHA256_LINUX_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/mrtheroi/memry-cli/releases/download/v@VERSION@/memry_@VERSION@_linux_amd64.tar.gz"
+      sha256 "@SHA256_LINUX_AMD64@"
+    end
+  end
+
+  def install
+    libexec.install "memry"
+
+    # memry setup writes this command into the agents' configs, so it must be the
+    # stable opt path (not the versioned Cellar one) and must not rely on PATH.
+    (bin/"memry").write <<~SH
+      #!/bin/bash
+      export MEMRY_EXECUTABLE="#{opt_bin}/memry"
+      exec "#{libexec}/memry" "$@"
+    SH
+  end
+
+  test do
+    assert_equal "Memry #{version}\n", shell_output("#{bin}/memry --version")
+  end
+end

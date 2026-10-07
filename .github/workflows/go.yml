@@ -19,6 +19,7 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test -race ./...
+      - run: scripts/update-formula_test.sh
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0

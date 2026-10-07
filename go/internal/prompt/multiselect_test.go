@@ -134,7 +134,8 @@ func TestMultiSelectDrawsTheQuestionLikeLaravelPrompts(t *testing.T) {
 		" │   ◼ Codex (not installed)",
 		" │   ◻ Windsurf",
 		" └" + strings.Repeat("─", 62) + "┘\n  Space to select, enter to confirm.\n",
-		" │ Codex (not installed)" + strings.Repeat(" ", 60-len("Codex (not installed)")) + " │\n",
+		// Like Laravel Prompts, a blank line follows the submitted question.
+		" │ Codex (not installed)" + strings.Repeat(" ", 60-len("Codex (not installed)")) + " │\n └" + strings.Repeat("─", 62) + "┘\n\n",
 	} {
 		if !strings.Contains(plain, want) {
 			t.Errorf("output does not contain %q:\n%s", want, plain)

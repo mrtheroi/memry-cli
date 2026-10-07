@@ -132,9 +132,10 @@ func (m *multiSelect) render() []string {
 		if len(body) == 0 {
 			body = []string{gray + "None" + reset}
 		}
-		return box(dim+m.label+reset, body, gray)
+		// Like Laravel Prompts, a blank line follows an answered question.
+		return append(box(dim+m.label+reset, body, gray), "")
 	case "cancel":
-		return append(box(m.label, m.options(), red), red+"  ⚠ Cancelled."+reset)
+		return append(box(m.label, m.options(), red), red+"  ⚠ Cancelled."+reset, "")
 	}
 	return append(box(cyan+m.label+reset, m.options(), gray), gray+"  "+m.hint+reset)
 }

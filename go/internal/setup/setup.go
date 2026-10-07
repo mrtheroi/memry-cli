@@ -202,7 +202,7 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	previousURL, hasURL := cfg.URL()
 	previousToken, hasToken := cfg.Token()
 	saved, hasSaved := cfg.Agents()
-	toRemove, _ := cfg.AgentsToRemove()
+	toRemove, hasToRemove := cfg.AgentsToRemove()
 	selected, err := env.selectAgents(plan, saved, hasSaved)
 	if err != nil {
 		return unsaved()
@@ -225,9 +225,15 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	if len(selected) == 0 {
 		env.line("No agents selected; memry is not wired into any agent. Run `memry setup` again to choose some.")
 	}
+	wired := saved
+	if hasURL && hasToken && !hasSaved && !hasToRemove {
+		// Setup saved no agents up to 0.4.0, when it only wired Claude
+		// Code: unwire it unless it is selected, like uninstall does.
+		wired = []string{"claude-code"}
+	}
 	// The saved agents no longer selected are removed, and the removals
 	// that failed before are retried.
-	code, pending := env.wire(plan.URL, selected, append(slices.Clone(saved), toRemove...))
+	code, pending := env.wire(plan.URL, selected, append(slices.Clone(wired), toRemove...))
 	if len(toRemove) > 0 || len(pending) > 0 {
 		// Keep the agents memry could not be removed from, so a later
 		// setup or uninstall retries the removal.

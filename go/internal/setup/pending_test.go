@@ -89,3 +89,46 @@ func TestSelectingAnAgentToRemoveAgainInstallsIt(t *testing.T) {
 	}
 	assertSavedAgents(t, h, "claude-code", "codex")
 }
+
+// Setup saved no agents up to 0.4.0, when it only wired Claude Code: a
+// login saved without agents counts as Claude Code wired, like uninstall's
+// fallback, so selecting other agents, or none, unwires it. (The PHP CLI
+// leaves it wired.)
+func TestUnwiresClaudeCodeOfALoginSavedWithoutAgents(t *testing.T) {
+	for _, agentsArg := range []string{"--agents=codex", "--agents="} {
+		h, s := newHarness(t), newServer(t)
+		claude, codex := newClaude(), newCodex()
+		h.useAgents(claude, codex)
+		h.writeConfig(map[string]any{"url": s.URL, "token": "admin-token"})
+
+		output, code := h.run([]string{"--url", s.URL, "--token=admin-token", agentsArg})
+
+		assertExit(t, code, 0, output)
+		assertCalls(t, claude, "uninstall")
+		assertContains(t, output, "Claude Code: memry was removed.\n")
+	}
+}
+
+func TestKeepsClaudeCodeOfALoginSavedWithoutAgentsWhenSelected(t *testing.T) {
+	h, s := newHarness(t), newServer(t)
+	claude := newClaude()
+	h.useAgents(claude, newCodex())
+	h.writeConfig(map[string]any{"url": s.URL, "token": "admin-token"})
+
+	output, code := h.run([]string{"--url", s.URL, "--token=admin-token", "--agents=claude-code"})
+
+	assertExit(t, code, 0, output)
+	assertCalls(t, claude, "install "+s.URL)
+}
+
+// A first setup has no login saved: nothing was wired, nothing is unwired.
+func TestUnwiresNothingOnAFirstSetup(t *testing.T) {
+	h, s := newHarness(t), newServer(t)
+	claude := newClaude()
+	h.useAgents(claude, newCodex())
+
+	output, code := h.run([]string{"--url", s.URL, "--token=admin-token", "--agents=codex"})
+
+	assertExit(t, code, 0, output)
+	assertCalls(t, claude)
+}

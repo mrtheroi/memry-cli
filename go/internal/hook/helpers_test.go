@@ -2,6 +2,7 @@ package hook_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -65,6 +66,8 @@ type harness struct {
 	dir        string
 	configPath string
 	getwd      func() (string, error)
+	git        func(context.Context, string) (string, bool)
+	gitTimeout time.Duration
 }
 
 func newHarness(t *testing.T, url string) *harness {
@@ -73,7 +76,7 @@ func newHarness(t *testing.T, url string) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, dir: dir, configPath: filepath.Join(dir, "config.json"), getwd: os.Getwd}
+	h := &harness{t: t, dir: dir, configPath: filepath.Join(dir, "config.json"), getwd: os.Getwd, git: hook.GitTopLevel, gitTimeout: 5 * time.Second}
 	h.writeConfig(`{"url":"` + url + `","token":"secret-token"}`)
 	return h
 }
@@ -107,7 +110,8 @@ func (h *harness) runWith(stdin io.Reader) (int, string) {
 		Out:         &out,
 		HTTP:        client.New("test", 5*time.Second),
 		Getwd:       h.getwd,
-		GitTopLevel: hook.GitTopLevel,
+		GitTopLevel: h.git,
+		GitTimeout:  h.gitTimeout,
 	})
 	return code, out.String()
 }

@@ -3,6 +3,7 @@
 package hook
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/mrtheroi/memry-cli/internal/client"
 	"github.com/mrtheroi/memry-cli/internal/config"
@@ -25,8 +27,10 @@ type Env struct {
 	// Getwd is the working directory, used when the hook input has no cwd.
 	Getwd func() (string, error)
 	// GitTopLevel is the top-level directory of the git repository dir is
-	// in, or false outside one.
-	GitTopLevel func(dir string) (string, bool)
+	// in, or false outside one or when ctx is done first.
+	GitTopLevel func(ctx context.Context, dir string) (string, bool)
+	// GitTimeout is how long GitTopLevel may take.
+	GitTimeout time.Duration
 }
 
 // SessionStart prints the usage protocol and the memry context of the
@@ -53,7 +57,9 @@ func (env Env) context() (string, bool) {
 	if !ok {
 		return "", false
 	}
-	root, ok := env.GitTopLevel(cwd)
+	ctx, cancel := context.WithTimeout(context.Background(), env.GitTimeout)
+	root, ok := env.GitTopLevel(ctx, cwd)
+	cancel()
 	if !ok {
 		root = cwd
 	}
@@ -105,8 +111,8 @@ func (env Env) getenv(key string) string {
 
 // GitTopLevel runs git to find the top-level directory of the repository
 // dir is in.
-func GitTopLevel(dir string) (string, bool) {
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
+func GitTopLevel(ctx context.Context, dir string) (string, bool) {
+	out, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		return "", false
 	}

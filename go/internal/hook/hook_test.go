@@ -1,12 +1,14 @@
 package hook_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"testing/iotest"
+	"time"
 
 	"github.com/mrtheroi/memry-cli/internal/hook"
 )
@@ -319,7 +321,7 @@ func TestEndsWithExactlyOneNewline(t *testing.T) {
 // Not in the PHP tests: the repo is named like PHP's basename, which is
 // empty for the root directory (Go's filepath.Base says "/").
 func TestNamesTheRootDirectoryLikePHPBasename(t *testing.T) {
-	if _, inGit := hook.GitTopLevel("/"); inGit {
+	if _, inGit := hook.GitTopLevel(context.Background(), "/"); inGit {
 		t.Skip("the root directory is in a git repository")
 	}
 	s := newServer(t, respond(200, "body"))
@@ -342,5 +344,32 @@ func TestPrintsNothingForAContextThatIsTooLarge(t *testing.T) {
 		if (output != "") != printed {
 			t.Errorf("printed %d bytes for a %d-byte context, want printed %v", len(output), size, printed)
 		}
+	}
+}
+
+// Not in the PHP tests: a git that hangs never blocks the session. After
+// GitTimeout the hook gives up on git and falls back to the cwd, as when
+// git fails.
+func TestFallsBackToTheCwdWhenGitTimesOut(t *testing.T) {
+	s := newServer(t, respond(200, "body"))
+	h := newHarness(t, s.URL)
+	dir := mkdir(t, h.dir+"/SlowGit")
+	h.gitTimeout = 50 * time.Millisecond
+	h.git = func(ctx context.Context, _ string) (string, bool) {
+		<-ctx.Done()
+		return "", false
+	}
+	done := make(chan string)
+
+	go func() {
+		_, output := h.run(map[string]any{"cwd": dir})
+		done <- output
+	}()
+
+	select {
+	case output := <-done:
+		assertPrefix(t, output, "## memry memory (project: SlowGit)\n")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the hook is still waiting for git")
 	}
 }

@@ -42,7 +42,11 @@ func newSessionStartHook(version string) *cobra.Command {
 }
 
 // sessionStartEnv is the hook's environment. Like the PHP CLI, it gives
-// the server 3 seconds, so a slow server never holds up a session.
+// the server 3 seconds, so a slow server never holds up a session. Git gets
+// 3 seconds too, instead of the 60 of PHP's Process default: finding the
+// repository takes milliseconds, so a git that takes longer is stuck (a
+// hung network file system or credential prompt), and the hook then falls
+// back to the cwd. That keeps the whole hook within about 6 seconds.
 func sessionStartEnv(cmd *cobra.Command, version string, quiet bool) hook.Env {
 	return hook.Env{
 		LookupEnv:   os.LookupEnv,
@@ -51,6 +55,7 @@ func sessionStartEnv(cmd *cobra.Command, version string, quiet bool) hook.Env {
 		HTTP:        client.New(version, 3*time.Second),
 		Getwd:       os.Getwd,
 		GitTopLevel: hook.GitTopLevel,
+		GitTimeout:  3 * time.Second,
 	}
 }
 

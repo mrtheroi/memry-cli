@@ -20,3 +20,24 @@ func TestUnexpectedArgumentAcceptsTheEnvOption(t *testing.T) {
 		t.Errorf("UnexpectedArgument(--env x foo) = %q, %v; want %q", message, ok, want)
 	}
 }
+
+// A command's own value-less options, like uninstall's --force, are
+// accepted, but not with a value; the first wrong token wins.
+func TestUnexpectedArgumentAcceptsTheCommandsValuelessOptions(t *testing.T) {
+	if message, ok := flags.UnexpectedArgument("uninstall", []string{"-q", "--force", "--force"}, "--force"); ok {
+		t.Errorf("UnexpectedArgument(--force) = %q, want none", message)
+	}
+	tests := []struct {
+		rest []string
+		want string
+	}{
+		{[]string{"--force=yes"}, `The "--force" option does not accept a value.`},
+		{[]string{"--bogus", "--force=yes"}, `The "--bogus" option does not exist.`},
+		{[]string{"--force", "x"}, `No arguments expected for "uninstall" command, got "x".`},
+	}
+	for _, tt := range tests {
+		if message, ok := flags.UnexpectedArgument("uninstall", tt.rest, "--force"); !ok || message != tt.want {
+			t.Errorf("UnexpectedArgument(%q) = %q, %v; want %q", tt.rest, message, ok, tt.want)
+		}
+	}
+}

@@ -9,3 +9,11 @@ func NewWithHiddenReader(in io.Reader, out io.Writer, readHidden func() ([]byte,
 	t.readHidden = readHidden
 	return t
 }
+
+// NewTerminalForTest returns a Terminal that takes in for a terminal, without
+// switching it to raw mode.
+func NewTerminalForTest(in io.Reader, out io.Writer) *Terminal {
+	t := New(in, out)
+	t.raw = func() (func(), error) { return func() {}, nil }
+	return t
+}

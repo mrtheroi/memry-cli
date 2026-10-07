@@ -11,6 +11,14 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
+// goDivergences are the inputs where the Go CLI deliberately refuses what
+// the PHP CLI does: a quoted TOML key json_decode cannot read, which PHP
+// keeps quoted, missing memry's table and appending a duplicate one.
+// Both put and remove leave the file untouched as unsafe instead.
+var goDivergences = map[string]bool{
+	"[mcp_servers.\"me\\U0000006Dry\"]\ncommand = \"old\"\n": true,
+}
+
 // goldenCase is one line of testdata/php_agentfiles.jsonl: what the PHP
 // CLI's own classes do to a file.
 type goldenCase struct {
@@ -68,6 +76,12 @@ func TestEditorsMatchThePHPCLI(t *testing.T) {
 			want := tt.Put
 			if method == "remove" {
 				want = tt.Remove
+			}
+			if tt.Contents != nil && goDivergences[*tt.Contents] {
+				want = [2]any{false, *tt.Contents}
+				if method == "remove" {
+					want[0] = nil
+				}
 			}
 			if result != want[0] || after != want[1] {
 				t.Errorf("%s %s(%q) = %v leaving %q, want %v leaving %q", tt.Kind, method, deref(tt.Contents), result, after, want[0], want[1])

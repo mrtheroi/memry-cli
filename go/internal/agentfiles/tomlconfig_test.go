@@ -243,3 +243,44 @@ func TestTOMLConfigReplacesTheFileAtomicallyKeepingItsPermissions(t *testing.T) 
 
 	assertReplacedKeepingMode(t, path, before)
 }
+
+// Codex review of PR #34. Divergence from PHP, whose json_decode cannot
+// read TOML-only escapes like \UXXXXXXXX: it keeps the segment quoted,
+// misses [mcp_servers."me\U0000006Dry"] (which is memry) and appends a
+// duplicate table, making the TOML invalid. A quoted key segment whose
+// escapes are not ones JSON and TOML read the same way (\b \t \n \f \r
+// \" \\ and \uXXXX outside the surrogates) makes the file unsafe instead.
+func TestTOMLConfigLeavesAFileWithAKeyItCannotDecodeWithCertaintyUntouched(t *testing.T) {
+	tests := map[string]string{
+		"a \\U escape":          "[mcp_servers.\"me\\U0000006Dry\"]\ncommand = \"old\"\n",
+		"a \\U escape in a key": "[mcp_servers]\n\"\\U0001F600\" = 1\n",
+		"an escaped slash":      "[mcp_servers.\"me\\/mry\"]\ncommand = \"old\"\n",
+		"a surrogate pair":      "[mcp_servers.\"\\ud83d\\ude00\"]\ncommand = \"old\"\n",
+		"a literal tab":         "[mcp_servers.\"me\tmry\"]\ncommand = \"old\"\n",
+		"an unknown escape":     "[mcp_servers.\"me\\emry\"]\ncommand = \"old\"\n",
+	}
+	for name, contents := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := tomlPath(t)
+			writeFile(t, path, contents)
+
+			if putTOML(t, path) {
+				t.Error("Put = true, want false")
+			}
+			if got := removeTOML(t, path); got != agentfiles.Unsafe {
+				t.Errorf("Remove = %v, want Unsafe", got)
+			}
+			assertContents(t, path, contents)
+		})
+	}
+}
+
+// The escapes JSON and TOML share still name memry's table.
+func TestTOMLConfigReplacesAMemryTableNamedWithSharedEscapes(t *testing.T) {
+	path := tomlPath(t)
+	writeFile(t, path, "[mcp_servers.\"\\u006demry\"]\ncommand = \"old\"\n")
+
+	putTOML(t, path)
+
+	assertContents(t, path, tomlTable)
+}

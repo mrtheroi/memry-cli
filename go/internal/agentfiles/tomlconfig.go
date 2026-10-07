@@ -3,6 +3,7 @@ package agentfiles
 import (
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/fsx"
@@ -123,7 +124,11 @@ func scanTOML(contents, name string) ([]string, []span, bool) {
 			if match == nil {
 				return nil, nil, false
 			}
-			table = tomlKeySegments(match[1])
+			segments, ok := tomlKeySegments(match[1])
+			if !ok {
+				return nil, nil, false
+			}
+			table = segments
 			switch {
 			case open >= 0 && !ours(table):
 				spans = append(spans, span{open, lastContentLine(lines, open, index-1)})
@@ -138,7 +143,11 @@ func scanTOML(contents, name string) ([]string, []span, bool) {
 		if match == nil {
 			return nil, nil, false
 		}
-		key := append(slices.Clone(table), tomlKeySegments(match[1])...)
+		segments, ok := tomlKeySegments(match[1])
+		if !ok {
+			return nil, nil, false
+		}
+		key := append(slices.Clone(table), segments...)
 		if (open < 0 && ours(key)) || (len(table) == 0 && key[0] == "mcp_servers") {
 			return nil, nil, false
 		}
@@ -196,21 +205,51 @@ func scanTOMLValue(text string, multiline *string, depth *int) bool {
 	return true
 }
 
-// tomlKeySegments returns the segments of a dotted key, unquoted.
-func tomlKeySegments(key string) []string {
+// tomlKeySegments returns the segments of a dotted key, unquoted, or
+// false when a "basic" segment cannot be decoded with certainty (see
+// sharedEscapes).
+func tomlKeySegments(key string) ([]string, bool) {
 	segments := tomlSegments.FindAllString(key, -1)
 	for i, segment := range segments {
 		switch segment[0] {
 		case '"':
-			// Like PHP's json_decode($segment) ?? $segment.
-			if decoded, ok := phpjson.Decode([]byte(segment)); ok {
-				segments[i] = decoded.(string)
+			decoded, ok := phpjson.Decode([]byte(segment))
+			if !ok || !sharedEscapes(segment) {
+				return nil, false
 			}
+			segments[i] = decoded.(string)
 		case '\'':
 			segments[i] = segment[1 : len(segment)-1]
 		}
 	}
-	return segments
+	return segments, true
+}
+
+// sharedEscapes reports whether every escape in the quoted segment is one
+// JSON and TOML read the same way: \b \t \n \f \r \" \\ and \uXXXX
+// outside the surrogates. JSON's \/ and surrogate pairs are not TOML, and
+// TOML's \UXXXXXXXX, \e and \xHH are not JSON. The PHP CLI decodes the
+// segment with json_decode and, when that fails, keeps it quoted, which
+// misses memry's table and appends a duplicate.
+func sharedEscapes(segment string) bool {
+	for i := 0; i < len(segment); i++ {
+		if segment[i] != '\\' {
+			continue
+		}
+		i++
+		switch segment[i] {
+		case 'b', 't', 'n', 'f', 'r', '"', '\\':
+		case 'u':
+			unit, err := strconv.ParseUint(segment[i+1:i+5], 16, 16)
+			if err != nil || (unit >= 0xD800 && unit <= 0xDFFF) {
+				return false
+			}
+			i += 4
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // lastContentLine is the last line from first to last that is not blank

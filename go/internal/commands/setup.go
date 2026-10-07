@@ -15,8 +15,8 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/setup"
 )
 
-// errFailed makes the CLI exit with code 1 once setup has said why.
-var errFailed = errors.New("setup failed")
+// errFailed makes the CLI exit with code 1 once the command has said why.
+var errFailed = errors.New("command failed")
 
 // newSetup returns `memry setup`. Its options are read by setup itself
 // (flags.Scan), the way the PHP CLI reads them, so cobra does not parse
@@ -30,22 +30,10 @@ func newSetup(version string) *cobra.Command {
 		SilenceErrors:         true,
 		SilenceUsage:          true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			out := cmd.OutOrStdout()
-			// Symfony's --help and --version, which cobra does not see
-			// without parsing. Like Symfony they match by prefix (--help=x
-			// still shows the help), and quiet or silent hides them.
-			showsHelp := flags.HasParameterOption(args, "--help", "-h")
-			showsVersion := flags.HasParameterOption(args, "--version", "-V")
-			if showsHelp || showsVersion {
-				if flags.IsQuiet(flags.Scan(args), os.LookupEnv) {
-					return nil
-				}
-				if showsHelp {
-					return cmd.Help()
-				}
-				_, err := fmt.Fprintf(out, "Memry %s\n", version)
+			if shown, err := helpOrVersion(cmd, args, version); shown {
 				return err
 			}
+			out := cmd.OutOrStdout()
 			code := setup.Run(setup.Env{
 				Args:      args,
 				LookupEnv: os.LookupEnv,
@@ -70,4 +58,23 @@ func newSetup(version string) *cobra.Command {
 	options.BoolP("no-interaction", "n", false, "Do not ask any interactive question")
 	options.BoolP("quiet", "q", false, "Do not output any message")
 	return cmd
+}
+
+// helpOrVersion shows the help or the version for Symfony's --help and
+// --version options, which cobra does not see without parsing, reporting
+// whether it did. Like Symfony they match by prefix (--help=x still shows
+// the help), and quiet or silent hides them.
+func helpOrVersion(cmd *cobra.Command, args []string, version string) (bool, error) {
+	showsHelp := flags.HasParameterOption(args, "--help", "-h")
+	if !showsHelp && !flags.HasParameterOption(args, "--version", "-V") {
+		return false, nil
+	}
+	if flags.IsQuiet(flags.Scan(args), os.LookupEnv) {
+		return true, nil
+	}
+	if showsHelp {
+		return true, cmd.Help()
+	}
+	_, err := fmt.Fprintf(cmd.OutOrStdout(), "Memry %s\n", version)
+	return true, err
 }

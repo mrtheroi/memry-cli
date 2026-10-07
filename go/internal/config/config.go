@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"unicode/utf8"
 
 	"github.com/mrtheroi/memry-cli/internal/fsx"
+	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
 // Path is the config file: $MEMRY_CONFIG, or ~/.config/memry/config.json
@@ -45,7 +45,7 @@ func Load(path string) (*File, error) {
 func LoadOrEmpty(path string) (*File, error) {
 	return load(path, func(data []byte) bool {
 		var list []any
-		return !utf8.Valid(data) || !json.Valid(data) ||
+		return !phpjson.Valid(data) ||
 			string(bytes.TrimSpace(data)) == "null" ||
 			(json.Unmarshal(data, &list) == nil && len(list) == 0)
 	})
@@ -65,6 +65,12 @@ func load(path string, isEmpty func([]byte) bool) (*File, error) {
 	}
 	if isEmpty(data) {
 		return f, nil
+	}
+	// Like PHP's json_decode, which rejects invalid UTF-8 and lone
+	// surrogates that Go's decoder would silently replace with U+FFFD,
+	// altering the saved URL or token.
+	if !phpjson.Valid(data) {
+		return nil, fmt.Errorf("%s is not valid JSON", path)
 	}
 	if err := f.decode(data); err != nil {
 		return nil, fmt.Errorf("%s is not a valid JSON object: %w", path, err)
@@ -197,4 +203,17 @@ func encode(buf *bytes.Buffer, value any) error {
 	}
 	buf.Truncate(buf.Len() - 1) // Encode ends with a newline.
 	return nil
+}
+
+// Login returns the saved server URL and token, or false when not logged
+// in: the PHP CLI needs both as non-empty strings, and reads a file that
+// is missing or not a JSON object as no login.
+func Login(getenv func(string) string) (url, token string, ok bool) {
+	cfg, err := Load(Path(getenv))
+	if err != nil {
+		return "", "", false
+	}
+	url, hasURL := cfg.URL()
+	token, hasToken := cfg.Token()
+	return url, token, hasURL && url != "" && hasToken && token != ""
 }

@@ -108,3 +108,16 @@ func TestShowsArgumentErrorsUnlessSilent(t *testing.T) {
 		})
 	}
 }
+
+// Like the PHP CLI (Laravel Zero), setup accepts the global --env option,
+// whose optional value may be the next argument.
+func TestAcceptsTheEnvGlobalOption(t *testing.T) {
+	for _, env := range [][]string{{"--env"}, {"--env=x"}, {"--env", "x"}} {
+		h := newHarness(t)
+
+		output, code := h.run(append([]string{"--url=ftp://memry.test", "--email", "ana@example.com"}, env...))
+
+		assertExit(t, code, 1, output)
+		assertContains(t, output, "Invalid server address given with --url.")
+	}
+}

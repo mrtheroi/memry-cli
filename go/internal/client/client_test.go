@@ -1,8 +1,10 @@
 package client_test
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -87,5 +89,17 @@ func TestGivesUpAfterTheTimeout(t *testing.T) {
 	if err == nil {
 		_ = resp.Body.Close()
 		t.Fatal("Get succeeded, want a timeout error")
+	}
+}
+
+// A body of up to the limit is read whole; a longer one is an error.
+func TestReadBodyBoundsTheBody(t *testing.T) {
+	body, err := client.ReadBody(strings.NewReader("12345"), 5)
+	if err != nil || string(body) != "12345" {
+		t.Errorf("ReadBody(5 bytes, 5) = %q, %v; want the body", body, err)
+	}
+
+	if _, err := client.ReadBody(strings.NewReader("123456"), 5); !errors.Is(err, client.ErrTooLarge) {
+		t.Errorf("ReadBody(6 bytes, 5) error = %v, want ErrTooLarge", err)
 	}
 }

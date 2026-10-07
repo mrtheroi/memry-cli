@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -50,12 +51,14 @@ const (
 // Run runs setup and returns its exit code.
 func Run(env Env) int {
 	args := flags.Scan(env.Args)
-	if flags.IsQuiet(args, env.LookupEnv) {
-		env.Out = io.Discard
-	}
+	// Rejected before quiet applies: the PHP CLI shows these errors even for
+	// a malformed quiet token such as -qfoo.
 	if message, ok := unexpectedArgument(args.Rest); ok {
 		env.errorBlock(message)
 		return failure
+	}
+	if flags.IsQuiet(args, env.LookupEnv) {
+		env.Out = io.Discard
 	}
 	plan, err := flags.Resolve(args, env.LookupEnv, env.Agents.Keys())
 	if args.Token.Present {
@@ -269,13 +272,19 @@ func unexpectedArgument(rest []string) (string, bool) {
 				return noArguments(rest[i+1]), true
 			}
 			return "", false
-		case token == "--ansi" || token == "--no-ansi":
+		case flags.IsGlobalOption(token):
 			continue
 		case strings.HasPrefix(token, "--"):
 			name, _, _ := strings.Cut(token, "=")
+			if slices.Contains(flags.GlobalOptions, name) {
+				return `The "` + name + `" option does not accept a value.`, true
+			}
 			return `The "` + name + `" option does not exist.`, true
 		case len(token) > 1 && token[0] == '-':
-			return `The "` + token[:2] + `" option does not exist.`, true
+			// Like Symfony, the first character of the set that is not a
+			// global shortcut.
+			unknown := strings.TrimLeft(token[1:], flags.GlobalShortcuts)
+			return `The "-` + unknown[:1] + `" option does not exist.`, true
 		default:
 			return noArguments(token), true
 		}

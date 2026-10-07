@@ -24,6 +24,13 @@ func TestRejectsUnknownOptionsAndArgumentsBeforeLoggingIn(t *testing.T) {
 		{[]string{"-x"}, `The "-x" option does not exist.`},
 		{[]string{"extra"}, `No arguments expected for "setup" command, got "extra".`},
 		{[]string{"--", "extra"}, `No arguments expected for "setup" command, got "extra".`},
+		// Symfony checks every character of a shortcut set and rejects a
+		// value on the value-less global options, even quiet ones.
+		{[]string{"-qfoo"}, `The "-f" option does not exist.`},
+		{[]string{"-nfoo"}, `The "-f" option does not exist.`},
+		{[]string{"--quiet=foo"}, `The "--quiet" option does not accept a value.`},
+		{[]string{"--no-interaction=1"}, `The "--no-interaction" option does not accept a value.`},
+		{[]string{"--verbose=2"}, `The "--verbose" option does not accept a value.`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
@@ -41,6 +48,18 @@ func TestRejectsUnknownOptionsAndArgumentsBeforeLoggingIn(t *testing.T) {
 			}
 			h.assertNoConfig()
 		})
+	}
+}
+
+// Shortcut sets of global options stay valid, like in the PHP CLI.
+func TestAcceptsGlobalShortcutSets(t *testing.T) {
+	// -n turns interaction off, so the token login (which asks nothing) is used.
+	for _, option := range []string{"-vvv", "-qn", "-nq"} {
+		h, s := newHarness(t), newServer(t)
+
+		output, code := h.run([]string{"--url", s.URL, "--token=admin-token", option})
+
+		assertExit(t, code, 0, output)
 	}
 }
 

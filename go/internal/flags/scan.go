@@ -1,7 +1,10 @@
 // Package flags resolves the options of `memry setup` in one place.
 package flags
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Option is the state of one option on the command line: absent, present
 // without a value, or present with a value (which may be empty).
@@ -37,7 +40,7 @@ func Scan(argv []string) Args {
 			args.Rest = append(args.Rest, argv[i:]...)
 			break
 		}
-		if HasParameterOption([]string{arg}, interactionOptions...) {
+		if IsGlobalOption(arg) {
 			continue
 		}
 		name, value, hasValue := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
@@ -58,9 +61,26 @@ func Scan(argv []string) Args {
 	return args
 }
 
-// interactionOptions are the Symfony options that set the interaction and
-// the verbosity.
-var interactionOptions = []string{"--no-interaction", "-n", "--silent", "--quiet", "-q", "--verbose", "-v"}
+// GlobalOptions are the value-less Symfony global options setup accepts
+// (--help and --version are handled before setup runs).
+var GlobalOptions = []string{"--no-interaction", "--silent", "--quiet", "--verbose", "--ansi", "--no-ansi"}
+
+// GlobalShortcuts are the shortcuts of those options: -n, -q and -v, which
+// can be combined in one token ("-qn", "-vvv").
+const GlobalShortcuts = "nqv"
+
+// IsGlobalOption reports whether the whole token is a valid global option
+// or set of global shortcuts. A partly valid token ("-qfoo", "--quiet=x")
+// is not: setup rejects it like Symfony does.
+func IsGlobalOption(token string) bool {
+	if slices.Contains(GlobalOptions, token) {
+		return true
+	}
+	if len(token) < 2 || token[0] != '-' || token[1] == '-' {
+		return false
+	}
+	return strings.Trim(token[1:], GlobalShortcuts) == ""
+}
 
 // HasParameterOption reports whether argv has one of the options, like
 // Symfony's ArgvInput::HasParameterOption with $onlyParams: a token that is

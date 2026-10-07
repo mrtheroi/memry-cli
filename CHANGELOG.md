@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-07
+
+The CLI is rewritten in Go as a drop-in replacement for 0.7.0: the same config file
+(`~/.config/memry/config.json` or `MEMRY_CONFIG`), environment variables, commands, flags,
+messages and exit codes, and the same files written into your agents. `brew upgrade memry` is all
+it takes; your login and agents keep working.
+
+### Changed
+
+- memry is a single static binary for macOS and Linux (amd64 and arm64) with no PHP dependency.
+  Homebrew installs it without PHP, and it can also be installed with
+  `go install github.com/mrtheroi/memry-cli/cmd/memry@latest` or from the release archives, which
+  come with `checksums.txt` (signed keyless with cosign) and an SBOM per archive.
+- `memry mcp`, the local MCP server agents launch, starts more than ten times faster: about 6 ms
+  from process start to its first reply, against about 88 ms for 0.7.0 (on an Apple M2).
+- Responses are bounded: `memry mcp` reads a server reply of at most 16 MiB and answers a longer
+  one with a `-32603` "The memry server returned a response that is too large." error, the Claude
+  Code SessionStart hook reads at most 1 MiB of context and prints nothing past it, and setup reads
+  responses of at most 1 MiB.
+- Removing memry's MCP servers from Claude Code follows a stricter rule: a `claude mcp remove`
+  that fails without saying "No MCP server found" now fails that step of `memry uninstall`,
+  `memry delete-account` and `memry setup` (0.7.0 took every failure for "not registered"), so
+  memry never reports a removal that did not happen. Without the `claude` CLI
+  the removal is skipped with a warning instead of failing, since no Claude Code can run the
+  server; the SessionStart hook is still removed.
+- `memry setup` revokes the token of an email login when it stops without saving it (the agent
+  question is cancelled, or the config file cannot be read or written), so no valid token is left
+  behind. 0.7.0 left it valid. A token given with `--token` is never revoked.
+- The SessionStart hook prints the memry context as it is: 0.7.0 rendered or stripped
+  `<info>`-style tags and `\<` in memories. A hook input whose `cwd` is not a string prints
+  nothing, and `git` gets 3 seconds (60 in 0.7.0) to find the repository root before the hook
+  falls back to the `cwd`.
+- `MEMRY_EXECUTABLE` is used exactly as set: the Laravel `env()` keywords (`null`, `true`,
+  `(empty)`) and quote stripping of 0.7.0 no longer apply to it.
+- `memry setup` saves each selected agent once, in display order; 0.7.0 saved duplicates.
+
+### Fixed
+
+- A failed removal of memry from an agent is no longer forgotten. `memry setup` keeps a deselected
+  agent it could not be removed from in a new `agents_to_remove` config key and retries the
+  removal on every later setup until it succeeds (selecting the agent again installs it instead).
+  `memry uninstall` removes memry from the agents first; when one fails, it keeps the login and
+  the agents still to clean up, with an empty `agents` selection, so running it again retries them,
+  instead of revoking the token and deleting the config anyway. `memry delete-account` keeps only
+  the agents still to clean up.
+- `memry setup` unwires Claude Code from a login saved without `agents` (setups of 0.4.0 and
+  earlier, which only wired Claude Code) when it is not selected; 0.7.0 left it wired.
+- A config file that exists but cannot be read makes `memry setup`, `memry uninstall` and
+  `memry delete-account` fail with the reason, without overwriting or removing anything, where
+  0.7.0 stopped with an uncaught exception.
+- `memry mcp` keeps running where 0.7.0 stopped: with a saved URL it cannot request (`-32603`
+  "Could not reach the memry server."), a truncated reply (`-32603`), a request id too large for
+  a number (no error reply), or a config file that is valid JSON but not an object (not logged
+  in, `-32000`).
+- Agent config files are never overwritten with a lone newline: a JSON file holding a number too
+  large for a float (such as `1e400`) is left untouched and reported as one memry cannot edit
+  safely. An agent file that cannot be read or written fails that step with the system's error
+  instead of an uncaught exception.
+
+### Removed
+
+- The PHP (PHAR) build and its PHP 8.3+ requirement.
+
 ## [0.7.0] - 2026-10-04
 
 ### Added

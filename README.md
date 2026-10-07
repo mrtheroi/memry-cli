@@ -10,17 +10,34 @@ one session are available in the next one, so you do not have to explain the sam
 
 ## Requirements
 
-- macOS or Linux
-- [Homebrew](https://brew.sh)
+- macOS or Linux (amd64 or arm64)
 - At least one [supported agent](#supported-agents). For Claude Code, its CLI (`claude`) must be on
   your `PATH`.
 
 ## Install
 
+With [Homebrew](https://brew.sh):
+
 ```bash
 brew install mrtheroi/tap/memry
 memry setup
 ```
+
+Other ways to install memry, a single binary with no other dependency:
+
+- With Go: `go install github.com/mrtheroi/memry-cli/cmd/memry@latest`. The binary lands in
+  `$(go env GOPATH)/bin`, which must be on your `PATH`.
+- From a [release](https://github.com/mrtheroi/memry-cli/releases): download the
+  `memry_<version>_<os>_<arch>.tar.gz` archive for your system, check it against `checksums.txt`,
+  and put the `memry` binary from it on your `PATH`, for example:
+
+  ```bash
+  tar -xzf memry_1.0.0_darwin_arm64.tar.gz memry
+  sudo install -m 0755 memry /usr/local/bin/memry
+  ```
+
+Your agents run memry from the path it is installed at, so outside Homebrew keep the binary where
+it is, or run `memry setup` again after you move it.
 
 `memry setup` asks for your email, sends you a 6-digit login code, then asks which agents you use
 and connects memry to each one you select (the ones found on your machine are preselected; press
@@ -93,7 +110,8 @@ removes just what setup added. Your login token is never written to an agent's f
 brew upgrade memry
 ```
 
-Your login and agent configuration keep working after an upgrade.
+Without Homebrew, run the same `go install` again, or replace the binary with the one from a newer
+release. Your login and agent configuration keep working after an upgrade.
 
 ## Uninstall
 
@@ -103,7 +121,8 @@ brew uninstall memry
 ```
 
 `memry uninstall` asks for confirmation, then removes memry from your agents and deletes your
-local login. Use `memry uninstall --force` to skip the confirmation.
+local login. Use `memry uninstall --force` to skip the confirmation. Without Homebrew, delete the
+`memry` binary instead of running `brew uninstall`.
 
 ### Delete your account
 

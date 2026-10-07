@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
 	"github.com/mrtheroi/memry-cli/internal/client"
@@ -155,6 +156,10 @@ func (env Env) loginWithEmail(plan flags.Plan) (token, loggedIn string, ok bool)
 // successful response, or false after telling why it failed.
 func (env Env) request(url, method, path, token string, data any) (response, bool) {
 	resp, err := env.send(method, url+path, token, data)
+	if errors.Is(err, errResponseTooLarge) {
+		env.line("The memry server at " + url + " sent a response that is too large.")
+		return response{}, false
+	}
 	if err != nil {
 		env.line("Could not reach the memry server at " + url + ".")
 		return response{}, false
@@ -318,10 +323,12 @@ func (env Env) failWith(r response) {
 }
 
 // jsonString returns the string at key of a JSON object body, like
-// Laravel's $response->json($key) when it is a string.
+// Laravel's $response->json($key) when it is a string. Like PHP's
+// json_decode, a body that is not valid UTF-8 is not JSON (Go's decoder
+// would silently replace the bad bytes).
 func (r response) jsonString(key string) (string, bool) {
 	var body map[string]any
-	if json.Unmarshal(r.body, &body) != nil {
+	if !utf8.Valid(r.body) || json.Unmarshal(r.body, &body) != nil {
 		return "", false
 	}
 	value, ok := body[key].(string)
@@ -367,6 +374,15 @@ func (env Env) send(method, url, token string, data any) (response, error) {
 		return response{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	payload, err := io.ReadAll(resp.Body)
+	payload, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err == nil && len(payload) > maxResponseBytes {
+		err = errResponseTooLarge
+	}
 	return response{resp.StatusCode, payload}, err
 }
+
+// maxResponseBytes bounds every response setup reads, so a misbehaving
+// server cannot make it buffer an unbounded body. Real answers are tiny.
+const maxResponseBytes = 1 << 20
+
+var errResponseTooLarge = errors.New("response too large")

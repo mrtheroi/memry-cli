@@ -161,7 +161,7 @@ func (env Env) loginWithEmail(plan flags.Plan) (token, loggedIn string, ok bool)
 // successful response, or false after telling why it failed.
 func (env Env) request(url, method, path, token string, data any) (response, bool) {
 	resp, err := env.send(method, url+path, token, data)
-	if errors.Is(err, errResponseTooLarge) {
+	if errors.Is(err, client.ErrTooLarge) {
 		env.line("The memry server at " + url + " sent a response that is too large.")
 		return response{}, false
 	}
@@ -385,15 +385,10 @@ func (env Env) send(method, url, token string, data any) (response, error) {
 		return response{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	payload, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
-	if err == nil && len(payload) > maxResponseBytes {
-		err = errResponseTooLarge
-	}
+	payload, err := client.ReadBody(resp.Body, maxResponseBytes)
 	return response{resp.StatusCode, payload}, err
 }
 
 // maxResponseBytes bounds every response setup reads, so a misbehaving
 // server cannot make it buffer an unbounded body. Real answers are tiny.
 const maxResponseBytes = 1 << 20
-
-var errResponseTooLarge = errors.New("response too large")

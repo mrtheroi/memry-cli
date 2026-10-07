@@ -2,6 +2,8 @@
 package client
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"time"
 )
@@ -35,4 +37,17 @@ func (t userAgent) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = req.Clone(req.Context())
 	req.Header.Set("User-Agent", t.value)
 	return t.next.RoundTrip(req)
+}
+
+// ErrTooLarge is returned by ReadBody for a body over its limit.
+var ErrTooLarge = errors.New("response too large")
+
+// ReadBody reads a response body of at most limit bytes, so a misbehaving
+// server cannot make memry buffer an unbounded body.
+func ReadBody(body io.Reader, limit int) ([]byte, error) {
+	payload, err := io.ReadAll(io.LimitReader(body, int64(limit)+1))
+	if err == nil && len(payload) > limit {
+		err = ErrTooLarge
+	}
+	return payload, err
 }

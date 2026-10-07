@@ -167,20 +167,20 @@ func TestDeleteAccountRemovesMemryFromThisMachineAfterDeletingTheAccount(t *test
 	}
 }
 
-func TestDeleteAccountKeepsCleaningUpAndFailsWhenALocalStepFails(t *testing.T) {
+// Ported from "keeps cleaning up and fails when a local step fails
+// after deleting the account": a missing claude CLI is now only a warning
+// (the PHP CLI exits with 1); a failing agent is in retry_test.go.
+func TestDeleteAccountWarnsAndKeepsCleaningUpWithoutTheClaudeCodeCLI(t *testing.T) {
 	h, s := newHarness(t), newServer(t)
 	h.claude.missing = true
 	h.previousConfig(map[string]any{"url": s.URL, "token": "old-token"})
 
 	output, code := h.run(uninstall.DeleteAccount, nil, answer{label: typeYourEmail, value: "ana@example.com"})
 
-	assertExit(t, code, 1, output)
+	assertExit(t, code, 0, output)
 	assertContains(t, output, "Deleted your memry account and all its memories.\n")
 	assertContains(t, output, "Claude Code CLI not found; skipped removing the memry MCP server.\n")
-	// Unlike the PHP CLI, which deletes the config anyway, the agent is
-	// kept for `memry uninstall` to retry (see retry_test.go).
-	assertContains(t, output, "No memry SessionStart hook to remove.\n")
-	assertContains(t, output, retryHint)
+	assertContains(t, output, "Deleted "+h.configPath+".\n")
 }
 
 func TestDeleteAccountRemovesMemryFromTheAgentsSavedBySetup(t *testing.T) {

@@ -189,19 +189,19 @@ func TestWarnsAndFailsWhenTheConfigFileCannotBeDeleted(t *testing.T) {
 	}
 }
 
-func TestWarnsKeepsGoingAndFailsWhenTheClaudeCodeCLIIsNotFound(t *testing.T) {
+// Ported from "warns, keeps going and fails when the Claude Code CLI is
+// not found": without the CLI, the MCP server removal is skipped with a
+// warning, which is not a failure (the PHP CLI exits with 1).
+func TestWarnsAndKeepsGoingWhenTheClaudeCodeCLIIsNotFound(t *testing.T) {
 	h, s := newHarness(t), newServer(t)
 	h.claude.missing = true
 	h.previousConfig(map[string]any{"url": s.URL, "token": "old-token"})
 
 	output, code := h.run(uninstall.Uninstall, force)
 
-	assertExit(t, code, 1, output)
+	assertExit(t, code, 0, output)
 	assertContains(t, output, "Claude Code CLI not found; skipped removing the memry MCP server.\n")
-	// Unlike the PHP CLI, which deletes the config anyway, the login and
-	// the agent are kept for a retry (see retry_test.go).
-	assertContains(t, output, "No memry SessionStart hook to remove.\n")
-	assertContains(t, output, retryHint)
+	assertContains(t, output, "Deleted "+h.configPath+".\n")
 	if len(h.claude.ran) != 0 {
 		t.Errorf("ran %q, want no claude command", h.claude.ran)
 	}

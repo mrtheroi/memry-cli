@@ -428,3 +428,22 @@ func TestDoesNotTouchTheClaudeCodeSettingsWhenTheLoginFails(t *testing.T) {
 		t.Errorf("ran %q, want nothing", claude.ran)
 	}
 }
+
+// Unwiring a deselected Claude Code without its CLI skips the MCP server
+// with a warning and still removes the hook: not a failure (the PHP CLI
+// fails).
+func TestUnwiresADeselectedClaudeCodeWithoutItsCLI(t *testing.T) {
+	h, claude, settingsPath := claudeHarness(t)
+	claude.missing = true
+	h.env["MEMRY_EXECUTABLE"] = configuredExecutable
+	writeJSON(t, settingsPath, map[string]any{"hooks": map[string]any{"SessionStart": []any{memryHookGroup(h.memryCommand("hook:session-start"))}}})
+	s := newServer(t)
+	h.writeConfig(map[string]any{"url": s.URL, "token": "old-token", "agents": []string{"claude-code"}})
+
+	output, code := h.run(selectionArgs(s.URL, "--agents", "codex"), code123456)
+
+	assertExit(t, code, 0, output)
+	assertContains(t, output, "Claude Code CLI not found; skipped removing the memry MCP server.\n")
+	assertContains(t, output, "Claude Code: memry was removed.\n")
+	assertDeepEqual(t, "settings", readJSON(t, settingsPath), map[string]any{})
+}

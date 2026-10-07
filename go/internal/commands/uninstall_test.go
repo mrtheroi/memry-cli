@@ -28,13 +28,15 @@ func TestUninstallRemovesMemryFromThisMachine(t *testing.T) {
 
 	out, _, err := executeIn(t, "", "uninstall", "--force")
 
-	// Claude Code cannot be cleaned up without its CLI: nothing is
-	// revoked or deleted, for a retry.
-	want := "Claude Code CLI not found; skipped removing the memry MCP server.\n" +
+	// Without the claude CLI the MCP server removal is skipped, which is
+	// not a failure (the PHP CLI exits with 1).
+	want := "Not logged in; no token to revoke.\n" +
+		"Claude Code CLI not found; skipped removing the memry MCP server.\n" +
 		"No memry SessionStart hook to remove.\n" +
-		"Fix the problems above, then run `memry uninstall` again.\n"
-	if err == nil || out != want {
-		t.Errorf("uninstall --force = %q, %v; want %q and exit code 1", out, err, want)
+		"No config file to delete.\n" +
+		"Run `brew uninstall memry` to remove the CLI.\n"
+	if err != nil || out != want {
+		t.Errorf("uninstall --force = %q, %v; want %q and exit code 0", out, err, want)
 	}
 }
 

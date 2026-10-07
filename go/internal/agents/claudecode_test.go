@@ -392,7 +392,10 @@ func TestClaudeCodeReportsWhenThereIsNoMemrySessionStartHookToRemove(t *testing.
 	}
 }
 
-func TestClaudeCodeWarnsKeepsGoingAndFailsWhenTheCLIIsNotFoundOnUninstall(t *testing.T) {
+// Without its CLI, Claude Code cannot be running memry's MCP server: the
+// removal is skipped with a warning, not a failure, and the hook is still
+// removed. (The PHP CLI fails the uninstall.)
+func TestClaudeCodeWarnsAndKeepsGoingWhenTheCLIIsNotFoundOnUninstall(t *testing.T) {
 	e := claudeEnv(t)
 	e.onPath = nil
 	settings := e.path("claude", "settings.json")
@@ -400,7 +403,7 @@ func TestClaudeCodeWarnsKeepsGoingAndFailsWhenTheCLIIsNotFoundOnUninstall(t *tes
 
 	result := e.agent(t, "claude-code").Uninstall()
 
-	assertSuccessful(t, result, false)
+	assertSuccessful(t, result, true)
 	assertLines(t, result,
 		[2]string{"warn", "Claude Code CLI not found; skipped removing the memry MCP server."},
 		[2]string{"info", "Removed the memry SessionStart hook from " + settings + "."},
@@ -410,6 +413,20 @@ func TestClaudeCodeWarnsKeepsGoingAndFailsWhenTheCLIIsNotFoundOnUninstall(t *tes
 			t.Errorf("ran %q without the claude CLI", ran)
 		}
 	}
+}
+
+// Without its CLI, the uninstall fails only when the hook cannot be
+// removed.
+func TestClaudeCodeFailsWithoutTheCLIOnlyWhenTheHookCannotBeRemoved(t *testing.T) {
+	e := claudeEnv(t)
+	e.onPath = nil
+	settings := e.path("claude", "settings.json")
+	writeFile(t, settings, `{"hooks": `)
+
+	result := e.agent(t, "claude-code").Uninstall()
+
+	assertSuccessful(t, result, false)
+	assertHasLine(t, result, "warn", "Could not remove the memry SessionStart hook: "+settings+" is not valid JSON.")
 }
 
 const memryGroup = `{"matcher":"startup","hooks":[{"type":"command","command":"memry hook:session-start","timeout":10}]}`

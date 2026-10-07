@@ -177,7 +177,8 @@ func (env Env) request(url, method, path, token string, data any) (response, boo
 }
 
 // saveLogin saves the url, the token and the agent selection, keeping the
-// other keys of the config, then revokes the token of the previous login.
+// other keys of the config, revokes the token of the previous login, then
+// wires memry into the selected agents.
 func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	path := config.Path(env.getenv)
 	cfg, err := config.LoadOrEmpty(path)
@@ -186,11 +187,10 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	}
 	previousURL, hasURL := cfg.URL()
 	previousToken, hasToken := cfg.Token()
-	// The saved agent selection is left as it is until the Go build wires
-	// agents (phase 4): the PHP CLI reads this file too and would unwire
-	// agents dropped from it.
+	selected := plan.Agents
 	cfg.Set("url", plan.URL)
 	cfg.Set("token", token)
+	cfg.Set("agents", selected)
 	if err := cfg.Save(); err != nil {
 		return env.notSaved(path, err)
 	}
@@ -199,9 +199,40 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	if hasURL && hasToken && previousToken != token {
 		env.revokePreviousToken(previousURL, previousToken)
 	}
+	return env.wire(plan.URL, selected)
+}
+
+// wire installs memry in the selected agents. Every agent is handled,
+// even when an earlier one fails; a summary line per agent ends the
+// output.
+func (env Env) wire(url string, selected []string) int {
+	var summary []agents.Line
+	failed := false
+	for _, agent := range env.Agents.Only(selected) {
+		if env.report(agent.Install(url)) {
+			summary = append(summary, agents.Line{Style: "info", Text: agent.Name() + ": memry is set up."})
+		} else {
+			failed = true
+			summary = append(summary, agents.Line{Style: "error", Text: agent.Name() + ": failed; see the messages above."})
+		}
+	}
 	env.line("")
-	env.line("Agent wiring is not implemented in the Go build yet: no agent was set up or removed, and the saved agent selection was left unchanged.")
+	for _, line := range summary {
+		env.line(line.Text)
+	}
+	if failed {
+		return failure
+	}
 	return success
+}
+
+// report prints the lines of an agent result and returns whether it
+// succeeded.
+func (env Env) report(result agents.Result) bool {
+	for _, line := range result.Lines {
+		env.line(line.Text)
+	}
+	return result.Successful
 }
 
 // notSaved fails because the config at path could not be saved.

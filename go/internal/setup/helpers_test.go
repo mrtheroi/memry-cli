@@ -7,13 +7,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/mrtheroi/memry-cli/internal/agents"
 	"github.com/mrtheroi/memry-cli/internal/client"
+	"github.com/mrtheroi/memry-cli/internal/executable"
 	"github.com/mrtheroi/memry-cli/internal/prompt"
 	"github.com/mrtheroi/memry-cli/internal/setup"
 )
@@ -160,16 +163,43 @@ func (p *prompter) Secret(label string) string {
 	return p.next(label).value
 }
 
-// fakeAgents is a registry of agents, some installed.
-type fakeAgents struct {
-	keys      []string
-	installed map[string]bool
+// fakeAgent is an agent that records the calls it gets and succeeds
+// unless told to fail, like the PHP tests' FakeAgent.
+type fakeAgent struct {
+	key, name    string
+	notInstalled bool
+	fails        bool
+	calls        []string
 }
 
-func (f fakeAgents) Keys() []string              { return f.keys }
-func (f fakeAgents) IsInstalled(key string) bool { return f.installed[key] }
+func (f *fakeAgent) Key() string       { return f.key }
+func (f *fakeAgent) Name() string      { return f.name }
+func (f *fakeAgent) IsInstalled() bool { return !f.notInstalled }
 
-var defaultAgents = fakeAgents{keys: []string{"claude-code", "codex", "opencode", "antigravity", "windsurf"}}
+func (f *fakeAgent) Install(url string) agents.Result {
+	f.calls = append(f.calls, "install "+url)
+	if f.fails {
+		return agents.Result{Lines: []agents.Line{{Style: "error", Text: "Could not wire " + f.name + "."}}}
+	}
+	return agents.Result{Successful: true, Lines: []agents.Line{{Style: "info", Text: "Wired " + f.name + "."}}}
+}
+
+func (f *fakeAgent) Uninstall() agents.Result {
+	f.calls = append(f.calls, "uninstall")
+	return agents.Result{Successful: !f.fails, Lines: []agents.Line{{Style: "info", Text: "Unwired " + f.name + "."}}}
+}
+
+// defaultAgents are fake agents with the keys and names of the supported
+// ones, all installed.
+func defaultAgents() *agents.Supported {
+	return agents.NewSupported(
+		&fakeAgent{key: "claude-code", name: "Claude Code"},
+		&fakeAgent{key: "codex", name: "Codex"},
+		&fakeAgent{key: "opencode", name: "OpenCode"},
+		&fakeAgent{key: "antigravity", name: "Antigravity"},
+		&fakeAgent{key: "windsurf", name: "Windsurf"},
+	)
+}
 
 // harness runs setup with a temporary config file.
 type harness struct {
@@ -177,7 +207,7 @@ type harness struct {
 	dir        string
 	configPath string
 	env        map[string]string
-	agents     fakeAgents
+	agents     agents.Registry
 	// processEnv makes setup read and change the process environment.
 	processEnv bool
 }
@@ -195,7 +225,7 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	return &harness{t: t, dir: dir, configPath: path, env: map[string]string{"MEMRY_CONFIG": path, "HOME": dir}, agents: defaultAgents}
+	return &harness{t: t, dir: dir, configPath: path, env: map[string]string{"MEMRY_CONFIG": path, "HOME": dir}, agents: defaultAgents()}
 }
 
 // run runs setup with argv and the scripted answers, returning the output
@@ -285,3 +315,56 @@ func assertExit(t *testing.T, got, want int, output string) {
 }
 
 var code123456 = answer{label: "Login code", value: "123456"}
+
+// fakeClaude fakes the claude CLI for the real agents, like the PHP tests'
+// fakeClaude(): `claude` is on the PATH unless missing, and each `claude
+// mcp <subcommand>` succeeds unless results says otherwise. No real
+// command runs.
+type fakeClaude struct {
+	missing bool
+	results map[string]agents.RunResult
+	// ran are the commands looked up ("lookpath <name>") and run, in order.
+	ran [][]string
+}
+
+func (f *fakeClaude) Run(argv []string) agents.RunResult {
+	f.ran = append(f.ran, argv)
+	if result, ok := f.results[argv[2]]; ok {
+		return result
+	}
+	return agents.RunResult{Started: true}
+}
+
+func (f *fakeClaude) lookPath(name string) (string, error) {
+	f.ran = append(f.ran, []string{"lookpath", name})
+	if name == "claude" && !f.missing {
+		return "/fake/bin/claude", nil
+	}
+	return "", exec.ErrNotFound
+}
+
+// claudeRan returns the claude commands run, without the lookups.
+func (f *fakeClaude) claudeRan() [][]string {
+	var ran [][]string
+	for _, argv := range f.ran {
+		if argv[0] == "claude" {
+			ran = append(ran, argv)
+		}
+	}
+	return ran
+}
+
+// useRealAgents makes setup wire the supported agents, reading the
+// harness environment, with claude faked. The running binary is
+// /usr/local/bin/memry.
+func (h *harness) useRealAgents() *fakeClaude {
+	claude := &fakeClaude{results: map[string]agents.RunResult{}}
+	getenv := func(name string) string { return h.env[name] }
+	h.agents = agents.New(agents.Env{
+		Getenv:     getenv,
+		LookPath:   claude.lookPath,
+		Runner:     claude,
+		Executable: executable.Executable{Getenv: getenv, Self: "/usr/local/bin/memry"},
+	})
+	return claude
+}

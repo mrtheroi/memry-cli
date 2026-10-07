@@ -8,12 +8,14 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/executable"
 )
 
-// Registry lists the supported agents and detects the installed ones.
+// Registry lists the supported agents, in display order.
 type Registry interface {
-	// Keys are the agent keys, in display order.
+	// All returns the agents.
+	All() []Agent
+	// Keys are the agent keys.
 	Keys() []string
-	// IsInstalled reports whether the agent is found on this machine.
-	IsInstalled(key string) bool
+	// Only returns the agents with the given keys, in display order.
+	Only(keys []string) []Agent
 }
 
 // Agent is an AI agent memry can be wired into. Adding an agent means one
@@ -125,10 +127,4 @@ func (s *Supported) Only(keys []string) []Agent {
 		}
 	}
 	return only
-}
-
-// IsInstalled reports whether the agent with key is installed.
-func (s *Supported) IsInstalled(key string) bool {
-	agents := s.Only([]string{key})
-	return len(agents) == 1 && agents[0].IsInstalled()
 }

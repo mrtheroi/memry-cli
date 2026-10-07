@@ -54,11 +54,3 @@ func TestRegistryOnlyReturnsTheAgentsWithTheGivenKeysInDisplayOrder(t *testing.T
 		t.Errorf("Only = %v, want %v", got, want)
 	}
 }
-
-func TestRegistryIsInstalledAsksTheAgentWithTheKey(t *testing.T) {
-	registry := agents.NewSupported(&fakeAgent{key: "codex", installed: true}, &fakeAgent{key: "windsurf"})
-
-	if !registry.IsInstalled("codex") || registry.IsInstalled("windsurf") || registry.IsInstalled("unknown") {
-		t.Error("IsInstalled does not follow the agents")
-	}
-}

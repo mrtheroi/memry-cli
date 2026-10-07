@@ -20,7 +20,7 @@ func TestOverwritesURLAndTokenButKeepsOtherKeys(t *testing.T) {
 
 	assertExit(t, code, 0, output)
 	data, _ := os.ReadFile(h.configPath)
-	want := "{\n    \"url\": \"" + s.URL + "\",\n    \"token\": \"secret-token\",\n    \"project\": \"kept\"\n}\n"
+	want := "{\n    \"url\": \"" + s.URL + "\",\n    \"token\": \"secret-token\",\n    \"project\": \"kept\",\n    \"agents\": [\n        \"claude-code\"\n    ]\n}\n"
 	if string(data) != want {
 		t.Errorf("config = %q, want %q", data, want)
 	}
@@ -38,7 +38,7 @@ func TestOverwritesAConfigFileThePHPCLIReadsAsEmpty(t *testing.T) {
 		output, code := h.run(emailArgs(s.URL), code123456)
 
 		assertExit(t, code, 0, output)
-		want := map[string]any{"url": s.URL, "token": "secret-token"}
+		want := map[string]any{"url": s.URL, "token": "secret-token", "agents": []any{"claude-code"}}
 		if got := h.config(); !reflect.DeepEqual(got, want) {
 			t.Errorf("config after %q = %v, want %v", contents, got, want)
 		}

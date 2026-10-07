@@ -103,8 +103,7 @@ func listOrEmpty(o *phpjson.Object, key string) ([]any, bool) {
 // write writes the settings like PHP's json_encode with pretty printing
 // and unescaped slashes and Unicode.
 func (s *ClaudeSettings) write(settings *phpjson.Object) error {
-	encoded, _ := phpjson.Encode(settings, phpjson.PrettyPrint|phpjson.UnescapedSlashes|phpjson.UnescapedUnicode)
-	return fsx.Replace(s.path, append(encoded, '\n'))
+	return fsx.Replace(s.path, append(encode(settings), '\n'))
 }
 
 // RemoveSessionStartHook removes every SessionStart hook whose command

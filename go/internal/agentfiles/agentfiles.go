@@ -48,3 +48,10 @@ func encodable(value *phpjson.Object) bool {
 	_, ok := phpjson.Encode(value, 0)
 	return ok
 }
+
+// encode writes value like PHP's json_encode with pretty printing and
+// slashes and non-ASCII characters unescaped. value must be encodable.
+func encode(value *phpjson.Object) []byte {
+	encoded, _ := phpjson.Encode(value, phpjson.PrettyPrint|phpjson.UnescapedSlashes|phpjson.UnescapedUnicode)
+	return encoded
+}

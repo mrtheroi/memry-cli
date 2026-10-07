@@ -163,8 +163,34 @@ func newCodex(env Env) Agent {
 	return a
 }
 
+// newOpenCode is OpenCode: the memry MCP server in
+// ~/.config/opencode/opencode.json and the memry instructions in
+// ~/.config/opencode/AGENTS.md.
 func newOpenCode(env Env) Agent {
-	return &configFileAgent{key: "opencode", name: "OpenCode", env: env}
+	// $XDG_CONFIG_HOME/opencode, or ~/.config/opencode, as OpenCode resolves it.
+	directory := func() string {
+		if config := env.Getenv("XDG_CONFIG_HOME"); config != "" {
+			return config + "/opencode"
+		}
+		return env.Getenv("HOME") + "/.config/opencode"
+	}
+	a := &configFileAgent{key: "opencode", name: "OpenCode", env: env}
+	// opencode.json, or else an existing opencode.jsonc, like `opencode mcp
+	// add` picks it. A .jsonc file with comments cannot be parsed, so it is
+	// left untouched with manual instructions instead.
+	a.mcpConfig = func() agentfiles.MCPConfig {
+		path := directory() + "/opencode.json"
+		if jsonc := directory() + "/opencode.jsonc"; !isFile(path) && isFile(jsonc) {
+			path = jsonc
+		}
+		return agentfiles.NewJSONConfig(path, "mcp")
+	}
+	a.server = func() *phpjson.Object {
+		return a.withEnvironment(phpjson.NewObject("type", "local", "command", env.Executable.Arguments("mcp"), "enabled", true), "environment")
+	}
+	a.rulesFile = func() *agentfiles.RulesFile { return agentfiles.NewRulesFile(directory() + "/AGENTS.md") }
+	a.installed = func() bool { return env.onPath("opencode") || isDir(directory()) }
+	return a
 }
 
 func newAntigravity(env Env) Agent {
@@ -192,4 +218,10 @@ func (env Env) onPath(name string) bool {
 func isDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// isFile reports whether path is a regular file, like PHP's is_file.
+func isFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }

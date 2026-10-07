@@ -71,8 +71,7 @@ func (c *JSONConfig) read() (*phpjson.Object, bool, error) {
 // write writes config pretty-printed with slashes and non-ASCII
 // characters unescaped, like PHP's json_encode with those flags.
 func (c *JSONConfig) write(config *phpjson.Object) error {
-	encoded, _ := phpjson.Encode(config, phpjson.PrettyPrint|phpjson.UnescapedSlashes|phpjson.UnescapedUnicode)
-	return fsx.Replace(c.path, append(encoded, '\n'))
+	return fsx.Replace(c.path, append(encode(config), '\n'))
 }
 
 // Remove removes the server name, and the server list when that leaves it
@@ -101,7 +100,8 @@ func (c *JSONConfig) Remove(name string) (Removal, error) {
 	return Removed, c.write(config)
 }
 
-// Snippet is the server name in the file's format.
+// Snippet is the server name under the server list, as a JSON file of
+// its own.
 func (c *JSONConfig) Snippet(name string, server *phpjson.Object) string {
-	return ""
+	return string(encode(phpjson.NewObject(c.key, phpjson.NewObject(name, server))))
 }

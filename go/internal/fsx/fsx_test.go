@@ -74,3 +74,69 @@ func TestWriteAtomicCreatesANewFileWithTheModeInMissingOwnerOnlyDirectories(t *t
 		t.Errorf("dir mode = %o, want 0700", mode)
 	}
 }
+
+// defaultMode is the mode a new file gets from the umask, like PHP's
+// 0666 & ~umask().
+func defaultMode(t *testing.T) os.FileMode {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "probe")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o666)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	info, _ := os.Stat(path)
+	return info.Mode().Perm()
+}
+
+// Ported from app/Support/AtomicFile.php: a new file gets the default
+// permissions, 0666 minus the umask.
+func TestReplaceCreatesANewFileWithTheDefaultMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "AGENTS.md")
+
+	if err := fsx.Replace(path, []byte("rules")); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := info.Mode().Perm(), defaultMode(t); got != want {
+		t.Errorf("mode = %o, want %o", got, want)
+	}
+	if got, _ := os.ReadFile(path); string(got) != "rules" {
+		t.Errorf("contents = %q, want %q", got, "rules")
+	}
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	if len(entries) != 1 {
+		t.Errorf("dir entries = %v, want only AGENTS.md", entries)
+	}
+}
+
+// Ported from tests/Unit/AtomicFileTest.php, for Replace.
+func TestReplaceRenamesOverAnExistingFileKeepingItsMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	before := inode(t, path)
+
+	if err := fsx.Replace(path, []byte("new")); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+
+	info, _ := os.Stat(path)
+	if mode := info.Mode().Perm(); mode != 0o640 {
+		t.Errorf("mode = %o, want 0640", mode)
+	}
+	if inode(t, path) == before {
+		t.Error("the file was written in place")
+	}
+	if got, _ := os.ReadFile(path); string(got) != "new" {
+		t.Errorf("contents = %q, want %q", got, "new")
+	}
+}

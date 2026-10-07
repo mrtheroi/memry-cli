@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2 # no floating v4 tag exists
       - uses: anchore/sbom-action/download-syft@v0
       - name: Extract the release notes from CHANGELOG.md
         env:

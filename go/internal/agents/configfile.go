@@ -193,8 +193,23 @@ func newOpenCode(env Env) Agent {
 	return a
 }
 
+// newAntigravity is Google Antigravity: the memry MCP server in
+// ~/.gemini/config/mcp_config.json and the memry instructions in
+// ~/.gemini/config/GEMINI.md, a global rules file only Antigravity reads
+// (Gemini CLI reads ~/.gemini/GEMINI.md instead).
 func newAntigravity(env Env) Agent {
-	return &configFileAgent{key: "antigravity", name: "Antigravity", env: env}
+	a := &configFileAgent{key: "antigravity", name: "Antigravity", env: env}
+	a.mcpConfig = func() agentfiles.MCPConfig {
+		return agentfiles.NewJSONConfig(env.Getenv("HOME")+"/.gemini/config/mcp_config.json", "mcpServers")
+	}
+	a.server = a.commandServer
+	a.rulesFile = func() *agentfiles.RulesFile {
+		return agentfiles.NewRulesFile(env.Getenv("HOME") + "/.gemini/config/GEMINI.md")
+	}
+	a.installed = func() bool {
+		return isDir(env.Getenv("HOME")+"/.gemini/antigravity") || isDir(env.Getenv("HOME")+"/.gemini/config")
+	}
+	return a
 }
 
 func newWindsurf(env Env) Agent {

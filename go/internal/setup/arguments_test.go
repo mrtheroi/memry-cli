@@ -73,3 +73,38 @@ func TestAcceptsTheAnsiGlobalOptions(t *testing.T) {
 		assertExit(t, code, 0, output)
 	}
 }
+
+// Like Symfony, --quiet hides messages but not errors; only --silent (or
+// SHELL_VERBOSITY=-2) hides the argument error too. A malformed silent
+// token is not silent.
+func TestShowsArgumentErrorsUnlessSilent(t *testing.T) {
+	bogus := errorBlock(`The "--bogus" option does not exist.`)
+	tests := []struct {
+		name string
+		argv []string
+		env  map[string]string
+		want string
+	}{
+		{"--silent", []string{"--silent", "--bogus"}, nil, ""},
+		{"SHELL_VERBOSITY=-2", []string{"--bogus"}, map[string]string{"SHELL_VERBOSITY": "-2"}, ""},
+		{"--quiet", []string{"--quiet", "--bogus"}, nil, bogus},
+		{"-q", []string{"-q", "--bogus"}, nil, bogus},
+		{"SHELL_VERBOSITY=-1", []string{"--bogus"}, map[string]string{"SHELL_VERBOSITY": "-1"}, bogus},
+		{"--silent=x", []string{"--silent=x"}, nil, errorBlock(`The "--silent" option does not accept a value.`)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, s := newHarness(t), newServer(t)
+			for key, value := range tt.env {
+				h.env[key] = value
+			}
+
+			output, code := h.run(append([]string{"--url", s.URL, "--email", "ana@example.com"}, tt.argv...))
+
+			assertExit(t, code, 1, output)
+			if output != tt.want {
+				t.Errorf("output = %q, want %q", output, tt.want)
+			}
+		})
+	}
+}

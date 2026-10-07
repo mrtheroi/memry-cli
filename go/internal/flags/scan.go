@@ -21,6 +21,8 @@ type Args struct {
 	NoInteraction bool
 	// Quiet is set by -q, --quiet or --silent.
 	Quiet bool
+	// Silent is a well-formed --silent, which hides errors too.
+	Silent bool
 	// Verbose is set by -v, -vv, -vvv or --verbose.
 	Verbose bool
 	Rest    []string
@@ -57,6 +59,7 @@ func Scan(argv []string) Args {
 	}
 	args.NoInteraction = HasParameterOption(argv, "--no-interaction", "-n")
 	args.Quiet = HasParameterOption(argv, "--silent", "--quiet", "-q")
+	args.Silent = hasToken(argv, "--silent")
 	args.Verbose = HasParameterOption(argv, "--verbose", "-v")
 	return args
 }
@@ -116,4 +119,17 @@ func (a *Args) option(name string) *Option {
 		return &a.Agents
 	}
 	return nil
+}
+
+// hasToken reports whether argv has exactly token before any "--".
+func hasToken(argv []string, token string) bool {
+	for _, arg := range argv {
+		if arg == "--" {
+			return false
+		}
+		if arg == token {
+			return true
+		}
+	}
+	return false
 }

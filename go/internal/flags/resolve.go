@@ -136,6 +136,16 @@ func IsQuiet(args Args, lookupEnv func(string) (string, bool)) bool {
 	return args.Quiet || (!args.Verbose && isQuietVerbosity(lookupEnv))
 }
 
+// IsSilent reports whether setup must not print even errors: Symfony's
+// --silent, or SHELL_VERBOSITY=-2. Unlike quiet, which hides messages only.
+func IsSilent(args Args, lookupEnv func(string) (string, bool)) bool {
+	if args.Silent {
+		return true
+	}
+	value, _ := lookupEnv("SHELL_VERBOSITY")
+	return !args.Verbose && phpInt(value) == -2
+}
+
 // isQuietVerbosity reports whether SHELL_VERBOSITY is quiet (-1) or silent
 // (-2), read like PHP's (int) cast. Symfony takes any other value as the
 // normal verbosity.

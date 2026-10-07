@@ -51,10 +51,12 @@ const (
 // Run runs setup and returns its exit code.
 func Run(env Env) int {
 	args := flags.Scan(env.Args)
-	// Rejected before quiet applies: the PHP CLI shows these errors even for
-	// a malformed quiet token such as -qfoo.
+	// Like Symfony, quiet hides messages but not these errors; only silent
+	// hides them too. A malformed token such as -qfoo is never silent.
 	if message, ok := unexpectedArgument(args.Rest); ok {
-		env.errorBlock(message)
+		if !flags.IsSilent(args, env.LookupEnv) {
+			env.errorBlock(message)
+		}
 		return failure
 	}
 	if flags.IsQuiet(args, env.LookupEnv) {

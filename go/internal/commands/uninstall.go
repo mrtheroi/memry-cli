@@ -19,6 +19,11 @@ func newUninstall(version string) *cobra.Command {
 	return cmd
 }
 
+// newDeleteAccount returns `memry delete-account`.
+func newDeleteAccount(version string) *cobra.Command {
+	return removal("delete-account", "Permanently delete your memry account and all its memories", version, uninstall.DeleteAccount)
+}
+
 // removal returns a command that removes memry, run by run. Like setup,
 // it reads its own options the way the PHP CLI does, so cobra does not
 // parse them.

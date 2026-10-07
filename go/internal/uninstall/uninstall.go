@@ -13,6 +13,7 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/client"
 	"github.com/mrtheroi/memry-cli/internal/config"
 	"github.com/mrtheroi/memry-cli/internal/console"
+	"github.com/mrtheroi/memry-cli/internal/email"
 	"github.com/mrtheroi/memry-cli/internal/flags"
 )
 
@@ -234,4 +235,74 @@ func (env Env) line(text string) {
 func (env Env) getenv(key string) string {
 	value, _ := env.LookupEnv(key)
 	return value
+}
+
+// DeleteAccount runs `memry delete-account` and returns its exit code.
+func DeleteAccount(env Env) int {
+	interactive, ok := env.start("delete-account")
+	if !ok {
+		return failure
+	}
+	cfg := env.loadConfig()
+	url, hasURL := cfg.URL()
+	token, hasToken := cfg.Token()
+	if !hasURL || !hasToken {
+		env.line("You are not logged in to memry.")
+		return failure
+	}
+	env.line("This permanently deletes your memry account and ALL its memories on the server. It cannot be undone.")
+	address, err := env.askEmail(interactive)
+	if err != nil {
+		return env.aborted()
+	}
+	if address == "" {
+		env.line("Aborted; nothing was deleted.")
+		return failure
+	}
+	if message := env.deleteAccount(url, token, address); message != "" {
+		env.line(message)
+		return failure
+	}
+	env.line("Deleted your memry account and all its memories.")
+	// The token was deleted with the account, so there is nothing to revoke.
+	removed := env.removeLocalInstall()
+	env.line("Run `brew uninstall memry` to remove the CLI.")
+	if removed {
+		return success
+	}
+	return failure
+}
+
+// askEmail asks for the account email until it is a valid address. It is
+// empty when the answer is left empty, as it is without interaction.
+func (env Env) askEmail(interactive bool) (string, error) {
+	if !interactive {
+		return "", nil
+	}
+	for {
+		answer, err := env.Prompter.Ask("Type your account email to confirm")
+		if err != nil || answer == "" {
+			return "", err
+		}
+		if address, ok := email.Normalize(answer); ok {
+			return address, nil
+		}
+		env.line("Enter a valid email address.")
+	}
+}
+
+// deleteAccount deletes the account on the server, returning why it
+// failed, or nothing once it is deleted.
+func (env Env) deleteAccount(url, token, address string) string {
+	status, err := env.send(http.MethodDelete, url+"/api/account", token, map[string]string{"email": address})
+	switch {
+	case err != nil:
+	case client.Succeeded(&http.Response{StatusCode: status}):
+		return ""
+	case status == http.StatusUnprocessableEntity:
+		return "The email does not match your memry account."
+	case status == http.StatusUnauthorized:
+		return "Your memry login is no longer valid. Run `memry setup` and try again."
+	}
+	return "Could not delete your memry account. Try again later."
 }

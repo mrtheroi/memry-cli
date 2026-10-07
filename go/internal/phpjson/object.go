@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -54,6 +55,17 @@ func (o *Object) Delete(key string) {
 		if m.key == key {
 			o.members = append(o.members[:i:i], o.members[i+1:]...)
 			return
+		}
+	}
+}
+
+// All yields the keys and values, in order.
+func (o *Object) All() iter.Seq2[string, any] {
+	return func(yield func(string, any) bool) {
+		for _, m := range o.members {
+			if !yield(m.key, m.value) {
+				return
+			}
 		}
 	}
 }

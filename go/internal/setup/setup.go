@@ -10,13 +10,13 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
 	"github.com/mrtheroi/memry-cli/internal/client"
 	"github.com/mrtheroi/memry-cli/internal/config"
+	"github.com/mrtheroi/memry-cli/internal/console"
 	"github.com/mrtheroi/memry-cli/internal/email"
 	"github.com/mrtheroi/memry-cli/internal/flags"
 )
@@ -53,9 +53,9 @@ func Run(env Env) int {
 	args := flags.Scan(env.Args)
 	// Like Symfony, quiet hides messages but not these errors; only silent
 	// hides them too. A malformed token such as -qfoo is never silent.
-	if message, ok := unexpectedArgument(args.Rest); ok {
+	if message, ok := flags.UnexpectedArgument("setup", args.Rest); ok {
 		if !flags.IsSilent(args, env.LookupEnv) {
-			env.errorBlock(message)
+			console.ErrorBlock(env.Out, message)
 		}
 		return failure
 	}
@@ -252,50 +252,8 @@ func phpTrim(s string) string {
 
 // aborted fails like Symfony when the input ends before an answer.
 func (env Env) aborted() bool {
-	env.errorBlock("Aborted.")
+	console.ErrorBlock(env.Out, "Aborted.")
 	return false
-}
-
-// errorBlock renders an error the way Symfony does, as a padded block
-// (here without its colors).
-func (env Env) errorBlock(message string) {
-	blank := strings.Repeat(" ", len(message)+4)
-	_, _ = io.WriteString(env.Out, "\n"+blank+"\n  "+message+"  \n"+blank+"\n\n")
-}
-
-// unexpectedArgument returns the error Symfony gives for the first option
-// setup does not know or the first argument (setup takes none), if any.
-// --ansi and --no-ansi are global options the PHP CLI accepts.
-func unexpectedArgument(rest []string) (string, bool) {
-	for i, token := range rest {
-		switch {
-		case token == "--":
-			if i+1 < len(rest) {
-				return noArguments(rest[i+1]), true
-			}
-			return "", false
-		case flags.IsGlobalOption(token):
-			continue
-		case strings.HasPrefix(token, "--"):
-			name, _, _ := strings.Cut(token, "=")
-			if slices.Contains(flags.GlobalOptions, name) {
-				return `The "` + name + `" option does not accept a value.`, true
-			}
-			return `The "` + name + `" option does not exist.`, true
-		case len(token) > 1 && token[0] == '-':
-			// Like Symfony, the first character of the set that is not a
-			// global shortcut.
-			unknown := strings.TrimLeft(token[1:], flags.GlobalShortcuts)
-			return `The "-` + unknown[:1] + `" option does not exist.`, true
-		default:
-			return noArguments(token), true
-		}
-	}
-	return "", false
-}
-
-func noArguments(argument string) string {
-	return `No arguments expected for "setup" command, got "` + argument + `".`
 }
 
 // line prints one line of output.

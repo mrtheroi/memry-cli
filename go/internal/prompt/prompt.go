@@ -24,6 +24,9 @@ type Terminal struct {
 	ended bool
 	// readHidden reads a hidden answer when in is a terminal.
 	readHidden func() ([]byte, error)
+	// raw switches the terminal in to raw mode, returning how to restore
+	// it; nil when in is not a terminal.
+	raw func() (restore func(), err error)
 }
 
 // New returns a Terminal reading answers from in. When in is a terminal,
@@ -32,6 +35,13 @@ func New(in io.Reader, out io.Writer) *Terminal {
 	t := &Terminal{in: bufio.NewReader(in), out: out}
 	if file, ok := in.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
 		t.readHidden = func() ([]byte, error) { return term.ReadPassword(int(file.Fd())) }
+		t.raw = func() (func(), error) {
+			state, err := term.MakeRaw(int(file.Fd()))
+			if err != nil {
+				return nil, err
+			}
+			return func() { _ = term.Restore(int(file.Fd()), state) }, nil
+		}
 	}
 	return t
 }
@@ -98,4 +108,17 @@ func (t *Terminal) Secret(label string) string {
 	// The newline the hidden answer did not show, then the one after it.
 	_, _ = io.WriteString(t.out, "\n\n")
 	return phpTrim(line)
+}
+
+// Confirm asks a yes/no question like Symfony's confirmation question
+// whose default is no: only an answer starting with y or Y confirms.
+func (t *Terminal) Confirm(label string) (bool, error) {
+	_, _ = fmt.Fprintf(t.out, "\n %s (yes/no) [no]:\n > ", label)
+	line, err := t.readLine()
+	if err != nil {
+		return false, err
+	}
+	_, _ = io.WriteString(t.out, "\n")
+	answer := phpTrim(line)
+	return answer != "" && (answer[0] == 'y' || answer[0] == 'Y'), nil
 }

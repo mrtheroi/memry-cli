@@ -57,7 +57,7 @@ func TestAcceptsGlobalShortcutSets(t *testing.T) {
 	for _, option := range []string{"-vvv", "-qn", "-nq"} {
 		h, s := newHarness(t), newServer(t)
 
-		output, code := h.run([]string{"--url", s.URL, "--token=admin-token", option})
+		output, code := h.run([]string{"--url", s.URL, "--token=admin-token", "--agents=claude-code", option})
 
 		assertExit(t, code, 0, output)
 	}
@@ -68,7 +68,7 @@ func TestAcceptsTheAnsiGlobalOptions(t *testing.T) {
 	for _, option := range []string{"--ansi", "--no-ansi"} {
 		h, s := newHarness(t), newServer(t)
 
-		output, code := h.run([]string{"--url", s.URL, "--email", "ana@example.com", option}, code123456)
+		output, code := h.run([]string{"--url", s.URL, "--email", "ana@example.com", "--agents=claude-code", option}, code123456)
 
 		assertExit(t, code, 0, output)
 	}

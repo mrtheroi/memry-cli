@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"slices"
 
 	"github.com/mrtheroi/memry-cli/internal/fsx"
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
@@ -119,8 +120,13 @@ func (f *File) Token() (string, bool) {
 // Agents is the saved agent selection, when it is a list. Entries that
 // are not strings are skipped.
 func (f *File) Agents() ([]string, bool) {
+	return f.strings("agents")
+}
+
+// strings returns the strings of the list at key, when it is a list.
+func (f *File) strings(key string) ([]string, bool) {
 	var list []any
-	if !f.decodeValue("agents", &list) || list == nil {
+	if !f.decodeValue(key, &list) || list == nil {
 		return nil, false
 	}
 	agents := []string{}
@@ -216,4 +222,20 @@ func Login(getenv func(string) string) (url, token string, ok bool) {
 	url, hasURL := cfg.URL()
 	token, hasToken := cfg.Token()
 	return url, token, hasURL && url != "" && hasToken && token != ""
+}
+
+// AgentsToRemove are the agents memry could not be removed from, kept for
+// a retry, when it is a list. Entries that are not strings are skipped.
+// The PHP CLI does not know this key and keeps it as it is.
+func (f *File) AgentsToRemove() ([]string, bool) {
+	return f.strings("agents_to_remove")
+}
+
+// Delete removes key, if there.
+func (f *File) Delete(key string) {
+	if _, ok := f.values[key]; !ok {
+		return
+	}
+	delete(f.values, key)
+	f.keys = slices.DeleteFunc(f.keys, func(k string) bool { return k == key })
 }

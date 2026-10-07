@@ -148,11 +148,14 @@ func (a *claudeCode) Uninstall() Result {
 
 // removeMCPServers removes the memry MCP server and the legacy one of
 // earlier versions. A server that is not registered is fine; any other
-// failure to remove one fails the uninstall (see removeServer).
+// failure to remove one fails the uninstall (see removeServer). Without
+// the claude CLI there is nothing to remove the servers with, nor a Claude
+// Code to run them: that is skipped with a warning, not a failure (the
+// PHP CLI fails).
 func (a *claudeCode) removeMCPServers(lines *lines) bool {
 	if !a.IsInstalled() {
 		lines.say("warn", "Claude Code CLI not found; skipped removing the "+mcpServer+" MCP server.")
-		return false
+		return true
 	}
 	ok := true
 	if _, failure := a.removeServer(legacyMCPServer); failure != "" {

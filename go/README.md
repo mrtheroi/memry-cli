@@ -10,13 +10,14 @@ spec: a Go test that ports one names it in a comment.
 | Package               | Responsibility                                                              |
 | --------------------- | --------------------------------------------------------------------------- |
 | `cmd/memry`           | Entry point; the version is set with `-ldflags "-X main.version=<version>"` |
-| `internal/commands`   | Cobra commands: the root command, `--version`, `setup` and the hidden ones  |
+| `internal/commands`   | Cobra commands: the root command, `--version`, `setup`, `uninstall`, `delete-account` and the hidden ones |
 | `internal/config`     | `config.json` path, load and save, in the PHP CLI's format                  |
 | `internal/fsx`        | Atomic file writes                                                          |
 | `internal/client`     | The HTTP client: no redirects, 2xx-only success, timeout, User-Agent        |
 | `internal/flags`      | Symfony-like options: the `setup` resolver, verbosity, argument checks      |
-| `internal/setup`      | `memry setup`: the email and token logins (agents are not wired in yet)     |
-| `internal/prompt`     | Terminal questions read like Symfony's, with a hidden prompt                |
+| `internal/setup`      | `memry setup`: the email and token logins, then the agent selection and wiring |
+| `internal/uninstall`  | `memry uninstall` and `memry delete-account`: remove memry from this machine |
+| `internal/prompt`     | Terminal questions read like Symfony's (hidden, yes/no) and a multiselect   |
 | `internal/email`      | Email validation matching PHP's `FILTER_VALIDATE_EMAIL`                     |
 | `internal/agents`     | The agent adapters (Claude Code, Codex, OpenCode, Antigravity, Windsurf)    |
 | `internal/agentfiles` | Safe edits of agent files: rules blocks, JSON/TOML MCP configs, settings    |

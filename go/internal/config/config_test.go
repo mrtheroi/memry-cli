@@ -311,3 +311,44 @@ func TestAConfigThatIsNotValidUTF8JSONIsNeverAccepted(t *testing.T) {
 		})
 	}
 }
+
+// The agents memry could not be removed from, kept for a retry, are read
+// like the agents.
+func TestAgentsToRemoveAreReadOnlyWhenTheyAreAList(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"agents_to_remove":["codex",1,"windsurf"],"agents":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := cfg.AgentsToRemove(); !ok || !reflect.DeepEqual(got, []string{"codex", "windsurf"}) {
+		t.Errorf("AgentsToRemove() = %q, %v; want [codex windsurf], true", got, ok)
+	}
+	if got, ok := cfg.Agents(); ok {
+		t.Errorf("Agents() = %q, true; want none", got)
+	}
+}
+
+// Delete removes a key, so the saved file is the one without it.
+func TestDeleteRemovesAKeyFromTheSavedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"url":"u","agents_to_remove":["codex"],"token":"t"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.Delete("agents_to_remove")
+	cfg.Delete("missing")
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if data, _ := os.ReadFile(path); string(data) != "{\n    \"url\": \"u\",\n    \"token\": \"t\"\n}\n" {
+		t.Errorf("config = %q", data)
+	}
+}

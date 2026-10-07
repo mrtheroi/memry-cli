@@ -23,6 +23,6 @@ func NewRoot(version string) *cobra.Command {
 	global.CountP("verbose", "v", "Increase the verbosity of messages")
 	global.Bool("ansi", false, "Force ANSI output")
 	global.Bool("no-ansi", false, "Disable ANSI output")
-	root.AddCommand(newSetup(version), newMcp(version), newSessionStartHook(version), newMcpHeaders(version))
+	root.AddCommand(newSetup(version), newUninstall(version), newDeleteAccount(version), newMcp(version), newSessionStartHook(version), newMcpHeaders(version))
 	return root
 }

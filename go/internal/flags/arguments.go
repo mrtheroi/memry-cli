@@ -8,8 +8,9 @@ import (
 // UnexpectedArgument returns the error Symfony gives for the first option
 // in rest the command does not know or its first argument (memry's
 // commands take none), if any. --ansi, --no-ansi and --env are global
-// options the PHP CLI accepts.
-func UnexpectedArgument(command string, rest []string) (string, bool) {
+// options the PHP CLI accepts; options are the command's own value-less
+// options, such as uninstall's --force.
+func UnexpectedArgument(command string, rest []string, options ...string) (string, bool) {
 	for i := 0; i < len(rest); i++ {
 		switch token := rest[i]; {
 		case token == "--":
@@ -17,7 +18,7 @@ func UnexpectedArgument(command string, rest []string) (string, bool) {
 				return noArguments(command, rest[i+1]), true
 			}
 			return "", false
-		case IsGlobalOption(token), strings.HasPrefix(token, "--env="):
+		case IsGlobalOption(token), strings.HasPrefix(token, "--env="), slices.Contains(options, token):
 			continue
 		case token == "--env":
 			// Laravel Zero's --env[=ENV], whose optional value may be the
@@ -27,7 +28,7 @@ func UnexpectedArgument(command string, rest []string) (string, bool) {
 			}
 		case strings.HasPrefix(token, "--"):
 			name, _, _ := strings.Cut(token, "=")
-			if slices.Contains(GlobalOptions, name) {
+			if slices.Contains(GlobalOptions, name) || slices.Contains(options, name) {
 				return `The "` + name + `" option does not accept a value.`, true
 			}
 			return `The "` + name + `" option does not exist.`, true

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/console"
 	"github.com/mrtheroi/memry-cli/internal/email"
 	"github.com/mrtheroi/memry-cli/internal/flags"
+	"github.com/mrtheroi/memry-cli/internal/prompt"
 )
 
 // Prompter asks the questions setup needs.
@@ -28,6 +30,9 @@ type Prompter interface {
 	Ask(label string) (string, error)
 	// Secret returns the trimmed answer, typed without being shown.
 	Secret(label string) string
+	// MultiSelect returns the values of the choices picked, starting
+	// from defaults, or an error when the question was cancelled.
+	MultiSelect(label, hint string, choices []prompt.Choice, defaults []string) ([]string, error)
 }
 
 // Env is what setup runs with.
@@ -177,31 +182,174 @@ func (env Env) request(url, method, path, token string, data any) (response, boo
 }
 
 // saveLogin saves the url, the token and the agent selection, keeping the
-// other keys of the config, then revokes the token of the previous login.
+// other keys of the config, revokes the token of the previous login, then
+// wires memry into the selected agents.
 func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
+	// The token of an email login was issued for this setup: unless it is
+	// saved, no one could use or revoke it. A given token is the user's.
+	unsaved := func() int {
+		if plan.Login == flags.LoginEmail {
+			env.revokeNewToken(plan.URL, token)
+		}
+		return failure
+	}
 	path := config.Path(env.getenv)
 	cfg, err := config.LoadOrEmpty(path)
 	if err != nil {
-		return env.notSaved(path, err)
+		env.notSaved(path, err)
+		return unsaved()
 	}
 	previousURL, hasURL := cfg.URL()
 	previousToken, hasToken := cfg.Token()
-	// The saved agent selection is left as it is until the Go build wires
-	// agents (phase 4): the PHP CLI reads this file too and would unwire
-	// agents dropped from it.
+	saved, hasSaved := cfg.Agents()
+	toRemove, hasToRemove := cfg.AgentsToRemove()
+	selected, err := env.selectAgents(plan, saved, hasSaved)
+	if err != nil {
+		return unsaved()
+	}
 	cfg.Set("url", plan.URL)
 	cfg.Set("token", token)
+	cfg.Set("agents", selected)
+	// An agent selected again is installed, no longer removed.
+	toRemove = slices.DeleteFunc(slices.Clone(toRemove), func(key string) bool { return slices.Contains(selected, key) })
+	setAgentsToRemove(cfg, toRemove)
 	if err := cfg.Save(); err != nil {
-		return env.notSaved(path, err)
+		env.notSaved(path, err)
+		return unsaved()
 	}
 
 	env.line(loggedIn + " Credentials saved to " + path + ".")
 	if hasURL && hasToken && previousToken != token {
 		env.revokePreviousToken(previousURL, previousToken)
 	}
+	if len(selected) == 0 {
+		env.line("No agents selected; memry is not wired into any agent. Run `memry setup` again to choose some.")
+	}
+	wired := saved
+	if hasURL && hasToken && !hasSaved && !hasToRemove {
+		// Setup saved no agents up to 0.4.0, when it only wired Claude
+		// Code: unwire it unless it is selected, like uninstall does.
+		wired = []string{"claude-code"}
+	}
+	// The saved agents no longer selected are removed, and the removals
+	// that failed before are retried.
+	code, pending := env.wire(plan.URL, selected, append(slices.Clone(wired), toRemove...))
+	if len(toRemove) > 0 || len(pending) > 0 {
+		// Keep the agents memry could not be removed from, so a later
+		// setup or uninstall retries the removal.
+		setAgentsToRemove(cfg, pending)
+		if err := cfg.Save(); err != nil {
+			return env.notSaved(path, err)
+		}
+	}
+	return code
+}
+
+// setAgentsToRemove saves the agents memry could not be removed from in
+// agents_to_remove, or removes the key when there are none, so the file
+// is then the one the PHP CLI writes.
+func setAgentsToRemove(cfg *config.File, keys []string) {
+	if len(keys) == 0 {
+		cfg.Delete("agents_to_remove")
+		return
+	}
+	cfg.Set("agents_to_remove", keys)
+}
+
+// selectAgents returns the agents given with --agents, else asks which
+// agents to wire, defaulting to the saved selection without the agents
+// this version does not support, else to the installed ones. The default
+// is the answer when not interactive.
+func (env Env) selectAgents(plan flags.Plan, saved []string, hasSaved bool) ([]string, error) {
+	if plan.AgentsGiven {
+		return unique(plan.Agents), nil
+	}
+	var choices []prompt.Choice
+	installed := []string{}
+	for _, agent := range env.Agents.All() {
+		if agent.IsInstalled() {
+			choices = append(choices, prompt.Choice{Value: agent.Key(), Label: agent.Name()})
+			installed = append(installed, agent.Key())
+		} else {
+			choices = append(choices, prompt.Choice{Value: agent.Key(), Label: agent.Name() + " (not installed)"})
+		}
+	}
+	defaults := installed
+	if hasSaved {
+		// The saved order, each agent once (PHP keeps duplicates).
+		defaults = []string{}
+		for _, key := range unique(saved) {
+			if slices.Contains(env.Agents.Keys(), key) {
+				defaults = append(defaults, key)
+			}
+		}
+	}
+	if !plan.Interactive {
+		return defaults, nil
+	}
+	return env.Prompter.MultiSelect("Which agents do you use?", "Space to select, enter to confirm.", choices, defaults)
+}
+
+// unique returns keys without repeats, each at its first place.
+func unique(keys []string) []string {
+	once := []string{}
+	for _, key := range keys {
+		if !slices.Contains(once, key) {
+			once = append(once, key)
+		}
+	}
+	return once
+}
+
+// wire installs memry in the selected agents and removes it from the
+// saved ones no longer selected. Every agent is handled, even when an
+// earlier one fails; a summary line per agent ends the output. It returns
+// the exit code and the deselected agents memry could not be removed
+// from.
+func (env Env) wire(url string, selected, saved []string) (int, []string) {
+	var summary []agents.Line
+	failed := false
+	for _, agent := range env.Agents.Only(selected) {
+		if env.report(agent.Install(url)) {
+			summary = append(summary, agents.Line{Style: "info", Text: agent.Name() + ": memry is set up."})
+		} else {
+			failed = true
+			summary = append(summary, agents.Line{Style: "error", Text: agent.Name() + ": failed; see the messages above."})
+		}
+	}
+	var deselected []string
+	for _, key := range saved {
+		if !slices.Contains(selected, key) {
+			deselected = append(deselected, key)
+		}
+	}
+	var pending []string
+	for _, agent := range env.Agents.Only(deselected) {
+		if env.report(agent.Uninstall()) {
+			summary = append(summary, agents.Line{Style: "info", Text: agent.Name() + ": memry was removed."})
+		} else {
+			failed = true
+			pending = append(pending, agent.Key())
+			summary = append(summary, agents.Line{Style: "error", Text: agent.Name() + ": failed; see the messages above."})
+		}
+	}
 	env.line("")
-	env.line("Agent wiring is not implemented in the Go build yet: no agent was set up or removed, and the saved agent selection was left unchanged.")
-	return success
+	for _, line := range summary {
+		env.line(line.Text)
+	}
+	if failed {
+		return failure, pending
+	}
+	return success, pending
+}
+
+// report prints the lines of an agent result and returns whether it
+// succeeded.
+func (env Env) report(result agents.Result) bool {
+	for _, line := range result.Lines {
+		env.line(line.Text)
+	}
+	return result.Successful
 }
 
 // notSaved fails because the config at path could not be saved.
@@ -302,6 +450,18 @@ func (r response) jsonString(key string) (string, bool) {
 	}
 	value, ok := body[key].(string)
 	return value, ok
+}
+
+// revokeNewToken revokes the token setup was just issued, when it stops
+// without saving it. A 401 means it is no longer valid: as good as
+// revoked.
+func (env Env) revokeNewToken(url, token string) {
+	resp, err := env.send(http.MethodDelete, url+"/api/auth/token", token, nil)
+	if err == nil && (resp.succeeded() || resp.status == http.StatusUnauthorized) {
+		env.line("Revoked the new memry token.")
+	} else {
+		env.line("Could not revoke the new memry token.")
+	}
 }
 
 // revokePreviousToken revokes the token of the previous login on the

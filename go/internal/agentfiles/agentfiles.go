@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mrtheroi/memry-cli/internal/fsx"
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
@@ -49,9 +50,27 @@ func encodable(value *phpjson.Object) bool {
 	return ok
 }
 
+// errUnencodable is returned instead of writing a value JSON cannot
+// encode, such as an OS path that is not valid UTF-8: the file is then
+// left untouched rather than replaced with a lone newline.
+var errUnencodable = errors.New("a value to write is not valid UTF-8 or cannot be encoded as JSON")
+
 // encode writes value like PHP's json_encode with pretty printing and
-// slashes and non-ASCII characters unescaped. value must be encodable.
-func encode(value *phpjson.Object) []byte {
-	encoded, _ := phpjson.Encode(value, phpjson.PrettyPrint|phpjson.UnescapedSlashes|phpjson.UnescapedUnicode)
-	return encoded
+// slashes and non-ASCII characters unescaped.
+func encode(value *phpjson.Object) ([]byte, error) {
+	encoded, ok := phpjson.Encode(value, phpjson.PrettyPrint|phpjson.UnescapedSlashes|phpjson.UnescapedUnicode)
+	if !ok {
+		return nil, errUnencodable
+	}
+	return encoded, nil
+}
+
+// replaceWithJSON replaces path with value encoded by encode and a
+// newline, or leaves it untouched when value cannot be encoded.
+func replaceWithJSON(path string, value *phpjson.Object) error {
+	encoded, err := encode(value)
+	if err != nil {
+		return err
+	}
+	return fsx.Replace(path, append(encoded, '\n'))
 }

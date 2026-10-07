@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mrtheroi/memry-cli/internal/fsx"
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
@@ -103,7 +102,7 @@ func listOrEmpty(o *phpjson.Object, key string) ([]any, bool) {
 // write writes the settings like PHP's json_encode with pretty printing
 // and unescaped slashes and Unicode.
 func (s *ClaudeSettings) write(settings *phpjson.Object) error {
-	return fsx.Replace(s.path, append(encode(settings), '\n'))
+	return replaceWithJSON(s.path, settings)
 }
 
 // RemoveSessionStartHook removes every SessionStart hook whose command

@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 
-	"github.com/mrtheroi/memry-cli/internal/fsx"
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
@@ -71,7 +70,7 @@ func (c *JSONConfig) read() (*phpjson.Object, bool, error) {
 // write writes config pretty-printed with slashes and non-ASCII
 // characters unescaped, like PHP's json_encode with those flags.
 func (c *JSONConfig) write(config *phpjson.Object) error {
-	return fsx.Replace(c.path, append(encode(config), '\n'))
+	return replaceWithJSON(c.path, config)
 }
 
 // Remove removes the server name, and the server list when that leaves it
@@ -103,5 +102,8 @@ func (c *JSONConfig) Remove(name string) (Removal, error) {
 // Snippet is the server name under the server list, as a JSON file of
 // its own.
 func (c *JSONConfig) Snippet(name string, server *phpjson.Object) string {
-	return string(encode(phpjson.NewObject(c.key, phpjson.NewObject(name, server))))
+	// A value that cannot be encoded gives an empty snippet; Put has
+	// already failed for it without touching the file.
+	encoded, _ := encode(phpjson.NewObject(c.key, phpjson.NewObject(name, server)))
+	return string(encoded)
 }

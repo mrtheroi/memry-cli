@@ -37,6 +37,11 @@ func (c *TOMLConfig) Put(name string, server *phpjson.Object) (bool, error) {
 	if !ok {
 		return false, nil
 	}
+	// Every key and value of the entry is a TOML string written with JSON's
+	// escapes: refuse before writing when one cannot be encoded.
+	if _, ok := phpjson.Encode(phpjson.NewObject(name, server), phpjson.UnescapedSlashes|phpjson.UnescapedUnicode); !ok {
+		return true, errUnencodable
+	}
 	snippet := c.Snippet(name, server)
 	if len(spans) == 0 {
 		return true, fsx.Replace(c.path, []byte(blankLineAfter(contents)+snippet))

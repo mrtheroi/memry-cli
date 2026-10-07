@@ -3,13 +3,8 @@ name: Go
 on:
   push:
     branches: [main]
-    paths:
-      - "go/**"
-      - ".github/workflows/go.yml"
   pull_request:
-    paths:
-      - "go/**"
-      - ".github/workflows/go.yml"
+  workflow_call:
 
 permissions:
   contents: read
@@ -17,18 +12,33 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: go
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go/go.mod
-          cache-dependency-path: go/go.sum
+          go-version-file: go.mod
       - run: go vet ./...
       - run: go test -race ./...
+      - run: scripts/update-formula_test.sh
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
-          working-directory: go
+
+  # Builds the release archives without publishing or signing them, to
+  # validate .goreleaser.yaml on every pull request.
+  snapshot:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: anchore/sbom-action/download-syft@v0
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean --skip=publish,sign

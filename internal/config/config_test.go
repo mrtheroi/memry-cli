@@ -1,31 +1,66 @@
 package config_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/config"
+	"github.com/mrtheroi/memry-cli/internal/home"
 )
 
 func TestPath(t *testing.T) {
+	// "/home/ana/.config/memry/config.json" on Unix.
+	defaultPath := "/home/ana" + string(os.PathSeparator) + filepath.Join(".config", "memry", "config.json")
 	tests := []struct {
 		name string
 		env  map[string]string
 		want string
 	}{
 		{"MEMRY_CONFIG wins", map[string]string{"MEMRY_CONFIG": "/tmp/custom.json", "HOME": "/home/ana"}, "/tmp/custom.json"},
-		{"defaults to the home directory", map[string]string{"HOME": "/home/ana"}, "/home/ana/.config/memry/config.json"},
-		{"an empty MEMRY_CONFIG is unset", map[string]string{"MEMRY_CONFIG": "", "HOME": "/home/ana"}, "/home/ana/.config/memry/config.json"},
+		{"defaults to the home directory", map[string]string{"HOME": "/home/ana"}, defaultPath},
+		{"an empty MEMRY_CONFIG is unset", map[string]string{"MEMRY_CONFIG": "", "HOME": "/home/ana"}, defaultPath},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			getenv := func(key string) string { return tt.env[key] }
-			if got := config.Path(getenv); got != tt.want {
+			if got, _ := config.Path("", getenv); got != tt.want {
 				t.Errorf("Path() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPath_ErrorsWhenNoHome(t *testing.T) {
+	for _, goos := range []string{"", "windows"} {
+		got, err := config.Path(goos, func(string) string { return "" })
+		if !errors.Is(err, home.ErrNoHome) || got != "" {
+			t.Errorf("Path(%q) = %q, %v; want ErrNoHome", goos, got, err)
+		}
+	}
+}
+
+func TestPath_WindowsDefault(t *testing.T) {
+	env := map[string]string{"USERPROFILE": `C:\Users\ana`, "HOME": "/c/Users/ana"}
+	got, err := config.Path("windows", func(key string) string { return env[key] })
+	want := `C:\Users\ana` + string(os.PathSeparator) + filepath.Join(".config", "memry", "config.json")
+	if err != nil || got != want {
+		t.Fatalf("Path = %q, %v; want %q", got, err, want)
+	}
+}
+
+func TestPath_MemryConfigWinsWithoutAHome(t *testing.T) {
+	got, err := config.Path("windows", func(key string) string { return map[string]string{"MEMRY_CONFIG": `C:\tmp\m.json`}[key] })
+	if err != nil || got != `C:\tmp\m.json` {
+		t.Fatalf("Path = %q, %v; want the MEMRY_CONFIG path", got, err)
+	}
+}
+
+func TestLogin_NoHomeIsNotLoggedIn(t *testing.T) {
+	if _, _, ok := config.Login("", func(string) string { return "" }); ok {
+		t.Error("Login ok without a home, want not logged in")
 	}
 }
 
@@ -261,7 +296,7 @@ func TestLoginNeedsANonEmptyURLAndToken(t *testing.T) {
 		}
 		getenv := func(key string) string { return map[string]string{"MEMRY_CONFIG": path}[key] }
 
-		url, token, ok := config.Login(getenv)
+		url, token, ok := config.Login("", getenv)
 
 		if ok != want || (ok && (url != "https://memry.test" || token != "secret-token")) {
 			t.Errorf("Login() with %s = %q, %q, %v; want logged in %v", contents, url, token, ok, want)
@@ -270,7 +305,7 @@ func TestLoginNeedsANonEmptyURLAndToken(t *testing.T) {
 	missing := func(key string) string {
 		return map[string]string{"MEMRY_CONFIG": filepath.Join(t.TempDir(), "none.json")}[key]
 	}
-	if _, _, ok := config.Login(missing); ok {
+	if _, _, ok := config.Login("", missing); ok {
 		t.Error("Login() without a config file = logged in")
 	}
 }
@@ -305,7 +340,7 @@ func TestAConfigThatIsNotValidUTF8JSONIsNeverAccepted(t *testing.T) {
 				}
 				return ""
 			}
-			if _, _, ok := config.Login(getenv); ok {
+			if _, _, ok := config.Login("", getenv); ok {
 				t.Error("Login: want logged out, got a login")
 			}
 		})

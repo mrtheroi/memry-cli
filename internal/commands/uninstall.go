@@ -2,6 +2,7 @@ package commands
 
 import (
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -41,6 +42,7 @@ func removal(name, short, version string, run func(uninstall.Env) int) *cobra.Co
 			}
 			out := cmd.OutOrStdout()
 			code := run(uninstall.Env{
+				GOOS:      runtime.GOOS,
 				Args:      args,
 				LookupEnv: os.LookupEnv,
 				Out:       out,

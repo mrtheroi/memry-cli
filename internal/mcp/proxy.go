@@ -18,6 +18,8 @@ import (
 
 // Env is what the proxy runs with.
 type Env struct {
+	// GOOS is the operating system; the zero value means Unix.
+	GOOS      string
 	LookupEnv func(string) (string, bool)
 	In        io.Reader
 	Out       io.Writer
@@ -49,7 +51,7 @@ func (env Env) forward(message []byte) []byte {
 	if !phpjson.Valid(message) {
 		return []byte(`{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}`)
 	}
-	url, token, ok := config.Login(env.getenv)
+	url, token, ok := config.Login(env.GOOS, env.getenv)
 	if !ok {
 		return errorReply(message, -32000, "Not logged in to memry. Run `memry setup`.")
 	}

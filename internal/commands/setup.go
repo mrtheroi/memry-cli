@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -37,6 +38,7 @@ func newSetup(version string) *cobra.Command {
 			}
 			out := cmd.OutOrStdout()
 			code := setup.Run(setup.Env{
+				GOOS:      runtime.GOOS,
 				Args:      args,
 				LookupEnv: os.LookupEnv,
 				Unsetenv:  os.Unsetenv,
@@ -70,6 +72,7 @@ func agentsEnv() agents.Env {
 		self = os.Args[0]
 	}
 	return agents.Env{
+		GOOS:       runtime.GOOS,
 		Getenv:     os.Getenv,
 		LookPath:   exec.LookPath,
 		Runner:     agents.ExecRunner{Timeout: 60 * time.Second},

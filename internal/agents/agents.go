@@ -74,6 +74,8 @@ func (r RunResult) Succeeded() bool {
 // Env is what the agents run with. Every path derives from Getenv (HOME
 // and the agents' own variables), so tests use a temporary home.
 type Env struct {
+	// GOOS is the operating system; the zero value means Unix.
+	GOOS   string
 	Getenv func(string) string
 	// LookPath finds a command on the PATH, like exec.LookPath.
 	LookPath   func(string) (string, error)

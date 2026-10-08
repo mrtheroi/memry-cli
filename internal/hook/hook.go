@@ -20,6 +20,8 @@ import (
 
 // Env is what the hook runs with.
 type Env struct {
+	// GOOS is the operating system; the zero value means Unix.
+	GOOS      string
 	LookupEnv func(string) (string, bool)
 	In        io.Reader
 	Out       io.Writer
@@ -53,7 +55,7 @@ func (env Env) context() (string, bool) {
 	if !ok {
 		return "", false
 	}
-	url, token, ok := config.Login(env.getenv)
+	url, token, ok := config.Login(env.GOOS, env.getenv)
 	if !ok {
 		return "", false
 	}

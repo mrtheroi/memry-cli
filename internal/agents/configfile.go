@@ -3,10 +3,12 @@ package agents
 import (
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/agentfiles"
+	"github.com/mrtheroi/memry-cli/internal/home"
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
@@ -149,17 +151,17 @@ func (a *configFileAgent) removeInstructions(lines *lines) bool {
 // $CODEX_HOME/AGENTS.md.
 func newCodex(env Env) Agent {
 	// $CODEX_HOME when it is an absolute path, as Codex requires, or ~/.codex.
-	home := func() string {
-		if home := env.Getenv("CODEX_HOME"); strings.HasPrefix(home, "/") {
-			return strings.TrimRight(home, "/")
+	directory := func() string {
+		if dir := env.Getenv("CODEX_HOME"); filepath.IsAbs(dir) {
+			return strings.TrimRight(dir, string(os.PathSeparator))
 		}
-		return env.Getenv("HOME") + "/.codex"
+		return env.homePath(".codex")
 	}
 	a := &configFileAgent{key: "codex", name: "Codex", env: env}
-	a.mcpConfig = func() agentfiles.MCPConfig { return agentfiles.NewTOMLConfig(home() + "/config.toml") }
+	a.mcpConfig = func() agentfiles.MCPConfig { return agentfiles.NewTOMLConfig(home.Join(directory(), "config.toml")) }
 	a.server = a.commandServer
-	a.rulesFile = func() *agentfiles.RulesFile { return agentfiles.NewRulesFile(home() + "/AGENTS.md") }
-	a.installed = func() bool { return env.onPath("codex") || isDir(home()) }
+	a.rulesFile = func() *agentfiles.RulesFile { return agentfiles.NewRulesFile(home.Join(directory(), "AGENTS.md")) }
+	a.installed = func() bool { return env.onPath("codex") || isDir(directory()) }
 	return a
 }
 
@@ -170,17 +172,17 @@ func newOpenCode(env Env) Agent {
 	// $XDG_CONFIG_HOME/opencode, or ~/.config/opencode, as OpenCode resolves it.
 	directory := func() string {
 		if config := env.Getenv("XDG_CONFIG_HOME"); config != "" {
-			return config + "/opencode"
+			return home.Join(config, "opencode")
 		}
-		return env.Getenv("HOME") + "/.config/opencode"
+		return env.homePath(".config", "opencode")
 	}
 	a := &configFileAgent{key: "opencode", name: "OpenCode", env: env}
 	// opencode.json, or else an existing opencode.jsonc, like `opencode mcp
 	// add` picks it. A .jsonc file with comments cannot be parsed, so it is
 	// left untouched with manual instructions instead.
 	a.mcpConfig = func() agentfiles.MCPConfig {
-		path := directory() + "/opencode.json"
-		if jsonc := directory() + "/opencode.jsonc"; !isFile(path) && isFile(jsonc) {
+		path := home.Join(directory(), "opencode.json")
+		if jsonc := home.Join(directory(), "opencode.jsonc"); !isFile(path) && isFile(jsonc) {
 			path = jsonc
 		}
 		return agentfiles.NewJSONConfig(path, "mcp")
@@ -188,7 +190,7 @@ func newOpenCode(env Env) Agent {
 	a.server = func() *phpjson.Object {
 		return a.withEnvironment(phpjson.NewObject("type", "local", "command", env.Executable.Arguments("mcp"), "enabled", true), "environment")
 	}
-	a.rulesFile = func() *agentfiles.RulesFile { return agentfiles.NewRulesFile(directory() + "/AGENTS.md") }
+	a.rulesFile = func() *agentfiles.RulesFile { return agentfiles.NewRulesFile(home.Join(directory(), "AGENTS.md")) }
 	a.installed = func() bool { return env.onPath("opencode") || isDir(directory()) }
 	return a
 }
@@ -200,14 +202,14 @@ func newOpenCode(env Env) Agent {
 func newAntigravity(env Env) Agent {
 	a := &configFileAgent{key: "antigravity", name: "Antigravity", env: env}
 	a.mcpConfig = func() agentfiles.MCPConfig {
-		return agentfiles.NewJSONConfig(env.Getenv("HOME")+"/.gemini/config/mcp_config.json", "mcpServers")
+		return agentfiles.NewJSONConfig(env.homePath(".gemini", "config", "mcp_config.json"), "mcpServers")
 	}
 	a.server = a.commandServer
 	a.rulesFile = func() *agentfiles.RulesFile {
-		return agentfiles.NewRulesFile(env.Getenv("HOME") + "/.gemini/config/GEMINI.md")
+		return agentfiles.NewRulesFile(env.homePath(".gemini", "config", "GEMINI.md"))
 	}
 	a.installed = func() bool {
-		return isDir(env.Getenv("HOME")+"/.gemini/antigravity") || isDir(env.Getenv("HOME")+"/.gemini/config")
+		return isDir(env.homePath(".gemini", "antigravity")) || isDir(env.homePath(".gemini", "config"))
 	}
 	return a
 }
@@ -216,14 +218,14 @@ func newAntigravity(env Env) Agent {
 // ~/.codeium/windsurf/mcp_config.json and the memry instructions in its
 // global rules, ~/.codeium/windsurf/memories/global_rules.md.
 func newWindsurf(env Env) Agent {
-	directory := func() string { return env.Getenv("HOME") + "/.codeium/windsurf" }
+	directory := func() string { return env.homePath(".codeium", "windsurf") }
 	a := &configFileAgent{key: "windsurf", name: "Windsurf", env: env}
 	a.mcpConfig = func() agentfiles.MCPConfig {
-		return agentfiles.NewJSONConfig(directory()+"/mcp_config.json", "mcpServers")
+		return agentfiles.NewJSONConfig(home.Join(directory(), "mcp_config.json"), "mcpServers")
 	}
 	a.server = a.commandServer
 	a.rulesFile = func() *agentfiles.RulesFile {
-		return agentfiles.NewRulesFile(directory() + "/memories/global_rules.md")
+		return agentfiles.NewRulesFile(home.Join(directory(), "memories", "global_rules.md"))
 	}
 	a.installed = func() bool { return isDir(directory()) }
 	return a
@@ -234,6 +236,13 @@ type lines []Line
 
 func (l *lines) say(style, text string) {
 	*l = append(*l, Line{Style: style, Text: text})
+}
+
+// homePath is elems under the user's home. Without a home it is under the
+// root, as it always was.
+func (env Env) homePath(elems ...string) string {
+	dir, _ := home.Dir(env.GOOS, env.Getenv)
+	return home.Join(dir, elems...)
 }
 
 // onPath reports whether the command name is on the PATH.

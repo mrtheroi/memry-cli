@@ -1,3 +1,5 @@
+//go:build !windows
+
 package fsx_test
 
 import (

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/config"
@@ -193,6 +194,9 @@ func mode(t *testing.T, path string) os.FileMode {
 // Ported from "makes the config file readable by the owner only" and
 // "creates the missing parent directory readable by the owner only".
 func TestSaveMakesTheFileAndNewDirectoriesReadableByTheOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits; the Windows owner-only DACL is covered in slice 4a")
+	}
 	t.Run("a new file in a missing directory", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "nested", "memry", "config.json")
 		cfg, _ := config.Load(path)

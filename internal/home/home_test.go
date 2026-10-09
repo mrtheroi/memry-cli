@@ -68,7 +68,8 @@ func TestDir_NothingSetReturnsErrNoHome(t *testing.T) {
 
 func TestJoin_PreservesTrailingSlashBase(t *testing.T) {
 	got := Join("/x/", ".config", "memry", "config.json")
-	if got != "/x//.config/memry/config.json" {
+	want := "/x/" + string(os.PathSeparator) + filepath.Join(".config", "memry", "config.json")
+	if got != want {
 		t.Fatalf("Join = %q", got)
 	}
 }

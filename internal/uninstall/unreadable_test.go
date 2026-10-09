@@ -2,6 +2,7 @@ package uninstall_test
 
 import (
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/uninstall"
@@ -14,6 +15,9 @@ import (
 
 func unreadableConfig(t *testing.T, h *harness, s *server) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 000 does not make a file unreadable on Windows")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root can read a mode 000 file")
 	}

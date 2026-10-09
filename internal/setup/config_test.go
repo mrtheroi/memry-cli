@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 )
 
@@ -78,6 +79,9 @@ func TestFailsWhenTheCredentialsCannotBeSaved(t *testing.T) {
 // the missing parent directory readable by the owner only" and "writes to
 // ~/.config/memry/config.json when MEMRY_CONFIG is not set".
 func TestSavesTheConfigReadableByTheOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits; the Windows owner-only DACL is covered in slice 4a")
+	}
 	h, s := newHarness(t), newServer(t)
 	delete(h.env, "MEMRY_CONFIG")
 	path := filepath.Join(h.dir, ".config", "memry", "config.json")

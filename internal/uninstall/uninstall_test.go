@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -173,6 +174,9 @@ func TestDeletesTheConfigFile(t *testing.T) {
 }
 
 func TestWarnsAndFailsWhenTheConfigFileCannotBeDeleted(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a read-only directory (chmod 0500) does not block deletes on Windows")
+	}
 	h, s := newHarness(t), newServer(t)
 	h.previousConfig(map[string]any{"url": s.URL, "token": "old-token"})
 	if err := os.Chmod(h.dir, 0o500); err != nil {

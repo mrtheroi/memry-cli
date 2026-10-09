@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/prompt"
@@ -120,6 +121,9 @@ func TestNeverRevokesAGivenTokenWhenTheCredentialsCannotBeSaved(t *testing.T) {
 // never one it cannot read: that fails, keeping the file, and revokes the
 // new token. (The PHP CLI stops with an uncaught ErrorException.)
 func TestFailsWithoutOverwritingAConfigItCannotRead(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 000 does not make a file unreadable on Windows")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root can read a mode 000 file")
 	}

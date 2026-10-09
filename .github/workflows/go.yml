@@ -18,11 +18,25 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go vet ./...
+      - run: GOOS=windows go vet ./...
       - run: go test -race ./...
       - run: scripts/update-formula_test.sh
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
+
+  # Windows runs the same suite without -race (needs cgo). autocrlf is turned
+  # off before checkout so the byte-exact goldens keep their LF endings.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
 
   # Builds the release archives without publishing or signing them, to
   # validate .goreleaser.yaml on every pull request.

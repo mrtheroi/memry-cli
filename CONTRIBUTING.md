@@ -21,6 +21,8 @@ release archives.
    scripts/update-formula_test.sh
    ```
 
+   Windows CI runs `go vet` and `go test ./...` without `-race`, which needs cgo.
+
    CI runs the same checks (see [`.github/workflows/go.yml`](.github/workflows/go.yml), which pins
    the golangci-lint version) and builds the release archives with
    `goreleaser release --snapshot --clean --skip=publish,sign` to validate
@@ -44,8 +46,10 @@ Every change is test-driven: write one failing test for the next behavior, see i
 right reason, write the least code that makes it pass, then refactor with the tests green. A bug
 fix starts with a test that reproduces the bug. Tests never touch your real home, agent configs,
 `claude` CLI or memry server: they point `HOME`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and
-`XDG_CONFIG_HOME` at `t.TempDir()`, fake the `claude` CLI and the agents, and serve the memry API
-from `httptest`. A behavior that cannot be tested is called out in the pull request: what is not
+`XDG_CONFIG_HOME` at `t.TempDir()` (set both `USERPROFILE` and `HOME`: Windows reads `USERPROFILE`
+first, Unix `HOME`), fake the `claude` CLI and the agents, and serve the memry API
+from `httptest`. Build expected paths with `filepath` and JSON-escaped strings, never with hard-coded
+separators, so the same test passes on Windows. A behavior that cannot be tested is called out in the pull request: what is not
 covered and why.
 
 ### Code layout
@@ -115,16 +119,16 @@ Hidden commands are run by AI agents, not by users: `memry mcp-headers` (the Cla
 | Variable            | Purpose                                                                                                                  |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `MEMRY_URL`         | Default server URL when `--url` is not given (default `https://api.memry.com.mx`).                                       |
-| `MEMRY_CONFIG`      | Alternative config file path (default `~/.config/memry/config.json`). Passed on to the `headersHelper` and the SessionStart hook. |
+| `MEMRY_CONFIG`      | Alternative config file path (default `~/.config/memry/config.json`, `%USERPROFILE%\.config\memry\config.json` on Windows). Passed on to the `headersHelper` (Unix), the Windows `memry mcp` server and the SessionStart hook. The global `--config <path>` option (also `--config=<path>`) on `setup`, `uninstall`, `delete-account`, `mcp`, `mcp-headers` and `hook:session-start` wins over it, per process. |
 | `MEMRY_TOKEN`       | Token `memry setup --url <url> --token` uses when `--token` has no value, instead of the hidden prompt (also without interaction). Trimmed; ignored when blank or when `--token` is not given. `--token=<value>` wins over it. Removed from setup's environment once read, so subprocesses never inherit it. |
-| `MEMRY_EXECUTABLE`  | Path of the memry executable agents run (default: the running memry executable). Set by the Homebrew wrapper. Agents that take a command and its arguments separately get it as the command, so it must be a plain path. |
+| `MEMRY_EXECUTABLE`  | Path of the memry executable agents run (default: the running memry executable). Set by the Homebrew wrapper. Agents that take a command and its arguments separately get it as the command, so it must be a plain path. On Windows it may only contain letters, digits and `: / \ . _ -` (written with forward slashes in the hook), and a config path with `` " $ ` % ! ``, a line break or a typographic quote is refused. |
 | `CLAUDE_CONFIG_DIR` | Claude Code config directory where the hook is installed (default `~/.claude`).                                         |
 | `CODEX_HOME`        | Codex home directory, when it is an absolute path (default `~/.codex`), as Codex resolves it.                           |
 | `XDG_CONFIG_HOME`   | Base of the OpenCode config directory (default `~/.config`), as OpenCode resolves it.                                   |
 
 The Homebrew formula installs the binary behind a wrapper that sets `MEMRY_EXECUTABLE` to the stable
 `$(brew --prefix)/opt/memry/bin/memry` path, so the commands `memry setup` writes into Claude Code
-keep working after `brew upgrade`. A custom `MEMRY_CONFIG` is prefixed to that command as well,
+keep working after `brew upgrade`. A custom `MEMRY_CONFIG` is prefixed to that command as well (on Windows, `--config "<path>"` follows it),
 and passed to the other agents through the environment of their MCP server entry.
 
 ## How `memry setup` works
@@ -278,6 +282,13 @@ product) and to pass the project and the repo (the root's directory name) to `se
 When the user is not logged in or the request fails, it prints nothing and exits with code 0, so
 it never blocks a session.
 
+### Windows notes
+
+On Windows, setup registers Claude Code's server as a stdio `memry mcp` command (no
+`headersHelper`) and the hook runs `memry hook:session-start` by name, so `memry` must be on the
+`PATH`. Known accepted risk: when Claude Code runs hooks with CMD (no Git Bash), CMD searches the
+current directory before the `PATH`. The binary is not Authenticode-signed.
+
 ### Project name
 
 memry groups memories by product, not by folder, so several repos can share one project. A repo
@@ -322,7 +333,8 @@ removed.
 Otherwise steps 2 and 3 run even if the revoke fails, each printing one line. It exits with code 1 if
 any step failed (revoke failed with another error or an unreachable server, config not deletable)
 or the confirmation was declined, and 0 otherwise, including when there was nothing to remove. It
-ends with a hint to run `brew uninstall memry`.
+ends with a hint to run `brew uninstall memry` (on Windows, `winget uninstall memry` for a WinGet
+install, else the path of the `memry.exe` to delete).
 
 ## How `memry delete-account` works
 
@@ -343,7 +355,7 @@ ends with a hint to run `brew uninstall memry`.
    agents, config file); there is no token left to revoke. When memry cannot be removed from an
    agent, it keeps only `agents_to_remove` and an empty `agents` selection (no login) in the config file and asks you to run
    `memry uninstall` again, exiting with code 1. Otherwise it exits with code 1 if deleting the
-   config file failed. It ends with a hint to run `brew uninstall memry`.
+   config file failed. It ends with the same removal hint as `memry uninstall`.
 
 ## How `memry mcp` works
 
@@ -439,8 +451,8 @@ through the workflow's GitHub OIDC identity.
    ```
 
 3. The workflow runs `go vet`, `go test -race` and golangci-lint, then GoReleaser publishes the
-   release: `memry_X.Y.Z_<os>_<arch>.tar.gz` for darwin and linux on amd64 and arm64 (the binary,
-   `LICENSE` and `README.md`), an SBOM per archive, `checksums.txt` and its cosign bundle
+   release: `memry_X.Y.Z_<os>_<arch>.tar.gz` for darwin and linux, and `memry_X.Y.Z_windows_<arch>.zip`, on
+   amd64 and arm64 (the binary, `LICENSE` and `README.md`), an SBOM per archive, `checksums.txt` and its cosign bundle
    `checksums.txt.sigstore.json`. To check the signature:
 
    ```bash
@@ -460,6 +472,10 @@ through the workflow's GitHub OIDC identity.
    archive per OS and architecture, the binary in `libexec`, and a `bin/memry` wrapper that sets
    `MEMRY_EXECUTABLE` to the stable opt path (see [Environment variables](#environment-variables)).
    GoReleaser does not push to the tap, which would need a token for another repository.
+
+   GoReleaser also opens a pull request with the `Memry.Memry` manifest from the
+   `mrtheroi/winget-pkgs` fork against `microsoft/winget-pkgs`, when the `WINGET_GITHUB_TOKEN`
+   secret is set (release candidates are skipped).
 
 5. Once the tap is merged, check the upgrade end to end:
 

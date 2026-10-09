@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/mrtheroi/memry-cli/internal/fsx"
 )
@@ -140,5 +141,41 @@ func TestReplaceRenamesOverAnExistingFileKeepingItsMode(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(path); string(got) != "new" {
 		t.Errorf("contents = %q, want %q", got, "new")
+	}
+}
+
+// S1.5.d (pin, green on arrival: Unix behavior is unchanged): no
+// owner-only restriction is applied, the 0600 mode is what protects the file.
+func TestWriteAtomicOnUnixAppliesNoRestrictionAndKeepsMode0600(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	if fsx.HasRestrictToOwner() {
+		t.Error("restrictToOwner is set, want none on Unix")
+	}
+	if err := fsx.WriteAtomic(path, []byte("{}"), 0o600); err != nil {
+		t.Fatalf("WriteAtomic: %v", err)
+	}
+	info, _ := os.Stat(path)
+	if mode := info.Mode().Perm(); mode != 0o600 {
+		t.Errorf("mode = %o, want 0600", mode)
+	}
+}
+
+// S1.6.d (pin, green on arrival): Unix tries the rename once, even for
+// the errno a locked file gives on Windows.
+func TestWriteAtomicOnUnixRenamesOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	attempts := 0
+	t.Cleanup(fsx.SetRename(func(string, string) error {
+		attempts++
+		return syscall.Errno(32)
+	}))
+	t.Cleanup(fsx.SetSleep(func(time.Duration) { t.Error("slept, want a single attempt") }))
+
+	if err := fsx.WriteAtomic(path, []byte("{}"), 0o600); err == nil {
+		t.Fatal("WriteAtomic succeeded, want the rename error")
+	}
+	if attempts != 1 {
+		t.Errorf("attempts = %d, want 1", attempts)
 	}
 }

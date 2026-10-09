@@ -30,14 +30,17 @@ jobs:
       - name: Extract the release notes from CHANGELOG.md
         env:
           VERSION: ${{ github.ref_name }}
+        # A release candidate (v1.1.0-rc.1) uses the notes of its version.
         run: |
-          awk -v heading="## [${VERSION#v}]" '
+          VERSION="${VERSION#v}"
+          VERSION="${VERSION%%-*}"
+          awk -v heading="## [${VERSION}]" '
             index($0, heading) == 1 { found = 1; next }
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
           if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
-            echo "::error::CHANGELOG.md has no section for ${VERSION#v}"
+            echo "::error::CHANGELOG.md has no section for ${VERSION}"
             exit 1
           fi
       - name: Warn when the winget token is missing

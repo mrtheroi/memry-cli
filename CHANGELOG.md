@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-09
+
+memry now runs on Windows (amd64 and arm64). On macOS and Linux nothing changes except the home
+directory behavior listed below.
+
+### Added
+
+- Windows support: `memry setup`, `uninstall`, `delete-account`, `mcp`, `mcp-headers` and
+  `hook:session-start` work on Windows, with the config file at
+  `%USERPROFILE%\.config\memry\config.json`, readable only by your user. A file another process
+  holds busy is retried briefly when memry renames it.
+- `winget install Memry.Memry` (and `winget upgrade Memry.Memry`) install and update memry on
+  Windows. Releases also carry `memry_<version>_windows_<arch>.zip` archives for amd64 and arm64
+  with the same signed `checksums.txt` and SBOMs; `go install` works too. The binary is not
+  Authenticode-signed, so SmartScreen or an antivirus may warn about it.
+- The global `--config <path>` (or `--config=<path>`) option on `setup`, `uninstall`,
+  `delete-account`, `mcp`, `mcp-headers` and `hook:session-start` selects the config file for that
+  process. It wins over `MEMRY_CONFIG`, which wins over the default path.
+- Claude Code on Windows: setup registers memry as a stdio `memry mcp` server (no
+  `headersHelper`) and installs the SessionStart hook as `memry hook:session-start`, so `memry`
+  must be on the `PATH`. Both `claude.exe` and `claude.cmd` are supported.
+- On a legacy Windows console without color support, the agent question prints
+  `Agents: <list> (pass --agents to choose).` and keeps the defaults.
+- `memry uninstall` and `memry delete-account` end with `winget uninstall memry` on a WinGet
+  install, or the path of the `memry.exe` to delete, instead of the Homebrew hint on Windows.
+
+### Changed
+
+- The home directory is `USERPROFILE`, then `HOME`, then two levels above `LOCALAPPDATA` on
+  Windows (`HOME`, then `USERPROFILE` on macOS and Linux). When none is set, memry fails with
+  "Could not find your home directory; set USERPROFILE or HOME." and exit code 1. On macOS and
+  Linux an unset `HOME` now fails this way instead of writing to `/.config`.
+- On Windows, `MEMRY_EXECUTABLE` may only contain letters, digits and `: / \ . _ -`, and a
+  config path with `"`, `$`, a backtick, `%`, `!`, a line break or a typographic quote is
+  refused for the hook, which is written with forward slashes.
+
 ## [1.0.0] - 2026-10-07
 
 The CLI is rewritten in Go as a drop-in replacement for 0.7.0: the same config file

@@ -10,7 +10,7 @@ one session are available in the next one, so you do not have to explain the sam
 
 ## Requirements
 
-- macOS or Linux (amd64 or arm64)
+- macOS, Linux or Windows (amd64 or arm64)
 - At least one [supported agent](#supported-agents). For Claude Code, its CLI (`claude`) must be on
   your `PATH`.
 
@@ -35,6 +35,8 @@ Other ways to install memry, a single binary with no other dependency:
   tar -xzf memry_1.0.0_darwin_arm64.tar.gz memry
   sudo install -m 0755 memry /usr/local/bin/memry
   ```
+
+On Windows, see [Windows](#windows).
 
 Your agents run memry from the path it is installed at, so outside Homebrew keep the binary where
 it is, or run `memry setup` again after you move it.
@@ -73,6 +75,62 @@ MEMRY_TOKEN="$token" memry setup --url https://memry.company.internal --token --
 
 `MEMRY_TOKEN` is only read together with `--token`, so it never changes the email login.
 
+### Windows
+
+Install with [WinGet](https://learn.microsoft.com/windows/package-manager/), then run setup in a
+new terminal so the `memry` command is on your `PATH`:
+
+```powershell
+winget install Memry.Memry
+memry setup
+```
+
+Other ways to install it:
+
+- With Go: `go install github.com/mrtheroi/memry-cli/cmd/memry@latest`. The binary lands in
+  `%GOPATH%\bin` (`go env GOPATH`), which must be on your `PATH`.
+- From a [release](https://github.com/mrtheroi/memry-cli/releases): download
+  `memry_<version>_windows_<arch>.zip` (`amd64` or `arm64`), check it against `checksums.txt`
+  (signed with cosign, see the cosign command in the [release process](CONTRIBUTING.md#release-process)), and put
+  `memry.exe` from it on your `PATH`.
+
+Update with `winget upgrade Memry.Memry`. To uninstall, run `memry uninstall`, then
+`winget uninstall memry`; for a manual install, `memry uninstall` prints the path of the
+`memry.exe` to delete.
+
+What differs from macOS and Linux:
+
+- **Config file.** `%USERPROFILE%\.config\memry\config.json`, readable only by your user. memry
+  finds your home in `USERPROFILE`, then `HOME`, then two levels above `LOCALAPPDATA`; without any,
+  it stops with "Could not find your home directory; set USERPROFILE or HOME." (on every OS, an
+  unset home is an error). Use [`--config`](#custom-config-file) or `MEMRY_CONFIG` to put it elsewhere.
+- **Claude Code.** Setup registers memry as a local `memry mcp` server
+  (`claude mcp add --transport stdio --scope user memry -- <memry.exe> mcp`) and adds the same
+  SessionStart hook. Both `claude.exe` and `claude.cmd` are supported.
+- **The hook runs `memry`** by its name, so `memry` must be on your `PATH`. WinGet guarantees it;
+  with `go install`, add `%GOPATH%\bin` to your `PATH`. If you run Claude Code with CMD instead of
+  Git Bash, CMD searches the current directory first, so do not start sessions in a folder that
+  contains an untrusted `memry.exe`.
+- **Antivirus and SmartScreen.** `memry.exe` is not Authenticode-signed, so SmartScreen or your
+  antivirus may warn about it. To check a download, verify the signed `checksums.txt` as described
+  in [CONTRIBUTING.md](CONTRIBUTING.md#release-process) and compare the archive's SHA-256.
+- **Terminals without color support.** In a legacy console, the agent question is replaced by
+  `Agents: <list> (pass --agents to choose).` and keeps the defaults; use `--agents` to choose.
+
+### Custom config file
+
+By default memry keeps your login in `~/.config/memry/config.json`. To use another file, set the
+`MEMRY_CONFIG` environment variable or pass the global `--config <path>` (or `--config=<path>`)
+option to `setup`, `uninstall` and `delete-account`:
+
+```bash
+memry setup --config ~/work/memry.json
+```
+
+The precedence is `--config`, then `MEMRY_CONFIG`, then the default; each applies to that one
+process. Setup passes the file on to the commands it registers in your agents, so they read the
+same login.
+
 ## Supported agents
 
 | Agent                                                            | Key           | What `memry setup` adds                                                                         |
@@ -110,8 +168,9 @@ removes just what setup added. Your login token is never written to an agent's f
 brew upgrade memry
 ```
 
-Without Homebrew, run the same `go install` again, or replace the binary with the one from a newer
-release. Your login and agent configuration keep working after an upgrade.
+On Windows, run `winget upgrade Memry.Memry`. Without a package manager, run the same `go install`
+again, or replace the binary with the one from a newer release. Your login and agent configuration
+keep working after an upgrade.
 
 ## Uninstall
 
@@ -122,7 +181,8 @@ brew uninstall memry
 
 `memry uninstall` asks for confirmation, then removes memry from your agents and deletes your
 local login. Use `memry uninstall --force` to skip the confirmation. Without Homebrew, delete the
-`memry` binary instead of running `brew uninstall`.
+`memry` binary instead of running `brew uninstall`. On Windows, run `winget uninstall memry`
+instead (`memry uninstall` prints the hint that fits your install).
 
 ### Delete your account
 

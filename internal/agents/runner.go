@@ -3,7 +3,6 @@ package agents
 import (
 	"context"
 	"errors"
-	"os/exec"
 	"time"
 )
 
@@ -23,7 +22,11 @@ func (r ExecRunner) Run(argv []string) RunResult {
 	ctx, cancel := context.WithTimeout(context.Background(), r.Timeout)
 	defer cancel()
 	output := &cappedBuffer{}
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd, err := command(ctx, argv)
+	if err != nil {
+		// The reason a command was refused is all the output there is.
+		return RunResult{ExitCode: -1, Output: err.Error()}
+	}
 	cmd.Stdout, cmd.Stderr = output, output
 	// A child the command leaves holding the output open must not keep
 	// Run waiting after the command is stopped.
@@ -31,7 +34,7 @@ func (r ExecRunner) Run(argv []string) RunResult {
 	if err := cmd.Start(); err != nil {
 		return RunResult{ExitCode: -1}
 	}
-	err := cmd.Wait()
+	err = cmd.Wait()
 	result := RunResult{Started: true, ExitCode: cmd.ProcessState.ExitCode(), Output: string(output.data)}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		result.TimedOut, result.ExitCode = true, -1

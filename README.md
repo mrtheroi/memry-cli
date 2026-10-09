@@ -108,7 +108,10 @@ What differs from macOS and Linux:
   (`claude mcp add --transport stdio --scope user memry -- <memry.exe> mcp`) and adds the same
   SessionStart hook. Both `claude.exe` and `claude.cmd` are supported.
 - **The hook runs `memry`** by its name, so `memry` must be on your `PATH`. WinGet guarantees it;
-  with `go install`, add `%GOPATH%\bin` to your `PATH`. If you run Claude Code with CMD instead of
+  with `go install`, add `%GOPATH%\bin` to your `PATH`. Claude Code hands its own `PATH` to the
+  hook, so after installing, **restart the terminal or editor (VS Code, JetBrains) you start
+  Claude Code from**; a window opened before the install does not see `memry`, and the hook
+  then loads no context without any error. If you run Claude Code with CMD instead of
   Git Bash, CMD searches the current directory first, so do not start sessions in a folder that
   contains an untrusted `memry.exe`.
 - **Antivirus and SmartScreen.** `memry.exe` is not Authenticode-signed, so SmartScreen or your

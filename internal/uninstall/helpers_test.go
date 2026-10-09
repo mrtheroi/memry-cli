@@ -147,6 +147,9 @@ type harness struct {
 	env          map[string]string
 	claude       *fakeClaude
 	agents       agents.Registry
+	// goos and executable are what the commands run with; the zero values
+	// mean Unix.
+	goos, executable string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -227,7 +230,9 @@ func (h *harness) run(command func(uninstall.Env) int, argv []string, answers ..
 	var out bytes.Buffer
 	p := &prompter{t: h.t, answers: answers}
 	code := command(uninstall.Env{
-		Args: argv,
+		GOOS:       h.goos,
+		Executable: h.executable,
+		Args:       argv,
 		LookupEnv: func(key string) (string, bool) {
 			value, ok := h.env[key]
 			return value, ok

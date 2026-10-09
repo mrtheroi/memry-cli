@@ -27,12 +27,14 @@ type Terminal struct {
 	// raw switches the terminal in to raw mode, returning how to restore
 	// it; nil when in is not a terminal.
 	raw func() (restore func(), err error)
+	// vt is whether out understands ANSI escape sequences.
+	vt bool
 }
 
 // New returns a Terminal reading answers from in. When in is a terminal,
 // hidden answers are read with its echo turned off.
 func New(in io.Reader, out io.Writer) *Terminal {
-	t := &Terminal{in: bufio.NewReader(in), out: out}
+	t := &Terminal{in: bufio.NewReader(in), out: out, vt: enableVT(out)}
 	if file, ok := in.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
 		t.readHidden = func() ([]byte, error) { return term.ReadPassword(int(file.Fd())) }
 		t.raw = func() (func(), error) {

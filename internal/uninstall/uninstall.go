@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
 	"github.com/mrtheroi/memry-cli/internal/client"
@@ -33,6 +34,8 @@ type Prompter interface {
 type Env struct {
 	// GOOS is the operating system; the zero value means Unix.
 	GOOS string
+	// Executable is the path of the running memry binary.
+	Executable string
 	// Args are the arguments after the command name.
 	Args      []string
 	LookupEnv func(string) (string, bool)
@@ -79,7 +82,7 @@ func Uninstall(env Env) int {
 	revoked := env.revokeToken()
 	_, _ = env.Out.Write(agentLines.Bytes())
 	deleted := env.deleteConfig()
-	env.line("Run `brew uninstall memry` to remove the CLI.")
+	env.line(env.removeCLIHint())
 	if revoked && deleted {
 		return success
 	}
@@ -309,6 +312,19 @@ func (env Env) loadConfig() *config.File {
 }
 
 // line prints one line of output.
+// removeCLIHint says how to remove the CLI: Homebrew on Unix; on Windows
+// winget when it installed the binary, else deleting the file.
+func (env Env) removeCLIHint() string {
+	if env.GOOS == "windows" {
+		lower := strings.ToLower(env.Executable)
+		if strings.Contains(lower, `\winget\packages\`) || strings.Contains(lower, `\winget\links\`) {
+			return "Run `winget uninstall memry` to remove the CLI."
+		}
+		return "Delete `" + env.Executable + "` to remove the CLI."
+	}
+	return "Run `brew uninstall memry` to remove the CLI."
+}
+
 func (env Env) line(text string) {
 	_, _ = io.WriteString(env.Out, text+"\n")
 }
@@ -351,7 +367,7 @@ func DeleteAccount(env Env) int {
 		return env.keepForRetry(pending, false, "Kept only the agents still to clean up in ")
 	}
 	deleted := env.deleteConfig()
-	env.line("Run `brew uninstall memry` to remove the CLI.")
+	env.line(env.removeCLIHint())
 	if deleted {
 		return success
 	}

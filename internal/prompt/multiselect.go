@@ -23,6 +23,21 @@ func (t *Terminal) MultiSelect(label, hint string, choices []Choice, defaults []
 	if t.raw == nil {
 		return defaults, nil
 	}
+	if !t.vt {
+		// A console without ANSI support would print the escape sequences
+		// as text, so it answers with the defaults.
+		var labels []string
+		for _, choice := range choices {
+			if slices.Contains(defaults, choice.Value) {
+				labels = append(labels, choice.Label)
+			}
+		}
+		if len(labels) == 0 {
+			labels = append(labels, "none")
+		}
+		_, _ = io.WriteString(t.out, "Agents: "+strings.Join(labels, ", ")+" (pass --agents to choose).\n")
+		return defaults, nil
+	}
 	restore, err := t.raw()
 	if err != nil {
 		return defaults, nil

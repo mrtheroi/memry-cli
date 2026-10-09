@@ -77,10 +77,7 @@ func agentsEnv(lookupEnv func(string) (string, bool)) agents.Env {
 		value, _ := lookupEnv(key)
 		return value
 	}
-	self, err := os.Executable()
-	if err != nil {
-		self = os.Args[0]
-	}
+	self := selfPath()
 	return agents.Env{
 		GOOS:       runtime.GOOS,
 		Getenv:     getenv,
@@ -88,6 +85,15 @@ func agentsEnv(lookupEnv func(string) (string, bool)) agents.Env {
 		Runner:     agents.ExecRunner{Timeout: 60 * time.Second},
 		Executable: executable.Executable{GOOS: runtime.GOOS, Getenv: getenv, Self: self},
 	}
+}
+
+// selfPath is this memry binary.
+func selfPath() string {
+	self, err := os.Executable()
+	if err != nil {
+		return os.Args[0]
+	}
+	return self
 }
 
 // helpOrVersion shows the help or the version for Symfony's --help and

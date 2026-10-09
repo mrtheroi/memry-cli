@@ -18,8 +18,10 @@ import (
 // newMcp returns `memry mcp`, the stdio proxy agents launch as their
 // memry MCP server.
 func newMcp(version string) *cobra.Command {
-	return hidden("mcp", "Proxy MCP messages between stdio and the memry server", version, func(cmd *cobra.Command, _ bool) int {
-		return mcp.Proxy(proxyEnv(cmd, version))
+	return hidden("mcp", "Proxy MCP messages between stdio and the memry server", version, func(cmd *cobra.Command, _ bool, lookupEnv func(string) (string, bool)) int {
+		env := proxyEnv(cmd, version)
+		env.LookupEnv = lookupEnv
+		return mcp.Proxy(env)
 	})
 }
 
@@ -38,8 +40,10 @@ func proxyEnv(cmd *cobra.Command, version string) mcp.Env {
 // newSessionStartHook returns `memry hook:session-start`, Claude Code's
 // SessionStart hook.
 func newSessionStartHook(version string) *cobra.Command {
-	return hidden("hook:session-start", "Print the memry context of the current project (Claude Code SessionStart hook)", version, func(cmd *cobra.Command, quiet bool) int {
-		return hook.SessionStart(sessionStartEnv(cmd, version, quiet))
+	return hidden("hook:session-start", "Print the memry context of the current project (Claude Code SessionStart hook)", version, func(cmd *cobra.Command, quiet bool, lookupEnv func(string) (string, bool)) int {
+		env := sessionStartEnv(cmd, version, quiet)
+		env.LookupEnv = lookupEnv
+		return hook.SessionStart(env)
 	})
 }
 
@@ -64,10 +68,10 @@ func sessionStartEnv(cmd *cobra.Command, version string, quiet bool) hook.Env {
 
 // newMcpHeaders returns `memry mcp-headers`, Claude Code's headersHelper.
 func newMcpHeaders(version string) *cobra.Command {
-	return hidden("mcp-headers", "Print the memry MCP authorization header as JSON (Claude Code headersHelper)", version, func(cmd *cobra.Command, quiet bool) int {
+	return hidden("mcp-headers", "Print the memry MCP authorization header as JSON (Claude Code headersHelper)", version, func(cmd *cobra.Command, quiet bool, lookupEnv func(string) (string, bool)) int {
 		return mcp.Headers(mcp.HeadersEnv{
 			GOOS:      runtime.GOOS,
-			LookupEnv: os.LookupEnv,
+			LookupEnv: lookupEnv,
 			Out:       output(cmd.OutOrStdout(), quiet),
 			Err:       output(cmd.ErrOrStderr(), quiet),
 		})
@@ -78,7 +82,7 @@ func newMcpHeaders(version string) *cobra.Command {
 // PHP CLI's, takes no arguments and only the global options. Cobra does
 // not parse them: they are read the way Symfony does, and run learns
 // whether they make the output quiet.
-func hidden(name, short, version string, run func(cmd *cobra.Command, quiet bool) int) *cobra.Command {
+func hidden(name, short, version string, run func(cmd *cobra.Command, quiet bool, lookupEnv func(string) (string, bool)) int) *cobra.Command {
 	return &cobra.Command{
 		Use:                name,
 		Short:              short,
@@ -90,13 +94,17 @@ func hidden(name, short, version string, run func(cmd *cobra.Command, quiet bool
 			if shown, err := helpOrVersion(cmd, args, version); shown {
 				return err
 			}
+			args, lookupEnv, ok := withConfigFlag(cmd, args)
+			if !ok {
+				return errFailed
+			}
 			if message, ok := flags.UnexpectedArgument(name, args); ok {
-				if !flags.IsSilent(flags.Scan(args), os.LookupEnv) {
+				if !flags.IsSilent(flags.Scan(args), lookupEnv) {
 					console.ErrorBlock(cmd.OutOrStdout(), message)
 				}
 				return errFailed
 			}
-			if run(cmd, flags.IsQuiet(flags.Scan(args), os.LookupEnv)) != 0 {
+			if run(cmd, flags.IsQuiet(flags.Scan(args), lookupEnv), lookupEnv) != 0 {
 				return errFailed
 			}
 			return nil

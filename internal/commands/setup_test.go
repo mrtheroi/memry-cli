@@ -55,3 +55,12 @@ func TestSetupHelpPrintsTheUsage(t *testing.T) {
 		}
 	}
 }
+
+// The usage lists the global --config option.
+func TestSetupUsageListsConfig(t *testing.T) {
+	output, err := execute("setup", "--help")
+
+	if err != nil || !strings.Contains(output, "--config") {
+		t.Errorf("setup --help = %q, %v; want it to list --config", output, err)
+	}
+}

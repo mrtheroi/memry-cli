@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"os"
 	"runtime"
 	"time"
 
@@ -40,14 +39,18 @@ func removal(name, short, version string, run func(uninstall.Env) int) *cobra.Co
 			if shown, err := helpOrVersion(cmd, args, version); shown {
 				return err
 			}
+			args, lookupEnv, ok := withConfigFlag(cmd, args)
+			if !ok {
+				return errFailed
+			}
 			out := cmd.OutOrStdout()
 			code := run(uninstall.Env{
 				GOOS:      runtime.GOOS,
 				Args:      args,
-				LookupEnv: os.LookupEnv,
+				LookupEnv: lookupEnv,
 				Out:       out,
 				Prompter:  prompt.New(cmd.InOrStdin(), out),
-				Agents:    agents.New(agentsEnv()),
+				Agents:    agents.New(agentsEnv(lookupEnv)),
 				HTTP:      client.New(version, 10*time.Second),
 			})
 			if code != 0 {

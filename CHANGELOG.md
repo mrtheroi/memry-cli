@@ -43,6 +43,12 @@ directory behavior listed below.
   config path with `"`, `$`, a backtick, `%`, `!`, a line break or a typographic quote is
   refused for the hook, which is written with forward slashes.
 
+### Fixed
+
+- Setup and uninstall no longer fail when Claude Code reports a server that is not registered as
+  `No MCP server named "<name>" in user scope`, as newer Claude Code versions do; it means the
+  same as "No MCP server found".
+
 ## [1.0.0] - 2026-10-07
 
 The CLI is rewritten in Go as a drop-in replacement for 0.7.0: the same config file

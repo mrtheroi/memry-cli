@@ -569,6 +569,24 @@ func TestClaudeCodeTakesARemoveThatExitedNonZeroWithNoMCPServerFoundForANotRegis
 	assertHasLine(t, result, "line", "The memry MCP server was not registered in Claude Code.")
 }
 
+// Newer Claude Code versions say `No MCP server named "<name>" in user
+// scope` instead of "No MCP server found"; the server was not registered
+// either way (seen on Windows with the 1.1.0-rc.1 manual test).
+func TestClaudeCodeTakesNoMCPServerNamedForANotRegisteredServer(t *testing.T) {
+	named := agents.RunResult{Started: true, ExitCode: 1, Output: `No MCP server named "db-memory" in user scope`}
+
+	e := claudeEnv(t)
+	e.runner.results = map[string]any{"remove": named}
+	installed := e.agent(t, "claude-code").Install("https://memry.test")
+	assertSuccessful(t, installed, true)
+
+	e = claudeEnv(t)
+	e.runner.results = map[string]any{"remove": named}
+	uninstalled := e.agent(t, "claude-code").Uninstall()
+	assertSuccessful(t, uninstalled, true)
+	assertHasLine(t, uninstalled, "line", "The memry MCP server was not registered in Claude Code.")
+}
+
 func TestClaudeCodeTakesARemoveThatExitedWith0ForARemovedServer(t *testing.T) {
 	e := claudeEnv(t)
 	e.runner.results = map[string]any{"remove": agents.RunResult{Started: true}}

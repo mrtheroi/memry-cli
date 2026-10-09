@@ -218,11 +218,11 @@ func TestClaudeCodeOnWindowsInstallsTheConfigFormOfTheHookCommand(t *testing.T) 
 
 func TestClaudeCodeOnWindowsInstallsMEMRY_EXECUTABLEVerbatimInTheHook(t *testing.T) {
 	e := windowsClaudeEnv(t)
-	e.vars["MEMRY_EXECUTABLE"] = `"D:\my tools\memry.exe"`
+	e.vars["MEMRY_EXECUTABLE"] = `D:\tools\memry.exe`
 
 	e.agent(t, "claude-code").Install("https://memry.test")
 
-	assertContents(t, e.path("claude", "settings.json"), hookSettings(hookGroup(`"D:\my tools\memry.exe" hook:session-start`)))
+	assertContents(t, e.path("claude", "settings.json"), hookSettings(hookGroup(`D:\tools\memry.exe hook:session-start`)))
 }
 
 func TestClaudeCodeOnWindowsLeavesOneHookGroupAfterInstallingTwice(t *testing.T) {
@@ -258,4 +258,43 @@ func TestClaudeCodeOnWindowsFailsTheHookForAConfigPathItCannotQuote(t *testing.T
 	if exists(t, e.path("claude", "settings.json")) {
 		t.Error("settings.json written, want the hook left out")
 	}
+}
+
+// A MEMRY_EXECUTABLE with whitespace or a character a hook cannot carry
+// is the first token of the Windows hook command, which cannot quote it:
+// the hook is refused, but the stdio registration (argv) keeps the path.
+func TestClaudeCodeOnWindowsFailsTheHookForAMemryExecutableItCannotCarry(t *testing.T) {
+	for _, exe := range []string{windowsExe, `C:\memry$\memry.exe`} {
+		e := windowsClaudeEnv(t)
+		e.vars["MEMRY_EXECUTABLE"] = exe
+
+		result := e.agent(t, "claude-code").Install("https://memry.test")
+
+		assertSuccessful(t, result, false)
+		assertHasLine(t, result, "error", `Could not install the memry SessionStart hook: MEMRY_EXECUTABLE `+exe+` has whitespace or characters a hook command cannot carry (one of " $ `+"`"+` % ! or a line break). Set it to a path without them, or unset it to use memry from the PATH, then run `+"`memry setup`"+` again.`)
+		if exists(t, e.path("claude", "settings.json")) {
+			t.Error("settings.json written, want the hook left out")
+		}
+		want := []string{"claude", "mcp", "add", "--transport", "stdio", "--scope", "user", "memry", "--", exe, "mcp"}
+		if indexOfRun(e, want) < 0 {
+			t.Errorf("ran %q, want the stdio registration with %q", e.runner.ran, exe)
+		}
+	}
+}
+
+// Paths a shell would change ($, `, %, !, quotes) cannot go in a
+// double-quoted manual command: the arguments are listed one per line for
+// the user to quote.
+func TestClaudeCodeOnWindowsListsTheManualArgumentsWhenAPathHasShellCharacters(t *testing.T) {
+	e := windowsClaudeEnv(t)
+	config := `C:\cfg$dir\config.json`
+	e.vars["MEMRY_CONFIG"] = config
+	e.runner.results = map[string]any{"add": false}
+
+	result := e.agent(t, "claude-code").Install("https://memry.test")
+
+	assertSuccessful(t, result, false)
+	assertHasLine(t, result, "line", "Your login was saved. Register the server manually with:")
+	assertHasLine(t, result, "line", "  The paths contain characters a shell would change, so run `claude mcp add --transport stdio --scope user memry --` with these arguments, quoted for your shell:\n"+
+		"    "+windowsExe+"\n    --config\n    "+config+"\n    mcp")
 }

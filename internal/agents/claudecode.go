@@ -3,6 +3,7 @@ package agents
 import (
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/mrtheroi/memry-cli/internal/agentfiles"
 	"github.com/mrtheroi/memry-cli/internal/executable"
@@ -59,6 +60,11 @@ func (a *claudeCode) settings() *agentfiles.ClaudeSettings {
 func (a *claudeCode) installSessionStartHook(lines *lines) bool {
 	if config := a.env.Getenv("MEMRY_CONFIG"); a.env.GOOS == "windows" && !executable.SafeInHook(config) {
 		lines.say("error", "Could not install the memry SessionStart hook: the config path "+config+" has characters a hook command cannot carry (one of \" $ ` % ! or a line break).")
+		return false
+	}
+	// The hook command starts with MEMRY_EXECUTABLE, which cannot be quoted there.
+	if exe := a.env.Getenv("MEMRY_EXECUTABLE"); a.env.GOOS == "windows" && (!executable.SafeInHook(exe) || strings.IndexFunc(exe, unicode.IsSpace) >= 0) {
+		lines.say("error", "Could not install the memry SessionStart hook: MEMRY_EXECUTABLE "+exe+" has whitespace or characters a hook command cannot carry (one of \" $ ` % ! or a line break). Set it to a path without them, or unset it to use memry from the PATH, then run `memry setup` again.")
 		return false
 	}
 	settings := a.settings()
@@ -155,14 +161,25 @@ func (a *claudeCode) stdioRegistration() registration {
 	if config := a.env.Getenv("MEMRY_CONFIG"); config != "" {
 		command = []string{command[0], "--config", config, command[1]}
 	}
-	manual := make([]string, len(command))
-	for i, arg := range command {
-		manual[i] = `"` + arg + `"`
-	}
+	prefix := "claude mcp add --transport stdio --scope user " + mcpServer + " --"
 	return registration{
 		add:    append([]string{"mcp", "add", "--transport", "stdio", "--scope", "user", mcpServer, "--"}, command...),
-		manual: "  claude mcp add --transport stdio --scope user " + mcpServer + " -- " + strings.Join(manual, " "),
+		manual: manualStdioCommand(prefix, command),
 	}
+}
+
+// manualStdioCommand is the command to show the user: one line with every
+// argument double-quoted, or, when a shell would change one of them, the
+// arguments one per line for the user to quote.
+func manualStdioCommand(prefix string, command []string) string {
+	quoted := make([]string, len(command))
+	for i, arg := range command {
+		if !executable.SafeInHook(arg) {
+			return "  The paths contain characters a shell would change, so run `" + prefix + "` with these arguments, quoted for your shell:\n    " + strings.Join(command, "\n    ")
+		}
+		quoted[i] = `"` + arg + `"`
+	}
+	return "  " + prefix + " " + strings.Join(quoted, " ")
 }
 
 // What memry says when a command it writes for an agent cannot be

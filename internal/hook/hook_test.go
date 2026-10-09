@@ -392,3 +392,16 @@ func TestNamesTheRepoFromABackslashPathOnWindows(t *testing.T) {
 
 	assertPrefix(t, output, "## memry memory (project: Proj Dir)\n")
 }
+
+// Not in the PHP tests: on Windows a drive root has no basename, like the
+// POSIX root, instead of the drive "C:".
+func TestPHPBasenameOfAWindowsDriveRootIsEmpty(t *testing.T) {
+	for _, path := range []string{`C:\`, `C:/`, `C:`, `c:\\`} {
+		if got := hook.PHPBasename("windows", path); got != "" {
+			t.Errorf("PHPBasename(windows, %q) = %q, want empty", path, got)
+		}
+	}
+	if got := hook.PHPBasename("windows", `C:\Users\Me\proj\`); got != "proj" {
+		t.Errorf("PHPBasename of a nested path = %q, want proj", got)
+	}
+}

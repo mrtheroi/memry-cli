@@ -68,6 +68,8 @@ type harness struct {
 	getwd      func() (string, error)
 	git        func(context.Context, string) (string, bool)
 	gitTimeout time.Duration
+	// goos is the hook's operating system; empty means Unix.
+	goos string
 }
 
 func newHarness(t *testing.T, url string) *harness {
@@ -102,6 +104,7 @@ func (h *harness) runWith(stdin io.Reader) (int, string) {
 	var out bytes.Buffer
 	vars := map[string]string{"MEMRY_CONFIG": h.configPath, "HOME": h.dir}
 	code := hook.SessionStart(hook.Env{
+		GOOS: h.goos,
 		LookupEnv: func(key string) (string, bool) {
 			value, ok := vars[key]
 			return value, ok

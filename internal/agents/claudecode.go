@@ -57,6 +57,10 @@ func (a *claudeCode) settings() *agentfiles.ClaudeSettings {
 // installSessionStartHook installs the Claude Code SessionStart hook that
 // prints the memry context of the current project.
 func (a *claudeCode) installSessionStartHook(lines *lines) bool {
+	if config := a.env.Getenv("MEMRY_CONFIG"); a.env.GOOS == "windows" && !executable.SafeInHook(config) {
+		lines.say("error", "Could not install the memry SessionStart hook: the config path "+config+" has characters a hook command cannot carry (one of \" $ ` % ! or a line break).")
+		return false
+	}
 	settings := a.settings()
 	group := phpjson.NewObject(
 		"matcher", "startup|resume|clear|compact",
@@ -82,15 +86,20 @@ func (a *claudeCode) installSessionStartHook(lines *lines) bool {
 	return true
 }
 
+// registration is how memry is added to Claude Code: the arguments of the
+// `claude` command that adds it, and the command to show the user when
+// that cannot be done.
+type registration struct {
+	add    []string
+	manual string
+}
+
 // registerMCPServer registers memry as the user-scope memry MCP server in
-// Claude Code. The token stays in the config file; Claude Code gets it
-// from the headers helper.
+// Claude Code. On Unix the token stays in the config file and Claude Code
+// gets it from the headers helper; on Windows Claude Code runs `memry mcp`
+// over stdio, which reads the config file itself.
 func (a *claudeCode) registerMCPServer(url string, lines *lines) bool {
-	server, ok := phpjson.Encode(phpjson.NewObject(
-		"type", "http",
-		"url", url+"/mcp/memory",
-		"headersHelper", a.env.Executable.Command("mcp-headers"),
-	), phpjson.UnescapedSlashes)
+	reg, ok := a.registration(url)
 	// Checked before any claude command: removing the registration and
 	// then adding an empty one would delete a working server.
 	if !ok {
@@ -101,7 +110,7 @@ func (a *claudeCode) registerMCPServer(url string, lines *lines) bool {
 
 	if !a.IsInstalled() {
 		lines.say("warn", "Claude Code CLI not found; skipped MCP registration.")
-		return failWithManualRegistration(string(server), lines)
+		return failWithManualRegistration(reg, lines)
 	}
 
 	// A server that was not registered is fine to "remove"; a remove that
@@ -109,15 +118,51 @@ func (a *claudeCode) registerMCPServer(url string, lines *lines) bool {
 	for _, name := range []string{legacyMCPServer, mcpServer} {
 		if _, failure := a.removeServer(name); failure != "" {
 			lines.say("error", "Could not register the "+mcpServer+" MCP server in Claude Code: "+failure)
-			return failWithManualRegistration(string(server), lines)
+			return failWithManualRegistration(reg, lines)
 		}
 	}
-	if !a.claude("mcp", "add-json", "--scope", "user", mcpServer, string(server)) || !a.claude("mcp", "get", mcpServer) {
+	if !a.claude(reg.add...) || !a.claude("mcp", "get", mcpServer) {
 		lines.say("error", "Could not register the "+mcpServer+" MCP server in Claude Code.")
-		return failWithManualRegistration(string(server), lines)
+		return failWithManualRegistration(reg, lines)
 	}
 	lines.say("info", "Registered the "+mcpServer+" MCP server in Claude Code (user scope).")
 	return true
+}
+
+// registration is the registration for the memry server at url, or false
+// when it cannot be encoded as JSON.
+func (a *claudeCode) registration(url string) (registration, bool) {
+	if a.env.GOOS == "windows" {
+		return a.stdioRegistration(), true
+	}
+	server, ok := phpjson.Encode(phpjson.NewObject(
+		"type", "http",
+		"url", url+"/mcp/memory",
+		"headersHelper", a.env.Executable.Command("mcp-headers"),
+	), phpjson.UnescapedSlashes)
+	return registration{
+		add:    []string{"mcp", "add-json", "--scope", "user", mcpServer, string(server)},
+		manual: "  claude mcp add-json --scope user " + mcpServer + " " + executable.EscapeShellArg(string(server)),
+	}, ok
+}
+
+// stdioRegistration runs `memry mcp` over stdio. Everything after -- goes
+// to memry verbatim (Claude's --env would swallow the server name), so a
+// custom config travels as --config, and the token never leaves the config
+// file.
+func (a *claudeCode) stdioRegistration() registration {
+	command := a.env.Executable.Arguments("mcp")
+	if config := a.env.Getenv("MEMRY_CONFIG"); config != "" {
+		command = []string{command[0], "--config", config, command[1]}
+	}
+	manual := make([]string, len(command))
+	for i, arg := range command {
+		manual[i] = `"` + arg + `"`
+	}
+	return registration{
+		add:    append([]string{"mcp", "add", "--transport", "stdio", "--scope", "user", mcpServer, "--"}, command...),
+		manual: "  claude mcp add --transport stdio --scope user " + mcpServer + " -- " + strings.Join(manual, " "),
+	}
 }
 
 // What memry says when a command it writes for an agent cannot be
@@ -127,9 +172,9 @@ const (
 	fixNotUTF8 = "Set them to valid UTF-8 paths, then run `memry setup` again."
 )
 
-func failWithManualRegistration(server string, lines *lines) bool {
+func failWithManualRegistration(reg registration, lines *lines) bool {
 	lines.say("line", "Your login was saved. Register the server manually with:")
-	lines.say("line", "  claude mcp add-json --scope user "+mcpServer+" "+executable.EscapeShellArg(server))
+	lines.say("line", reg.manual)
 	return false
 }
 

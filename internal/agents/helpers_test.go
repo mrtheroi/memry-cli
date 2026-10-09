@@ -25,6 +25,10 @@ type testEnv struct {
 	home   string
 	vars   map[string]string
 	onPath []string
+	// goos is the operating system; empty means Unix.
+	goos string
+	// self is the running memry binary; empty means a Unix path.
+	self   string
 	runner *fakeRunner
 	// looked are the commands looked up on the PATH, in order.
 	looked []string
@@ -42,7 +46,12 @@ func newTestEnv(t *testing.T) *testEnv {
 
 func (e *testEnv) env() agents.Env {
 	getenv := func(name string) string { return e.vars[name] }
+	self := e.self
+	if self == "" {
+		self = "/usr/local/bin/memry"
+	}
 	return agents.Env{
+		GOOS:   e.goos,
 		Getenv: getenv,
 		LookPath: func(name string) (string, error) {
 			e.looked = append(e.looked, name)
@@ -53,7 +62,7 @@ func (e *testEnv) env() agents.Env {
 			return "", exec.ErrNotFound
 		},
 		Runner:     e.runner,
-		Executable: executable.Executable{Getenv: getenv, Self: "/usr/local/bin/memry"},
+		Executable: executable.Executable{GOOS: e.goos, Getenv: getenv, Self: self},
 	}
 }
 

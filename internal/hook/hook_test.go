@@ -380,3 +380,15 @@ func TestFallsBackToTheCwdWhenGitTimesOut(t *testing.T) {
 		t.Fatal("the hook is still waiting for git")
 	}
 }
+
+// On Windows the repo name is the last element of a backslash path too.
+func TestNamesTheRepoFromABackslashPathOnWindows(t *testing.T) {
+	s := newServer(t, respond(200, "body"))
+	h := newHarness(t, s.URL)
+	h.goos = "windows"
+	h.git = func(context.Context, string) (string, bool) { return `C:\Users\ana\Proj Dir\`, true }
+
+	_, output := h.run(map[string]any{"cwd": `C:\Users\ana\Proj Dir\sub`})
+
+	assertPrefix(t, output, "## memry memory (project: Proj Dir)\n")
+}

@@ -7,6 +7,13 @@ on:
 permissions:
   contents: read
 
+# One release per tag at a time. v1.1.1 started two runs in the same
+# second that uploaded the same assets in parallel; a second run now waits
+# and then stops at the upload, without racing the first.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # go vet, go test -race and golangci-lint, as on every push.
   test:

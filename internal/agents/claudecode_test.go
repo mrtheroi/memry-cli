@@ -3,6 +3,7 @@ package agents_test
 import (
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -297,6 +298,9 @@ func TestClaudeCodeInstallsTheHookInClaudeSettingsJSONWhenCLAUDE_CONFIG_DIRIsNot
 }
 
 func TestClaudeCodeKeepsThePermissionsOfAnExistingSettingsFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits; Windows has no 0640 mode")
+	}
 	e := claudeEnv(t)
 	settings := e.path("claude", "settings.json")
 	writeFile(t, settings, "{}")

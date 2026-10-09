@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -122,6 +123,9 @@ func TestHonorsMemryJSONInTheCwdOutsideGit(t *testing.T) {
 // Ported from "falls back to the repo name when .memry.json is
 // unreadable".
 func TestFallsBackToTheRepoNameWhenMemryJSONIsUnreadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 000 does not make a file unreadable on Windows")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root reads any file")
 	}
@@ -321,6 +325,9 @@ func TestEndsWithExactlyOneNewline(t *testing.T) {
 // Not in the PHP tests: the repo is named like PHP's basename, which is
 // empty for the root directory (Go's filepath.Base says "/").
 func TestNamesTheRootDirectoryLikePHPBasename(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the POSIX root directory \"/\" has no Windows equivalent here")
+	}
 	if _, inGit := hook.GitTopLevel(context.Background(), "/"); inGit {
 		t.Skip("the root directory is in a git repository")
 	}

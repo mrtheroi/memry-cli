@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -382,6 +383,9 @@ func TestInstallsTheHookInClaudeSettingsJSONWhenCLAUDE_CONFIG_DIRIsNotSet(t *tes
 }
 
 func TestKeepsThePermissionsOfAnExistingSettingsFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits; Windows has no 0640 mode")
+	}
 	h, _, settingsPath := claudeHarness(t)
 	writeRaw(t, settingsPath, "{}")
 	if err := os.Chmod(settingsPath, 0o640); err != nil {

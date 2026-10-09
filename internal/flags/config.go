@@ -1,7 +1,6 @@
 package flags
 
 import (
-	"errors"
 	"path/filepath"
 	"strings"
 )
@@ -29,7 +28,7 @@ func ExtractConfig(argv []string) (path string, given bool, rest []string, err e
 			continue
 		}
 		if value == "" {
-			return "", false, nil, errors.New("The --config option needs a value.")
+			return "", false, nil, usageError("The --config option needs a value.")
 		}
 		path, given = value, true
 	}

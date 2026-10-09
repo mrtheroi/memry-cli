@@ -3,7 +3,6 @@ package agents
 import (
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/mrtheroi/memry-cli/internal/agentfiles"
 	"github.com/mrtheroi/memry-cli/internal/executable"
@@ -63,8 +62,8 @@ func (a *claudeCode) installSessionStartHook(lines *lines) bool {
 		return false
 	}
 	// The hook command starts with MEMRY_EXECUTABLE, which cannot be quoted there.
-	if exe := a.env.Getenv("MEMRY_EXECUTABLE"); a.env.GOOS == "windows" && (!executable.SafeInHook(exe) || strings.IndexFunc(exe, unicode.IsSpace) >= 0) {
-		lines.say("error", "Could not install the memry SessionStart hook: MEMRY_EXECUTABLE "+exe+" has whitespace or characters a hook command cannot carry (one of \" $ ` % ! or a line break). Set it to a path without them, or unset it to use memry from the PATH, then run `memry setup` again.")
+	if exe := a.env.Getenv("MEMRY_EXECUTABLE"); a.env.GOOS == "windows" && !executable.PlainInHook(exe) {
+		lines.say("error", "Could not install the memry SessionStart hook: MEMRY_EXECUTABLE "+exe+" can only hold letters, digits and : / \\ . _ - in a hook command. Set it to such a path, or unset it to use memry from the PATH, then run `memry setup` again.")
 		return false
 	}
 	settings := a.settings()

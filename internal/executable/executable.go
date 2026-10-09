@@ -70,6 +70,13 @@ func (e Executable) Environment() map[string]string {
 	return nil
 }
 
+// PlainInHook reports whether a path can go unquoted at the start of the
+// Windows hook command. Every shell gives some punctuation a meaning (& ; (
+// ^ ' | and more), so only letters, digits and : / \ . _ - are allowed.
+func PlainInHook(path string) bool {
+	return strings.Trim(path, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:/\\._-") == ""
+}
+
 // SafeInHook reports whether a config path can go double-quoted in the
 // Windows hook command: Git Bash expands $ and backticks inside double
 // quotes, CMD expands %, and " ! CR and LF break the quoting. PowerShell

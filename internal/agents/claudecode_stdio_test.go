@@ -264,14 +264,14 @@ func TestClaudeCodeOnWindowsFailsTheHookForAConfigPathItCannotQuote(t *testing.T
 // is the first token of the Windows hook command, which cannot quote it:
 // the hook is refused, but the stdio registration (argv) keeps the path.
 func TestClaudeCodeOnWindowsFailsTheHookForAMemryExecutableItCannotCarry(t *testing.T) {
-	for _, exe := range []string{windowsExe, `C:\memry$\memry.exe`} {
+	for _, exe := range []string{windowsExe, `C:\memry$\memry.exe`, `C:\A&B\memry.exe`, `C:\a;b\memry.exe`, `C:\a(b)\memry.exe`, `C:\a^b\memry.exe`, `C:\a'b\memry.exe`, `C:\a|b\memry.exe`} {
 		e := windowsClaudeEnv(t)
 		e.vars["MEMRY_EXECUTABLE"] = exe
 
 		result := e.agent(t, "claude-code").Install("https://memry.test")
 
 		assertSuccessful(t, result, false)
-		assertHasLine(t, result, "error", `Could not install the memry SessionStart hook: MEMRY_EXECUTABLE `+exe+` has whitespace or characters a hook command cannot carry (one of " $ `+"`"+` % ! or a line break). Set it to a path without them, or unset it to use memry from the PATH, then run `+"`memry setup`"+` again.`)
+		assertHasLine(t, result, "error", `Could not install the memry SessionStart hook: MEMRY_EXECUTABLE `+exe+` can only hold letters, digits and : / \ . _ - in a hook command. Set it to such a path, or unset it to use memry from the PATH, then run `+"`memry setup`"+` again.`)
 		if exists(t, e.path("claude", "settings.json")) {
 			t.Error("settings.json written, want the hook left out")
 		}

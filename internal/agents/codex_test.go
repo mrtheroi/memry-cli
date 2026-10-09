@@ -1,6 +1,7 @@
 package agents_test
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
@@ -193,6 +194,9 @@ func TestCodexIsInstalledWhenTheCodexCLIIsOnThePATHOrItsHomeDirectoryExists(t *t
 // Not in the PHP CLI, which throws when it cannot read or write a file:
 // each step fails on its own, saying why.
 func TestCodexFailsEachStepItCannotReadOrWriteTheFilesOf(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX ENOTDIR error text; Windows reports ERROR_PATH_NOT_FOUND")
+	}
 	e := newTestEnv(t)
 	writeFile(t, e.path(".codex"), "a file, not a directory")
 

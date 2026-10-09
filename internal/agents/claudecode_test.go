@@ -32,9 +32,15 @@ func (e *testEnv) memryCommand(subcommand string) string {
 	return "MEMRY_CONFIG='" + e.vars["MEMRY_CONFIG"] + "' '/opt/memry/memry' " + subcommand
 }
 
+// jsonEscape escapes the backslashes of a Windows path the way the JSON the
+// adapter writes does. It changes nothing on a path without backslashes.
+func jsonEscape(s string) string {
+	return strings.ReplaceAll(s, `\`, `\\`)
+}
+
 // claudeServer is the JSON add-json gets for the memry server at memry.test.
 func (e *testEnv) claudeServer(helper string) string {
-	return `{"type":"http","url":"https://memry.test/mcp/memory","headersHelper":"` + helper + `"}`
+	return `{"type":"http","url":"https://memry.test/mcp/memory","headersHelper":"` + jsonEscape(helper) + `"}`
 }
 
 func TestClaudeCodeRegistersTheMemryMCPServerWithAHeadersHelper(t *testing.T) {
@@ -168,7 +174,7 @@ func hookGroup(command string) string {
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "` + command + `",
+                        "command": "` + jsonEscape(command) + `",
                         "timeout": 10
                     }
                 ]
@@ -206,7 +212,7 @@ func TestClaudeCodeFailsWithManualInstructionsAndLeavesAnInvalidSettingsFileUnto
     "hooks": [
         {
             "type": "command",
-            "command": "`+e.memryCommand("hook:session-start")+`",
+            "command": "`+jsonEscape(e.memryCommand("hook:session-start"))+`",
             "timeout": 10
         }
     ]
@@ -452,6 +458,9 @@ func TestClaudeCodeIsInstalledWhenTheClaudeCLIIsOnThePATH(t *testing.T) {
 // Not in the PHP CLI, which throws when it cannot read or write the
 // settings: the hook step fails on its own, saying why.
 func TestClaudeCodeFailsTheHookStepWhenItCannotReadTheSettings(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX ENOTDIR error text; Windows reports ERROR_PATH_NOT_FOUND")
+	}
 	e := claudeEnv(t)
 	writeFile(t, e.path("claude"), "a file, not a directory")
 	settings := e.path("claude", "settings.json")

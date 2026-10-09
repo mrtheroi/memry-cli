@@ -6,6 +6,7 @@ import (
 
 	"github.com/mrtheroi/memry-cli/internal/agentfiles"
 	"github.com/mrtheroi/memry-cli/internal/executable"
+	"github.com/mrtheroi/memry-cli/internal/home"
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
@@ -48,9 +49,9 @@ const hookMarker = "hook:session-start"
 func (a *claudeCode) settings() *agentfiles.ClaudeSettings {
 	dir := a.env.Getenv("CLAUDE_CONFIG_DIR")
 	if dir == "" {
-		dir = a.env.Getenv("HOME") + "/.claude"
+		dir = a.env.homePath(".claude")
 	}
-	return agentfiles.NewClaudeSettings(dir + "/settings.json")
+	return agentfiles.NewClaudeSettings(home.Join(dir, "settings.json"))
 }
 
 // installSessionStartHook installs the Claude Code SessionStart hook that

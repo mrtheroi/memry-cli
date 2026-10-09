@@ -13,6 +13,7 @@ func isolate(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 	t.Setenv("MEMRY_CONFIG", filepath.Join(dir, "config.json"))
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(dir, "claude"))

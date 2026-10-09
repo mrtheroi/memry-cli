@@ -20,6 +20,7 @@ func run(t *testing.T, stdin string, args ...string) (string, string, error) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 	t.Setenv("MEMRY_CONFIG", filepath.Join(dir, "config.json"))
 	t.Setenv("SHELL_VERBOSITY", "")
 	var out, errOut bytes.Buffer
@@ -159,6 +160,7 @@ func logIn(t *testing.T, body string) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 	t.Setenv("MEMRY_CONFIG", path)
 }
 

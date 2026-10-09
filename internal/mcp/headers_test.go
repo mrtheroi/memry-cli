@@ -75,3 +75,16 @@ func TestHeadersEncodesTheTokenLikePHP(t *testing.T) {
 		t.Errorf("stdout = %q, want %q", out, want)
 	}
 }
+
+func TestHeaders_NoHomeIsNotLoggedIn(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := mcp.Headers(mcp.HeadersEnv{
+		LookupEnv: func(string) (string, bool) { return "", false },
+		Out:       &out,
+		Err:       &errOut,
+	})
+
+	if code != 1 || out.String() != "" || errOut.String() != "memry is not logged in. Run memry setup.\n" {
+		t.Errorf("mcp-headers = %d, %q, %q; want 1, nothing, the not-logged-in message", code, out.String(), errOut.String())
+	}
+}

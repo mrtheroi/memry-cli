@@ -3,6 +3,7 @@ package commands
 import (
 	"io"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -26,6 +27,7 @@ func newMcp(version string) *cobra.Command {
 // server 30 seconds per message.
 func proxyEnv(cmd *cobra.Command, version string) mcp.Env {
 	return mcp.Env{
+		GOOS:      runtime.GOOS,
 		LookupEnv: os.LookupEnv,
 		In:        cmd.InOrStdin(),
 		Out:       cmd.OutOrStdout(),
@@ -49,6 +51,7 @@ func newSessionStartHook(version string) *cobra.Command {
 // back to the cwd. That keeps the whole hook within about 6 seconds.
 func sessionStartEnv(cmd *cobra.Command, version string, quiet bool) hook.Env {
 	return hook.Env{
+		GOOS:        runtime.GOOS,
 		LookupEnv:   os.LookupEnv,
 		In:          cmd.InOrStdin(),
 		Out:         output(cmd.OutOrStdout(), quiet),
@@ -63,6 +66,7 @@ func sessionStartEnv(cmd *cobra.Command, version string, quiet bool) hook.Env {
 func newMcpHeaders(version string) *cobra.Command {
 	return hidden("mcp-headers", "Print the memry MCP authorization header as JSON (Claude Code headersHelper)", version, func(cmd *cobra.Command, quiet bool) int {
 		return mcp.Headers(mcp.HeadersEnv{
+			GOOS:      runtime.GOOS,
 			LookupEnv: os.LookupEnv,
 			Out:       output(cmd.OutOrStdout(), quiet),
 			Err:       output(cmd.ErrOrStderr(), quiet),

@@ -17,6 +17,7 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/console"
 	"github.com/mrtheroi/memry-cli/internal/email"
 	"github.com/mrtheroi/memry-cli/internal/flags"
+	"github.com/mrtheroi/memry-cli/internal/home"
 )
 
 // Prompter asks the questions the commands need.
@@ -30,6 +31,8 @@ type Prompter interface {
 
 // Env is what the commands run with.
 type Env struct {
+	// GOOS is the operating system; the zero value means Unix.
+	GOOS string
 	// Args are the arguments after the command name.
 	Args      []string
 	LookupEnv func(string) (string, bool)
@@ -140,7 +143,7 @@ func (env Env) removeFromAgents() []string {
 // keepLogin, nothing else, so `memry uninstall` can retry them. Without a config file there is
 // nothing to keep: a retry cleans up Claude Code again. It always fails.
 func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
-	path := config.Path(env.getenv)
+	path, _ := config.Path(env.GOOS, env.getenv)
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
 		env.line("Fix the problems above, then run `memry uninstall` again.")
 		return failure
@@ -179,7 +182,7 @@ func (env Env) report(result agents.Result) bool {
 
 // deleteConfig deletes the config file, and with it the login.
 func (env Env) deleteConfig() bool {
-	path := config.Path(env.getenv)
+	path, _ := config.Path(env.GOOS, env.getenv)
 	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
 		env.line("No config file to delete.")
 		return true
@@ -269,16 +272,20 @@ func (env Env) send(method, url, token string, data any) (int, error) {
 	return resp.StatusCode, nil
 }
 
-// configReadable reports whether the config file is missing or can be
-// read, saying why not. A file that cannot be read may hold the login and
+// configReadable reports whether there is a config path and the file is
+// missing or can be read, saying why not. A file that cannot be read may hold the login and
 // the agents: it is never taken for an empty config. Like the PHP CLI's
 // is_file, anything but a regular file is no config file.
 func (env Env) configReadable() bool {
-	path := config.Path(env.getenv)
+	path, err := config.Path(env.GOOS, env.getenv)
+	if err != nil {
+		env.line(home.NotFoundMessage)
+		return false
+	}
 	if info, err := os.Stat(path); err == nil && !info.Mode().IsRegular() {
 		return true
 	}
-	_, err := os.ReadFile(path)
+	_, err = os.ReadFile(path)
 	if err == nil || errors.Is(err, fs.ErrNotExist) {
 		return true
 	}
@@ -293,7 +300,7 @@ func (env Env) configReadable() bool {
 // loadConfig reads the config file. Like the PHP CLI, a file that is
 // missing or cannot be read as a JSON object is an empty config.
 func (env Env) loadConfig() *config.File {
-	path := config.Path(env.getenv)
+	path, _ := config.Path(env.GOOS, env.getenv)
 	cfg, err := config.LoadOrEmpty(path)
 	if err != nil {
 		cfg = &config.File{}

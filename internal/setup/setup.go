@@ -20,6 +20,7 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/console"
 	"github.com/mrtheroi/memry-cli/internal/email"
 	"github.com/mrtheroi/memry-cli/internal/flags"
+	"github.com/mrtheroi/memry-cli/internal/home"
 	"github.com/mrtheroi/memry-cli/internal/prompt"
 )
 
@@ -37,6 +38,8 @@ type Prompter interface {
 
 // Env is what setup runs with.
 type Env struct {
+	// GOOS is the operating system; the zero value means Unix.
+	GOOS string
 	// Args are the arguments after `setup`.
 	Args      []string
 	LookupEnv func(string) (string, bool)
@@ -78,6 +81,10 @@ func Run(env Env) int {
 	if errors.As(err, &usage) {
 		env.line(usage.Message)
 		return usage.ExitCode
+	}
+	if _, err := config.Path(env.GOOS, env.getenv); err != nil {
+		env.line(home.NotFoundMessage)
+		return failure
 	}
 	login := env.loginWithEmail
 	if plan.Login == flags.LoginToken {
@@ -193,7 +200,8 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 		}
 		return failure
 	}
-	path := config.Path(env.getenv)
+	// Run has checked that there is a config path.
+	path, _ := config.Path(env.GOOS, env.getenv)
 	cfg, err := config.LoadOrEmpty(path)
 	if err != nil {
 		env.notSaved(path, err)

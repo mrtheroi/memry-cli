@@ -12,16 +12,21 @@ import (
 	"slices"
 
 	"github.com/mrtheroi/memry-cli/internal/fsx"
+	"github.com/mrtheroi/memry-cli/internal/home"
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
 // Path is the config file: $MEMRY_CONFIG, or ~/.config/memry/config.json
-// by default.
-func Path(getenv func(string) string) string {
+// by default, or an error when there is no home to default to.
+func Path(goos string, getenv func(string) string) (string, error) {
 	if path := getenv("MEMRY_CONFIG"); path != "" {
-		return path
+		return path, nil
 	}
-	return getenv("HOME") + "/.config/memry/config.json"
+	dir, err := home.Dir(goos, getenv)
+	if err != nil {
+		return "", err
+	}
+	return home.Join(dir, ".config", "memry", "config.json"), nil
 }
 
 // File is the decoded config file. It keeps every key, known or not, in
@@ -214,8 +219,12 @@ func encode(buf *bytes.Buffer, value any) error {
 // Login returns the saved server URL and token, or false when not logged
 // in: the PHP CLI needs both as non-empty strings, and reads a file that
 // is missing or not a JSON object as no login.
-func Login(getenv func(string) string) (url, token string, ok bool) {
-	cfg, err := Load(Path(getenv))
+func Login(goos string, getenv func(string) string) (url, token string, ok bool) {
+	path, err := Path(goos, getenv)
+	if err != nil {
+		return "", "", false
+	}
+	cfg, err := Load(path)
 	if err != nil {
 		return "", "", false
 	}

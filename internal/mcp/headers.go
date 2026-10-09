@@ -9,6 +9,8 @@ import (
 
 // HeadersEnv is what `memry mcp-headers` runs with.
 type HeadersEnv struct {
+	// GOOS is the operating system; the zero value means Unix.
+	GOOS      string
 	LookupEnv func(string) (string, bool)
 	Out, Err  io.Writer
 }
@@ -20,10 +22,11 @@ func Headers(env HeadersEnv) int {
 		value, _ := env.LookupEnv(key)
 		return value
 	}
-	cfg, err := config.Load(config.Path(getenv))
 	var token string
-	if err == nil {
-		token, _ = cfg.Token()
+	if path, err := config.Path(env.GOOS, getenv); err == nil {
+		if cfg, err := config.Load(path); err == nil {
+			token, _ = cfg.Token()
+		}
 	}
 	if token == "" {
 		_, _ = io.WriteString(env.Err, "memry is not logged in. Run memry setup.\n")

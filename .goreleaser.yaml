@@ -12,6 +12,7 @@ builds:
     goos:
       - darwin
       - linux
+      - windows
     goarch:
       - amd64
       - arm64
@@ -24,6 +25,9 @@ builds:
 archives:
   - id: memry
     formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
@@ -51,6 +55,41 @@ signs:
       - ${artifact}
       - --yes
 
+# Portable winget manifest (zip archive with a nested memry.exe, exposed as the
+# `memry` command). It opens a PR from the mrtheroi/winget-pkgs fork against
+# microsoft/winget-pkgs. Without WINGET_GITHUB_TOKEN, or for a release
+# candidate, the upload is skipped so the rest of the release is never
+# affected (release.yml warns about a missing token).
+winget:
+  - name: memry
+    publisher: Memry
+    package_identifier: Memry.Memry
+    short_description: Persistent memory for your AI coding agents
+    description: Persistent memory for your AI coding agents that carries over between sessions and projects.
+    license: MIT
+    homepage: https://github.com/mrtheroi/memry-cli
+    publisher_url: https://github.com/mrtheroi
+    publisher_support_url: https://github.com/mrtheroi/memry-cli/issues
+    license_url: https://github.com/mrtheroi/memry-cli/blob/main/LICENSE
+    release_notes_url: https://github.com/mrtheroi/memry-cli/releases/tag/{{ .Tag }}
+    release_notes: "{{ .Changelog }}"
+    # Release candidates (v1.1.0-rc.1) never reach winget.
+    skip_upload: '{{ if or .Prerelease (eq (envOrDefault "WINGET_GITHUB_TOKEN" "") "") }}true{{ else }}false{{ end }}'
+    commit_author:
+      name: mrtheroi
+      email: mrtheroi@users.noreply.github.com
+    repository:
+      owner: mrtheroi
+      name: winget-pkgs
+      branch: "memry-{{ .Version }}"
+      token: '{{ envOrDefault "WINGET_GITHUB_TOKEN" "" }}'
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
@@ -69,3 +108,6 @@ release:
   github:
     owner: mrtheroi
     name: memry-cli
+  # A tag like v1.1.0-rc.1 is published as a pre-release, so it never becomes
+  # the latest release.
+  prerelease: auto

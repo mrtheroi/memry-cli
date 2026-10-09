@@ -40,6 +40,14 @@ jobs:
             echo "::error::CHANGELOG.md has no section for ${VERSION#v}"
             exit 1
           fi
+      - name: Warn when the winget token is missing
+        env:
+          WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$WINGET_GITHUB_TOKEN" ]; then
+            echo "::warning::WINGET_GITHUB_TOKEN is not set; skipping the winget manifest."
+            echo "WINGET_GITHUB_TOKEN is not set; the winget manifest was skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -47,3 +55,4 @@ jobs:
           args: release --clean --release-notes=${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}

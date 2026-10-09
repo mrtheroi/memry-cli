@@ -3,6 +3,7 @@ package commands_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -24,6 +25,21 @@ func isolate(t *testing.T) string {
 	return dir
 }
 
+// removeCLIHint is the last line of uninstall: brew on Unix, and on
+// Windows the running binary (the test binary here, outside WinGet) to
+// delete.
+func removeCLIHint(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return "Run `brew uninstall memry` to remove the CLI.\n"
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "Delete `" + self + "` to remove the CLI.\n"
+}
+
 func TestUninstallRemovesMemryFromThisMachine(t *testing.T) {
 	isolate(t)
 
@@ -35,7 +51,7 @@ func TestUninstallRemovesMemryFromThisMachine(t *testing.T) {
 		"Claude Code CLI not found; skipped removing the memry MCP server.\n" +
 		"No memry SessionStart hook to remove.\n" +
 		"No config file to delete.\n" +
-		"Run `brew uninstall memry` to remove the CLI.\n"
+		removeCLIHint(t)
 	if err != nil || out != want {
 		t.Errorf("uninstall --force = %q, %v; want %q and exit code 0", out, err, want)
 	}

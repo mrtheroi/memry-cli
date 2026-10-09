@@ -65,7 +65,7 @@ func (env Env) context() (string, bool) {
 	if !ok {
 		root = cwd
 	}
-	repo := phpBasename(root)
+	repo := phpBasename(env.GOOS, root)
 	project, declared := declaredProject(root)
 	if !declared {
 		project = repo
@@ -198,8 +198,21 @@ func rawURLEncode(s string) string {
 }
 
 // phpBasename is the last element of path like PHP's basename: trailing
-// slashes are ignored, and the root directory has none ("").
-func phpBasename(path string) string {
-	path = strings.TrimRight(path, "/")
-	return path[strings.LastIndexByte(path, '/')+1:]
+// slashes are ignored, and the root directory has none (""). On Windows
+// the separator may also be a backslash, and a drive root (C:\, C:) has no
+// basename either.
+func phpBasename(goos, path string) string {
+	separators := "/"
+	if goos == "windows" {
+		separators = `/\`
+	}
+	path = strings.TrimRight(path, separators)
+	if goos == "windows" && len(path) == 2 && path[1] == ':' && isASCIILetter(path[0]) {
+		return ""
+	}
+	return path[strings.LastIndexAny(path, separators)+1:]
+}
+
+func isASCIILetter(c byte) bool {
+	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z'
 }

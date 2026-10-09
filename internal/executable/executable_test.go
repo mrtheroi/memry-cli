@@ -80,3 +80,49 @@ func TestEnvironmentIsWhatACustomMEMRY_CONFIGNeedsAndNoneByDefault(t *testing.T)
 		t.Errorf("Environment = %q, want %q", got, want)
 	}
 }
+
+// On Windows the command is the bare `memry` on the PATH: no quotes, no
+// absolute path and no MEMRY_CONFIG prefix (R2.3).
+func TestCommandOnWindowsRunsMemryFromThePATH(t *testing.T) {
+	exe := executable.Executable{GOOS: "windows", Getenv: env(nil), Self: `C:\Program Files\memry\memry.exe`}
+
+	if got, want := exe.Command("hook:session-start"), "memry hook:session-start"; got != want {
+		t.Errorf("Command = %q, want %q", got, want)
+	}
+}
+
+// S2.3.c: MEMRY_EXECUTABLE replaces `memry` verbatim, whatever quotes it has.
+// Git Bash would eat the backslashes of an unquoted path, so they become
+// forward slashes, which Git Bash, PowerShell and CMD all accept.
+func TestCommandOnWindowsRunsMEMRY_EXECUTABLEWithForwardSlashes(t *testing.T) {
+	exe := executable.Executable{GOOS: "windows", Getenv: env(map[string]string{"MEMRY_EXECUTABLE": `C:\tools\memry.exe`})}
+
+	if got, want := exe.Command("hook:session-start"), `C:/tools/memry.exe hook:session-start`; got != want {
+		t.Errorf("Command = %q, want %q", got, want)
+	}
+}
+
+// S2.3.b: a custom config travels as --config, the path double-quoted with
+// forward slashes (one form for Git Bash, PowerShell and CMD).
+func TestCommandOnWindowsPassesACustomMEMRY_CONFIGAsAQuotedSlashedFlag(t *testing.T) {
+	exe := executable.Executable{GOOS: "windows", Getenv: env(map[string]string{"MEMRY_CONFIG": `C:\Users\ana b\memry\config.json`})}
+
+	if got, want := exe.Command("hook:session-start"), `memry --config "C:/Users/ana b/memry/config.json" hook:session-start`; got != want {
+		t.Errorf("Command = %q, want %q", got, want)
+	}
+}
+
+// A path the hook's shell string cannot carry safely through Git Bash,
+// PowerShell and CMD is refused (D6).
+func TestHookConfigPathIsRefusedWhenAShellWouldExpandOrBreakIt(t *testing.T) {
+	for _, bad := range []string{`C:\a"b\c.json`, `C:\$HOME\c.json`, "C:\\`x`\\c.json", `C:\%APPDATA%\c.json`, `C:\a!b\c.json`, "C:\\a\rb\\c.json", "C:\\a\nb\\c.json", "C:\\a\u201cb\\c.json", "C:\\a\u201db\\c.json", "C:\\a\u201eb\\c.json", "C:\\a\u2018b\\c.json", "C:\\a\u2019b\\c.json"} {
+		if executable.SafeInHook(bad) {
+			t.Errorf("SafeInHook(%q) = true, want false", bad)
+		}
+	}
+	for _, good := range []string{`C:\Users\ana b\memry\config.json`, `\\server\share\config.json`} {
+		if !executable.SafeInHook(good) {
+			t.Errorf("SafeInHook(%q) = false, want true", good)
+		}
+	}
+}

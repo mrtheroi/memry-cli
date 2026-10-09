@@ -86,7 +86,7 @@ func agentsEnv(lookupEnv func(string) (string, bool)) agents.Env {
 		Getenv:     getenv,
 		LookPath:   exec.LookPath,
 		Runner:     agents.ExecRunner{Timeout: 60 * time.Second},
-		Executable: executable.Executable{Getenv: getenv, Self: self},
+		Executable: executable.Executable{GOOS: runtime.GOOS, Getenv: getenv, Self: self},
 	}
 }
 

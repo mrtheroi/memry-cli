@@ -7,6 +7,8 @@ import "strings"
 
 // Executable is the memry executable agents run.
 type Executable struct {
+	// GOOS is the operating system; the zero value means Unix.
+	GOOS string
 	// Getenv reads MEMRY_EXECUTABLE and MEMRY_CONFIG.
 	Getenv func(string) string
 	// Self is the running memry binary (os.Executable), run when
@@ -16,9 +18,22 @@ type Executable struct {
 
 // Command is the shell command that runs subcommand: MEMRY_EXECUTABLE as
 // it is (it may hold several words), else the running binary quoted, and
-// a custom MEMRY_CONFIG before it.
+// a custom MEMRY_CONFIG before it. On Windows it is the hook command: the
+// bare `memry` (or MEMRY_EXECUTABLE) and a custom MEMRY_CONFIG as a
+// --config flag, both with forward slashes, which Git Bash, PowerShell and
+// CMD all accept and Git Bash does not eat as escapes.
 func (e Executable) Command(subcommand string) string {
 	executable := e.Getenv("MEMRY_EXECUTABLE")
+	if e.GOOS == "windows" {
+		executable = strings.ReplaceAll(executable, `\`, "/")
+		if executable == "" {
+			executable = "memry"
+		}
+		if config := e.Getenv("MEMRY_CONFIG"); config != "" {
+			executable += ` --config "` + strings.ReplaceAll(config, `\`, "/") + `"`
+		}
+		return executable + " " + subcommand
+	}
 	if executable == "" {
 		executable = EscapeShellArg(e.Self)
 	}
@@ -53,4 +68,19 @@ func (e Executable) Environment() map[string]string {
 		return map[string]string{"MEMRY_CONFIG": config}
 	}
 	return nil
+}
+
+// PlainInHook reports whether a path can go unquoted at the start of the
+// Windows hook command. Every shell gives some punctuation a meaning (& ; (
+// ^ ' | and more), so only letters, digits and : / \ . _ - are allowed.
+func PlainInHook(path string) bool {
+	return strings.Trim(path, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:/\\._-") == ""
+}
+
+// SafeInHook reports whether a config path can go double-quoted in the
+// Windows hook command: Git Bash expands $ and backticks inside double
+// quotes, CMD expands %, and " ! CR and LF break the quoting. PowerShell
+// also closes a double-quoted string on the typographic quotes.
+func SafeInHook(path string) bool {
+	return !strings.ContainsAny(path, "\"$`%!\r\n“”„‘’")
 }

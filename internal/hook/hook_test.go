@@ -380,3 +380,28 @@ func TestFallsBackToTheCwdWhenGitTimesOut(t *testing.T) {
 		t.Fatal("the hook is still waiting for git")
 	}
 }
+
+// On Windows the repo name is the last element of a backslash path too.
+func TestNamesTheRepoFromABackslashPathOnWindows(t *testing.T) {
+	s := newServer(t, respond(200, "body"))
+	h := newHarness(t, s.URL)
+	h.goos = "windows"
+	h.git = func(context.Context, string) (string, bool) { return `C:\Users\ana\Proj Dir\`, true }
+
+	_, output := h.run(map[string]any{"cwd": `C:\Users\ana\Proj Dir\sub`})
+
+	assertPrefix(t, output, "## memry memory (project: Proj Dir)\n")
+}
+
+// Not in the PHP tests: on Windows a drive root has no basename, like the
+// POSIX root, instead of the drive "C:".
+func TestPHPBasenameOfAWindowsDriveRootIsEmpty(t *testing.T) {
+	for _, path := range []string{`C:\`, `C:/`, `C:`, `c:\\`} {
+		if got := hook.PHPBasename("windows", path); got != "" {
+			t.Errorf("PHPBasename(windows, %q) = %q, want empty", path, got)
+		}
+	}
+	if got := hook.PHPBasename("windows", `C:\Users\Me\proj\`); got != "proj" {
+		t.Errorf("PHPBasename of a nested path = %q, want proj", got)
+	}
+}

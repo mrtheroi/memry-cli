@@ -187,3 +187,68 @@ func TestEmptyConfigFlagReadsAndWritesNoFile(t *testing.T) {
 		t.Errorf("--silent with an empty --config = %q, %v; want nothing and an error", out, err)
 	}
 }
+
+// A server that records the Authorization header and answers 200 with body.
+func recordingServer(t *testing.T, body string, auths *[]string) *httptest.Server {
+	t.Helper()
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*auths = append(*auths, r.Header.Get("Authorization"))
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(s.Close)
+	return s
+}
+
+// configFor writes a login for the server at url with token to a config
+// file in a new temporary directory, and returns its path.
+func configFor(t *testing.T, url, token string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "flag config.json")
+	if err := os.WriteFile(path, []byte(`{"url":"`+url+`","token":"`+token+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// Pin for the form the Windows SessionStart hook writes: `memry --config X
+// hook:session-start` routes to the hook and reads X, not MEMRY_CONFIG.
+func TestConfigFlagBeforeTheHookCommandIsUsedByTheHook(t *testing.T) {
+	isolate(t)
+	var auths []string
+	s := recordingServer(t, "the context", &auths)
+	file := configFor(t, s.URL, "hook-flag-token")
+	input := `{"cwd":"` + jsonEscapePath(t.TempDir()) + `"}`
+
+	out, _, err := executeIn(t, input, "--config", file, "hook:session-start")
+
+	if err != nil || !strings.HasSuffix(out, "\n\nthe context\n") {
+		t.Fatalf("--config X hook:session-start = %q, %v; want the context", out, err)
+	}
+	if len(auths) != 1 || auths[0] != "Bearer hook-flag-token" {
+		t.Errorf("Authorization = %q, want the token of the --config file", auths)
+	}
+}
+
+// S2.4.a, a pin: `memry mcp --config X` answers tools/list with the token
+// of X, without MEMRY_CONFIG pointing at it.
+func TestMcpWithTheConfigFlagHandlesToolsListWithTheConfigToken(t *testing.T) {
+	isolate(t)
+	var auths []string
+	reply := `{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}`
+	s := recordingServer(t, reply, &auths)
+	file := configFor(t, s.URL, "mcp-flag-token")
+
+	out, _, err := executeIn(t, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`+"\n", "mcp", "--config", file)
+
+	if err != nil || out != reply+"\n" {
+		t.Fatalf("mcp --config X = %q, %v; want %q", out, err, reply)
+	}
+	if len(auths) != 1 || auths[0] != "Bearer mcp-flag-token" {
+		t.Errorf("Authorization = %q, want the token of the --config file", auths)
+	}
+}
+
+// jsonEscapePath escapes the backslashes of a Windows path for JSON.
+func jsonEscapePath(s string) string {
+	return strings.ReplaceAll(s, `\`, `\\`)
+}

@@ -32,10 +32,11 @@ func (e *testEnv) memryCommand(subcommand string) string {
 	return "MEMRY_CONFIG='" + e.vars["MEMRY_CONFIG"] + "' '/opt/memry/memry' " + subcommand
 }
 
-// jsonEscape escapes the backslashes of a Windows path the way the JSON the
-// adapter writes does. It changes nothing on a path without backslashes.
+// jsonEscape escapes the backslashes of a Windows path and the double
+// quotes of a Windows command the way the JSON the adapter writes does. It
+// changes nothing on a Unix command, which has neither.
 func jsonEscape(s string) string {
-	return strings.ReplaceAll(s, `\`, `\\`)
+	return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s)
 }
 
 // claudeServer is the JSON add-json gets for the memry server at memry.test.

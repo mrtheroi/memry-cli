@@ -236,12 +236,20 @@ func (a *claudeCode) removeMCPServers(lines *lines) bool {
 	return ok
 }
 
+// notRegistered reports whether the output of a failed `claude mcp remove`
+// says there was no such server.
+func notRegistered(output string) bool {
+	output = strings.ToLower(output)
+	return strings.Contains(output, "no mcp server found") || strings.Contains(output, "no mcp server named")
+}
+
 // removeServer runs `claude mcp remove` for the user-scope server name. It
 // returns whether the server was removed, or why the removal failed:
 //
 //   - exit 0: removed;
-//   - a non-zero exit whose output contains "No MCP server found" (in any
-//     case): the server was not registered, as in the PHP CLI;
+//   - a non-zero exit whose output contains "No MCP server found" or, in
+//     newer Claude Code versions, "No MCP server named" (in any case): the
+//     server was not registered, as in the PHP CLI;
 //   - anything else (another non-zero exit, a command that could not start
 //     or timed out): a failure, with an excerpt of the output.
 //
@@ -258,7 +266,7 @@ func (a *claudeCode) removeServer(name string) (removed bool, failure string) {
 		return false, "`claude mcp remove` could not start."
 	case result.TimedOut:
 		return false, "`claude mcp remove` timed out" + excerpt(result.Output) + "."
-	case strings.Contains(strings.ToLower(result.Output), "no mcp server found"):
+	case notRegistered(result.Output):
 		return false, ""
 	}
 	return false, "`claude mcp remove` exited with " + strconv.Itoa(result.ExitCode) + excerpt(result.Output) + "."

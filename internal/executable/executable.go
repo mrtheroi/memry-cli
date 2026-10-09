@@ -19,11 +19,13 @@ type Executable struct {
 // Command is the shell command that runs subcommand: MEMRY_EXECUTABLE as
 // it is (it may hold several words), else the running binary quoted, and
 // a custom MEMRY_CONFIG before it. On Windows it is the hook command: the
-// bare `memry` (or MEMRY_EXECUTABLE as it is) and a custom MEMRY_CONFIG as
-// a --config flag.
+// bare `memry` (or MEMRY_EXECUTABLE) and a custom MEMRY_CONFIG as a
+// --config flag, both with forward slashes, which Git Bash, PowerShell and
+// CMD all accept and Git Bash does not eat as escapes.
 func (e Executable) Command(subcommand string) string {
 	executable := e.Getenv("MEMRY_EXECUTABLE")
 	if e.GOOS == "windows" {
+		executable = strings.ReplaceAll(executable, `\`, "/")
 		if executable == "" {
 			executable = "memry"
 		}

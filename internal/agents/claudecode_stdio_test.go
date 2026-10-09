@@ -216,13 +216,13 @@ func TestClaudeCodeOnWindowsInstallsTheConfigFormOfTheHookCommand(t *testing.T) 
 	assertContents(t, e.path("claude", "settings.json"), hookSettings(hookGroup(`memry --config "C:/Users/ana b/memry/config.json" hook:session-start`)))
 }
 
-func TestClaudeCodeOnWindowsInstallsMEMRY_EXECUTABLEVerbatimInTheHook(t *testing.T) {
+func TestClaudeCodeOnWindowsInstallsMEMRY_EXECUTABLEWithForwardSlashesInTheHook(t *testing.T) {
 	e := windowsClaudeEnv(t)
 	e.vars["MEMRY_EXECUTABLE"] = `D:\tools\memry.exe`
 
 	e.agent(t, "claude-code").Install("https://memry.test")
 
-	assertContents(t, e.path("claude", "settings.json"), hookSettings(hookGroup(`D:\tools\memry.exe hook:session-start`)))
+	assertContents(t, e.path("claude", "settings.json"), hookSettings(hookGroup(`D:/tools/memry.exe hook:session-start`)))
 }
 
 func TestClaudeCodeOnWindowsLeavesOneHookGroupAfterInstallingTwice(t *testing.T) {

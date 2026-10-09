@@ -92,10 +92,12 @@ func TestCommandOnWindowsRunsMemryFromThePATH(t *testing.T) {
 }
 
 // S2.3.c: MEMRY_EXECUTABLE replaces `memry` verbatim, whatever quotes it has.
-func TestCommandOnWindowsRunsMEMRY_EXECUTABLEVerbatim(t *testing.T) {
-	exe := executable.Executable{GOOS: "windows", Getenv: env(map[string]string{"MEMRY_EXECUTABLE": `"C:\Program Files\memry\memry.exe"`})}
+// Git Bash would eat the backslashes of an unquoted path, so they become
+// forward slashes, which Git Bash, PowerShell and CMD all accept.
+func TestCommandOnWindowsRunsMEMRY_EXECUTABLEWithForwardSlashes(t *testing.T) {
+	exe := executable.Executable{GOOS: "windows", Getenv: env(map[string]string{"MEMRY_EXECUTABLE": `C:\tools\memry.exe`})}
 
-	if got, want := exe.Command("hook:session-start"), `"C:\Program Files\memry\memry.exe" hook:session-start`; got != want {
+	if got, want := exe.Command("hook:session-start"), `C:/tools/memry.exe hook:session-start`; got != want {
 		t.Errorf("Command = %q, want %q", got, want)
 	}
 }

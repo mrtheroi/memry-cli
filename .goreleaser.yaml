@@ -82,7 +82,9 @@ winget:
       owner: mrtheroi
       name: winget-pkgs
       branch: "memry-{{ .Version }}"
-      token: '{{ envOrDefault "WINGET_GITHUB_TOKEN" "" }}'
+      # The token template has no envOrDefault; skip_upload keeps it from being
+      # rendered when the variable is missing.
+      token: "{{ .Env.WINGET_GITHUB_TOKEN }}"
       pull_request:
         enabled: true
         base:

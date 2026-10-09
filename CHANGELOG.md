@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-09
+
+### Fixed
+
+- The release publishes the `Memry.Memry` package to WinGet. In 1.1.0 the WinGet step failed on
+  its token template after the GitHub release was published, so 1.1.0 is not on WinGet;
+  `winget install Memry.Memry` starts at 1.1.1.
+
 ## [1.1.0] - 2026-10-09
 
 memry now runs on Windows (amd64 and arm64). On macOS and Linux nothing changes except the home

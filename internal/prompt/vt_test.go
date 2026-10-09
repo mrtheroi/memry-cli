@@ -58,3 +58,14 @@ func TestMultiSelectWithoutVTAndWithoutDefaultsSaysNone(t *testing.T) {
 		t.Errorf("output = %q, want %q", out.String(), want)
 	}
 }
+
+// Windows interprets escape sequences only with processed output on too,
+// so a console that has it off gets both, and other flags are kept.
+func TestVTModeTurnsOnProcessedOutputWithVirtualTerminalProcessing(t *testing.T) {
+	const processedOutput, virtualTerminalProcessing, wrapAtEOL = 0x1, 0x4, 0x2
+	for _, mode := range []uint32{0, wrapAtEOL, processedOutput | wrapAtEOL} {
+		if got, want := prompt.VTMode(mode), mode|processedOutput|virtualTerminalProcessing; got != want {
+			t.Errorf("VTMode(%#x) = %#x, want %#x", mode, got, want)
+		}
+	}
+}

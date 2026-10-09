@@ -24,7 +24,7 @@ func TestEnableVTTurnsOnVirtualTerminalProcessingOnAConsole(t *testing.T) {
 		t.Fatal("EnableVT = false on a console")
 	}
 	var after uint32
-	if err := windows.GetConsoleMode(handle, &after); err != nil || after&windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING == 0 {
-		t.Errorf("console mode = %#x, %v; want VT processing on", after, err)
+	if err := windows.GetConsoleMode(handle, &after); err != nil || after&windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING == 0 || after&windows.ENABLE_PROCESSED_OUTPUT == 0 {
+		t.Errorf("console mode = %#x, %v; want VT processing and processed output on", after, err)
 	}
 }

@@ -28,3 +28,6 @@ func SetEnableVT(enable func(out io.Writer) bool) (restore func()) {
 
 // EnableVT is the real enabler of this platform.
 func EnableVT(out io.Writer) bool { return enableVT(out) }
+
+// VTMode is the console mode enableVT sets on Windows, from mode.
+func VTMode(mode uint32) uint32 { return vtMode(mode) }

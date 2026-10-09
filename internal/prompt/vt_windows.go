@@ -23,5 +23,5 @@ var enableVT = func(out io.Writer) bool {
 	if windows.GetConsoleMode(handle, &mode) != nil {
 		return true
 	}
-	return windows.SetConsoleMode(handle, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING) == nil
+	return windows.SetConsoleMode(handle, vtMode(mode)) == nil
 }

@@ -263,7 +263,6 @@ func TestPrintsNothingWithoutAUsableConfig(t *testing.T) {
 // Ported from "prints nothing and exits zero when the request fails".
 func TestPrintsNothingWhenTheRequestFails(t *testing.T) {
 	for name, handle := range map[string]func(http.ResponseWriter, *http.Request){
-		"unauthorized":       respond(401, "Unauthenticated."),
 		"server error":       respond(500, "partial"),
 		"connection failure": dropConnection,
 	} {
@@ -276,6 +275,31 @@ func TestPrintsNothingWhenTheRequestFails(t *testing.T) {
 			assertOutput(t, code, output, "")
 		})
 	}
+}
+
+// A 401 means the token expired or was revoked: the hook says so, instead
+// of printing nothing, so the agent can tell the user. It still exits 0.
+func TestTellsTheAgentToLogInAgainWhenTheTokenIsRejected(t *testing.T) {
+	s := newServer(t, respond(401, `{"message":"Unauthenticated."}`))
+	h := newHarness(t, s.URL)
+
+	code, output := h.run(map[string]any{"session_id": "abc", "cwd": gitRepo(t, h.dir+"/MyProject"), "source": "startup"})
+
+	assertOutput(t, code, output, "memry: your login expired or was revoked; run `memry setup` to log in again.\n")
+}
+
+// A server that answers too late is a network failure, not a rejected
+// token: the hook stays silent.
+func TestPrintsNothingWhenTheServerTimesOut(t *testing.T) {
+	release := make(chan struct{})
+	s := newServer(t, func(http.ResponseWriter, *http.Request) { <-release })
+	t.Cleanup(func() { close(release) })
+	h := newHarness(t, s.URL)
+	h.httpTimeout = 50 * time.Millisecond
+
+	code, output := h.run(map[string]any{"session_id": "abc", "cwd": gitRepo(t, h.dir+"/MyProject"), "source": "startup"})
+
+	assertOutput(t, code, output, "")
 }
 
 // Ported from "prints nothing and exits zero instead of following a

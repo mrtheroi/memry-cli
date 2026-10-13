@@ -68,6 +68,8 @@ type harness struct {
 	getwd      func() (string, error)
 	git        func(context.Context, string) (string, bool)
 	gitTimeout time.Duration
+	// httpTimeout is the HTTP client's timeout; zero means 5 seconds.
+	httpTimeout time.Duration
 	// goos is the hook's operating system; empty means Unix.
 	goos string
 }
@@ -102,6 +104,10 @@ func (h *harness) run(input map[string]any) (int, string) {
 func (h *harness) runWith(stdin io.Reader) (int, string) {
 	h.t.Helper()
 	var out bytes.Buffer
+	timeout := h.httpTimeout
+	if timeout == 0 {
+		timeout = 5 * time.Second
+	}
 	vars := map[string]string{"MEMRY_CONFIG": h.configPath, "HOME": h.dir}
 	code := hook.SessionStart(hook.Env{
 		GOOS: h.goos,
@@ -111,7 +117,7 @@ func (h *harness) runWith(stdin io.Reader) (int, string) {
 		},
 		In:          stdin,
 		Out:         &out,
-		HTTP:        client.New("test", 5*time.Second),
+		HTTP:        client.New("test", timeout),
 		Getwd:       h.getwd,
 		GitTopLevel: h.git,
 		GitTimeout:  h.gitTimeout,

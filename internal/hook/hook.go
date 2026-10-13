@@ -36,8 +36,9 @@ type Env struct {
 }
 
 // SessionStart prints the usage protocol and the memry context of the
-// project Claude Code starts in. It always exits 0, printing nothing when
-// anything fails, so it never blocks a session.
+// project Claude Code starts in. It always exits 0, so it never blocks a
+// session: when the server rejects the token (401) it prints a line asking
+// the user to log in again, and nothing for any other failure.
 func SessionStart(env Env) int {
 	if context, ok := env.context(); ok {
 		_, _ = io.WriteString(env.Out, context)
@@ -82,6 +83,9 @@ func (env Env) context() (string, bool) {
 		return "", false
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return loginExpired, true
+	}
 	if !client.Succeeded(resp) {
 		return "", false
 	}
@@ -92,6 +96,10 @@ func (env Env) context() (string, bool) {
 	// Like the bash hook's $(curl ...), drop the body's trailing newlines.
 	return fmt.Sprintf(protocol, project, project, project, repo, strings.TrimRight(string(body), "\n")), true
 }
+
+// loginExpired is what the hook prints when the server rejects the token
+// (expired, revoked or invalid), so the agent can tell the user.
+const loginExpired = "memry: your login expired or was revoked; run `memry setup` to log in again.\n"
 
 // protocol is the usage protocol printed before the context, with the
 // project (three times), the repo and the context body.

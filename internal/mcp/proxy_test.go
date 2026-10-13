@@ -129,9 +129,12 @@ func TestAnswersNotLoggedInWithoutContactingTheServer(t *testing.T) {
 func TestAnswersALoginErrorWhenTheTokenIsRejected(t *testing.T) {
 	s := newServer(t, respond(401, `{"message":"Unauthenticated."}`))
 
-	code, output := newHarness(t, s.URL).run(`{"jsonrpc":"2.0","id":7,"method":"tools/list"}`)
+	// Two requests: the proxy stays alive and answers both.
+	code, output := newHarness(t, s.URL).run(`{"jsonrpc":"2.0","id":7,"method":"tools/list"}`, `{"jsonrpc":"2.0","id":8,"method":"tools/list"}`)
 
-	assertOutput(t, code, output, `{"jsonrpc":"2.0","id":7,"error":{"code":-32000,"message":"Your memry login is no longer valid. Run `+"`memry setup`"+`."}}`+"\n")
+	const message = "memry: your login expired or was revoked; run `memry setup` to log in again."
+	assertOutput(t, code, output, `{"jsonrpc":"2.0","id":7,"error":{"code":-32000,"message":"`+message+`"}}`+"\n"+
+		`{"jsonrpc":"2.0","id":8,"error":{"code":-32000,"message":"`+message+`"}}`+"\n")
 }
 
 // Ported from "answers a request with an internal error when the server

@@ -280,7 +280,9 @@ protocol followed by `GET <url>/api/context?project=<project>`. The protocol ask
 memories under that project (or under another product's project when they are about another
 product) and to pass the project and the repo (the root's directory name) to `session-summary`.
 When the user is not logged in or the request fails, it prints nothing and exits with code 0, so
-it never blocks a session.
+it never blocks a session. The one exception is a 401 (the token expired after inactivity, was
+revoked or is invalid): it prints "memry: your login expired or was revoked; run `memry setup` to
+log in again." so the agent can tell the user, and still exits with code 0.
 
 ### Windows notes
 
@@ -383,7 +385,7 @@ appears in the agent's config files.
 | Case                                                | Code     | Message                                                   |
 | --------------------------------------------------- | -------- | --------------------------------------------------------- |
 | No `url` or `token` in the config file              | `-32000` | Not logged in to memry. Run `memry setup`.                |
-| The server answers 401                              | `-32000` | Your memry login is no longer valid. Run `memry setup`.   |
+| The server answers 401                              | `-32000` | memry: your login expired or was revoked; run `memry setup` to log in again. |
 | Other error status without a JSON-RPC body          | `-32603` | The memry server returned HTTP `<status>`.                |
 | The server cannot be reached or times out           | `-32603` | Could not reach the memry server.                         |
 | The server answers with something that is not JSON  | `-32603` | The memry server returned an invalid response.            |

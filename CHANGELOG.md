@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- When the server rejects the token (401: expired after inactivity, revoked or invalid),
+  `memry mcp` answers "memry: your login expired or was revoked; run `memry setup` to log in
+  again." and `memry hook:session-start` prints that line (still exit code 0) instead of nothing.
+  The hook stays silent for every other failure.
+
 ## [1.1.1] - 2026-10-09
 
 ### Fixed

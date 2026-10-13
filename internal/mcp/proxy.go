@@ -71,7 +71,7 @@ func (env Env) forward(message []byte) []byte {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusUnauthorized {
-		return errorReply(message, -32000, "Your memry login is no longer valid. Run `memry setup`.")
+		return errorReply(message, -32000, "memry: your login expired or was revoked; run `memry setup` to log in again.")
 	}
 	// Neither a success nor an error, such as a redirect: whatever its body says.
 	if !client.Succeeded(resp) && resp.StatusCode < 400 {

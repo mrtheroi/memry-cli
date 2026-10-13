@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-13
+
 ### Changed
 
 - When the server rejects the token (401: expired after inactivity, revoked or invalid),

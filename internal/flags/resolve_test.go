@@ -124,7 +124,7 @@ func TestResolveAcceptsAnHTTPServerURLWithoutItsTrailingSlash(t *testing.T) {
 		"https://memry.test:":                  "https://memry.test:",
 	}
 	for given, want := range tests {
-		for _, argv := range [][]string{{"--url=" + given, "--token=admin-token"}, {"--url", given, "--email", "ana@example.com"}} {
+		for _, argv := range [][]string{{"--url=" + given, "--token=admin-token", "--insecure"}, {"--url", given, "--email", "ana@example.com", "--insecure"}} {
 			plan, err := resolve(argv, nil)
 			if err != nil {
 				t.Fatalf("Resolve(%q) error = %v", argv, err)

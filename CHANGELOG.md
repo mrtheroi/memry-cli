@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- `memry setup` refuses a plain `http://` server URL unless its host is this machine (`localhost`,
+  any `127.0.0.0/8` address or `::1`). Before, `--url http://<remote host>` (or `MEMRY_URL`) sent
+  the token given with `--token` or `MEMRY_TOKEN`, the email login code and, later, the saved token
+  on every `memry mcp` request in clear text. Setup now prints "Refusing to send credentials over
+  plain HTTP to <host>. Use an https:// URL, or pass --insecure to allow it (for example on a
+  trusted LAN)." and exits with code 1 before asking or sending anything. The host is compared as a
+  whole, so `localhost.evil.com` and `127.0.0.1.nip.io` are refused.
+- New `memry setup --insecure` flag to allow a non-loopback `http://` server on a network you
+  trust. `https://` URLs are unchanged. A config saved earlier with an `http://` remote URL keeps
+  working: only `setup` enforces the rule.
+
 ## [1.1.2] - 2026-10-13
 
 ### Changed

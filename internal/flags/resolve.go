@@ -2,6 +2,7 @@ package flags
 
 import (
 	"math"
+	"net"
 	"net/url"
 	"regexp"
 	"slices"
@@ -105,8 +106,13 @@ func Resolve(args Args, lookupEnv func(string) (string, bool), agentKeys []strin
 	if args.URL.HasValue && !isServerURL(args.URL.Value) {
 		return fail("Invalid server address given with --url. Use an http:// or https:// URL.")
 	}
+	serverURL := serverURL(args.URL, lookupEnv)
+	if !args.Insecure && isRemotePlainHTTP(serverURL) {
+		return fail("Refusing to send credentials over plain HTTP to " + hostOf(serverURL) +
+			". Use an https:// URL, or pass --insecure to allow it (for example on a trusted LAN).")
+	}
 	plan := Plan{
-		URL:         serverURL(args.URL, lookupEnv),
+		URL:         serverURL,
 		Email:       args.Email.Value,
 		EmailGiven:  args.Email.HasValue,
 		Agents:      agents,
@@ -179,6 +185,31 @@ func serverURL(option Option, lookupEnv func(string) (string, bool)) string {
 		}
 	}
 	return strings.TrimRight(value, "/")
+}
+
+// isRemotePlainHTTP reports whether raw is an http:// address whose host is
+// not this machine. A value that does not parse is not one: setup has
+// always taken a MEMRY_URL as it is.
+func isRemotePlainHTTP(raw string) bool {
+	parsed, err := url.Parse(raw)
+	return err == nil && parsed.Scheme == "http" && !isLoopbackHost(parsed.Hostname())
+}
+
+// hostOf is the host of raw, as url.URL.Host gives it (with its port).
+func hostOf(raw string) string {
+	parsed, _ := url.Parse(raw)
+	return parsed.Host
+}
+
+// isLoopbackHost reports whether host is "localhost", or an IP address in
+// 127.0.0.0/8 or ::1. The host is compared whole: "localhost.evil.com" and
+// "127.0.0.1.nip.io" are names, not loopback.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // tokenSource finds the token of a token login: --token=<value>, else a

@@ -61,7 +61,7 @@ func Run(env Env) int {
 	args := flags.Scan(env.Args)
 	// Like Symfony, quiet hides messages but not these errors; only silent
 	// hides them too. A malformed token such as -qfoo is never silent.
-	if message, ok := flags.UnexpectedArgument("setup", args.Rest); ok {
+	if message, ok := flags.UnexpectedArgument("setup", args.Rest, "--insecure"); ok {
 		if !flags.IsSilent(args, env.LookupEnv) {
 			console.ErrorBlock(env.Out, message)
 		}

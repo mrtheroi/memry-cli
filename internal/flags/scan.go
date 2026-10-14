@@ -19,6 +19,9 @@ type Args struct {
 	URL, Email, Token, Agents Option
 	// NoInteraction is set by -n or --no-interaction.
 	NoInteraction bool
+	// Insecure is set by --insecure, which allows a plain http:// server
+	// that is not this machine.
+	Insecure bool
 	// Quiet is set by -q, --quiet or --silent.
 	Quiet bool
 	// Silent is a well-formed --silent, which hides errors too.
@@ -58,6 +61,7 @@ func Scan(argv []string) Args {
 		*option = Option{Present: true, HasValue: hasValue, Value: value}
 	}
 	args.NoInteraction = HasParameterOption(argv, "--no-interaction", "-n")
+	args.Insecure = hasToken(argv, "--insecure")
 	args.Quiet = HasParameterOption(argv, "--silent", "--quiet", "-q")
 	args.Silent = hasToken(argv, "--silent")
 	args.Verbose = HasParameterOption(argv, "--verbose", "-v")

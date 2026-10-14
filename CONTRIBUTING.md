@@ -139,6 +139,26 @@ be an `http://` or `https://` address with a host and no query or fragment; anyt
 `--agents` given without a value print "The --<option> option needs a value.". Both fail with code 1
 before asking or sending anything. (`--token` without a value is different: it asks for the token.)
 
+An `http://` server URL, from `--url` or `MEMRY_URL`, is accepted only when its host is loopback:
+`localhost`, an address in `127.0.0.0/8` or `::1`, compared as the whole parsed host (so
+`localhost.evil.com` and `127.0.0.1.nip.io` are not loopback). For any other `http://` host setup
+prints "Refusing to send credentials over plain HTTP to <host>. Use an https:// URL, or pass
+--insecure to allow it (for example on a trusted LAN)." and exits with code 1 before asking or
+sending anything, because the token, the email login code and later every MCP request carry
+credentials. `--insecure` is a value-less flag (`--insecure=x` prints "The "--insecure" option does
+not accept a value.") that allows it. `https://` URLs are unaffected. Only setup enforces this: a
+config saved earlier with an `http://` remote URL keeps working with `memry mcp` and the hook.
+
+| Option             | Value | What it does                                                          |
+| ------------------ | ----- | --------------------------------------------------------------------- |
+| `--url`            | yes   | The memry server (`http://` or `https://`).                           |
+| `--email`          | yes   | The email to log in with.                                             |
+| `--token`          | no    | Token login; the value is optional (see below).                       |
+| `--agents`         | yes   | Comma-separated agent keys to wire memry into.                        |
+| `--insecure`       | no    | Allow a non-loopback `http://` server, sending credentials in clear.  |
+| `-n`, `--no-interaction` | no | Do not ask any question.                                          |
+| `-q`, `--quiet`    | no    | Do not output any message.                                            |
+
 1. **Login.** It emails a one-time login code, exchanges it for an API token, and saves
    `{"url": "...", "token": "..."}` to `~/.config/memry/config.json` (permissions 0600). Other
    keys already in that file are kept.

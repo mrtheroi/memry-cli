@@ -75,6 +75,13 @@ MEMRY_TOKEN="$token" memry setup --url https://memry.company.internal --token --
 
 `MEMRY_TOKEN` is only read together with `--token`, so it never changes the email login.
 
+Use an `https://` URL. Setup sends your token or login code to the server, and `memry mcp` sends the
+saved token with every request, so a plain `http://` URL is only accepted for this machine
+(`localhost`, a `127.x.x.x` address or `[::1]`). For any other `http://` server setup stops before
+asking or sending anything: "Refusing to send credentials over plain HTTP to <host>. Use an https://
+URL, or pass --insecure to allow it (for example on a trusted LAN).". Pass `--insecure` only on a network
+you trust: the credentials then travel in clear text. The same rule applies to `MEMRY_URL`.
+
 ### Windows
 
 Install with [WinGet](https://learn.microsoft.com/windows/package-manager/), then run setup in a

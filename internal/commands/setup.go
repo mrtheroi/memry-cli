@@ -64,6 +64,7 @@ func newSetup(version string) *cobra.Command {
 	options.String("token", "", "Log in with a token created by the server admin, read from MEMRY_TOKEN or asked with a hidden prompt (or given as --token=<value>)")
 	options.String("agents", "", "Comma-separated keys of the agents to wire memry into")
 	options.String("config", "", "Use this config file instead of MEMRY_CONFIG or the default one")
+	options.Bool("insecure", false, "Allow a plain http:// server that is not this machine, sending credentials in clear text")
 	options.BoolP("no-interaction", "n", false, "Do not ask any interactive question")
 	options.BoolP("quiet", "q", false, "Do not output any message")
 	return cmd

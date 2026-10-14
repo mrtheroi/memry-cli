@@ -235,6 +235,8 @@ type harness struct {
 	agents     agents.Registry
 	// processEnv makes setup read and change the process environment.
 	processEnv bool
+	// http replaces the real client, for tests that must not reach any host.
+	http *http.Client
 }
 
 // useProcessEnv makes setup use the process environment, with h's
@@ -270,6 +272,10 @@ func (h *harness) run(argv []string, answers ...answer) (string, int) {
 	if h.processEnv {
 		lookupEnv, unsetenv = os.LookupEnv, os.Unsetenv
 	}
+	httpClient := client.New("test", 5*time.Second)
+	if h.http != nil {
+		httpClient = h.http
+	}
 	code := setup.Run(setup.Env{
 		Args:      argv,
 		LookupEnv: lookupEnv,
@@ -277,7 +283,7 @@ func (h *harness) run(argv []string, answers ...answer) (string, int) {
 		Out:       &out,
 		Prompter:  p,
 		Agents:    h.agents,
-		HTTP:      client.New("test", 5*time.Second),
+		HTTP:      httpClient,
 	})
 	if len(p.answers) > 0 {
 		h.t.Errorf("questions never asked: %+v", p.answers)

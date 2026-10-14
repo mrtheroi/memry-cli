@@ -44,7 +44,7 @@ func TestSetupHelpPrintsTheUsage(t *testing.T) {
 		for _, want := range []string{
 			"Log in to memry with an email one-time code or a token",
 			"memry setup [options]\n",
-			"--url", "--email", "--token", "--agents", "--no-interaction",
+			"--url", "--email", "--token", "--agents", "--insecure", "--no-interaction",
 		} {
 			if !strings.Contains(output, want) {
 				t.Errorf("Execute(%q) output does not contain %q:\n%s", args, want, output)

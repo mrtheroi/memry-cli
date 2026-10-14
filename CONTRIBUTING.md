@@ -475,11 +475,13 @@ through the workflow's GitHub OIDC identity.
 3. The workflow runs `go vet`, `go test -race` and golangci-lint, then GoReleaser publishes the
    release: `memry_X.Y.Z_<os>_<arch>.tar.gz` for darwin and linux, and `memry_X.Y.Z_windows_<arch>.zip`, on
    amd64 and arm64 (the binary, `LICENSE` and `README.md`), an SBOM per archive, `checksums.txt` and its cosign bundle
-   `checksums.txt.sigstore.json`. To check the signature:
+   `checksums.txt.sigstore.json`. To check the signature, with cosign 3.1.3 or later (2.6.5 or later
+   on the v2 line, see [GHSA-fx35-mq7g-6g98](https://github.com/sigstore/cosign/security/advisories/GHSA-fx35-mq7g-6g98)),
+   pin the identity to the exact tag so an older signed release cannot pass as this one:
 
    ```bash
    cosign verify-blob --bundle checksums.txt.sigstore.json \
-     --certificate-identity-regexp '^https://github.com/mrtheroi/memry-cli/' \
+     --certificate-identity "https://github.com/mrtheroi/memry-cli/.github/workflows/release.yml@refs/tags/vX.Y.Z" \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
    ```
 

@@ -41,9 +41,9 @@ sboms:
   - artifacts: archive
 
 # Keyless signing of checksums.txt with the workflow's GitHub OIDC identity.
-# Verify with:
+# Verify with cosign 3.1.3+ and the exact tag identity:
 #   cosign verify-blob --bundle checksums.txt.sigstore.json \
-#     --certificate-identity-regexp '^https://github.com/mrtheroi/memry-cli/' \
+#     --certificate-identity "https://github.com/mrtheroi/memry-cli/.github/workflows/release.yml@refs/tags/vX.Y.Z" \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
 signs:
   - cmd: cosign

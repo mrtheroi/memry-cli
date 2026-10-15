@@ -138,6 +138,13 @@ func (env Env) enable() int {
 	if st.hasRecord {
 		staged.Current = &st.record
 	}
+	// The record is checked like a saved one before anything is written:
+	// an answer that could never be recorded, like a token id that is not
+	// positive, is no usage token (and its id cannot be revoked).
+	if !staged.Valid() {
+		env.line("The memry server did not return a usage token.")
+		return failure
+	}
 	st.cfg.SetUsageMetrics(staged)
 	if err := st.cfg.Save(); err != nil {
 		env.revokeNew(st, issued.ID)

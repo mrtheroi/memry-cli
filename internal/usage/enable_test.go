@@ -294,3 +294,34 @@ func TestEnableWithForceReplacesACompositeValue(t *testing.T) {
 		t.Errorf("OTEL_METRICS_EXPORTER = %v, want otlp", got)
 	}
 }
+
+// A token id that could never be recorded (not positive) is an invalid
+// answer: nothing is written, and nothing revoked, as the id is unusable.
+func TestEnableRejectsATokenIDThatIsNotPositive(t *testing.T) {
+	for _, id := range []string{"-1", "0"} {
+		t.Run(id, func(t *testing.T) {
+			s := newServer(t)
+			s.answer(201, `{"id":`+id+`,"token":"`+id+`|x"}`)
+			h := newHarness(t)
+			h.login(s.URL)
+			writeRaw(t, h.settingsPath(), `{"env":{"FOO":"bar"}}`)
+			before := readText(t, h.configPath)
+
+			output, code := h.run(usage.Enable)
+
+			assertExit(t, code, 1, output)
+			assertContains(t, output, "The memry server did not return a usage token.")
+			if got := readText(t, h.settingsPath()); got != `{"env":{"FOO":"bar"}}` {
+				t.Errorf("settings = %s, want them untouched", got)
+			}
+			if got := readText(t, h.configPath); got != before {
+				t.Errorf("config = %s, want it untouched", got)
+			}
+			for _, r := range s.received() {
+				if r.Method == "DELETE" {
+					t.Errorf("sent %s %s, want no revocation", r.Method, r.Path)
+				}
+			}
+		})
+	}
+}

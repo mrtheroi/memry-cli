@@ -279,23 +279,23 @@ type UsageMetrics struct {
 
 // UsageMetrics is the saved usage metrics record, and whether there is
 // one. A usage_metrics key that is there but not a valid record (see
-// valid) is an error: the usage metrics state is unknown, never "none".
+// Valid) is an error: the usage metrics state is unknown, never "none".
 func (f *File) UsageMetrics() (UsageMetrics, bool, error) {
 	if _, ok := f.values["usage_metrics"]; !ok {
 		return UsageMetrics{}, false, nil
 	}
 	var usage UsageMetrics
-	if !f.decodeValue("usage_metrics", &usage) || !usage.valid() {
+	if !f.decodeValue("usage_metrics", &usage) || !usage.Valid() {
 		return UsageMetrics{}, true, errors.New("usage_metrics is not a valid usage metrics record")
 	}
 	return usage, true, nil
 }
 
-// valid reports whether the record has a setup, and each of its setups
+// Valid reports whether the record has a setup, and each of its setups
 // has every field memry writes: the server, the settings path, at least
 // one variable (with a string value, which decoding checks) and the usage
 // token's id.
-func (u UsageMetrics) valid() bool {
+func (u UsageMetrics) Valid() bool {
 	if u.Current == nil && u.Pending == nil {
 		return false
 	}

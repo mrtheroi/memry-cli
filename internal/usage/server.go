@@ -49,7 +49,7 @@ func (env Env) issueToken(url, token string) (issued, string) {
 		return issued{}, body.Message
 	case !succeeded(status):
 		return issued{}, fmt.Sprintf("The memry server returned an unexpected error (HTTP %d).", status)
-	case !decoded || body.Token == "" || body.ID == 0:
+	case !decoded || body.Token == "":
 		return issued{}, "The memry server did not return a usage token."
 	}
 	return body.issued, ""

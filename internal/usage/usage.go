@@ -299,31 +299,57 @@ func Disable(env Env) int {
 	if !ok {
 		return failure
 	}
+	removed, ok := env.turnOff(false)
+	switch {
+	case !ok:
+		return failure
+	case !removed:
+		env.line("Usage metrics are not on; nothing to remove.")
+	}
+	return success
+}
+
+// TurnOff turns off the usage metrics memry set up, saying so, and says
+// nothing when they are not on. It reports false, after telling why, when
+// they could not be removed. Settings it cannot read are no failure when
+// memry has no record of turning them on, so they never stop the removal
+// of memry from other agents.
+func TurnOff(env Env) bool {
+	_, ok := env.turnOff(true)
+	return ok
+}
+
+// turnOff removes what enable wrote, reporting whether there was anything
+// to remove and whether that worked. When lenient, settings it cannot read
+// are nothing to remove unless memry has a record of turning them on.
+func (env Env) turnOff(lenient bool) (removed, ok bool) {
 	st := env.load()
 	current, ok, err := st.settings.Env()
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
+		if lenient && !st.hasRecord {
+			return false, true
+		}
 		env.line("Could not turn off usage metrics: " + failed)
-		return failure
+		return false, false
 	}
 	keys := st.written(current)
 	if len(keys) == 0 {
-		env.line("Usage metrics are not on; nothing to remove.")
-		return success
+		return false, true
 	}
-	removed, err := st.settings.RemoveEnv(keys)
-	if failed := settingsFailure(st.settings, removed != agentfiles.Unsafe, err); failed != "" {
+	removal, err := st.settings.RemoveEnv(keys)
+	if failed := settingsFailure(st.settings, removal != agentfiles.Unsafe, err); failed != "" {
 		env.line("Could not turn off usage metrics: " + failed)
-		return failure
+		return true, false
 	}
 	if st.hasRecord {
 		st.cfg.DeleteUsageMetrics()
 		if err := st.cfg.Save(); err != nil {
 			env.line("Could not update " + st.cfgPath + ": " + err.Error() + ".")
-			return failure
+			return true, false
 		}
 	}
 	env.line("Usage metrics are off. Removed them from " + st.settings.Path() + "; restart Claude Code to apply it.")
-	return success
+	return true, true
 }
 
 // written returns the variables of current that memry wrote: none unless

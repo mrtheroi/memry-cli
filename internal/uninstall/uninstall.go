@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
@@ -19,6 +20,7 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/email"
 	"github.com/mrtheroi/memry-cli/internal/flags"
 	"github.com/mrtheroi/memry-cli/internal/home"
+	"github.com/mrtheroi/memry-cli/internal/usage"
 )
 
 // Prompter asks the questions the commands need.
@@ -137,6 +139,11 @@ func (env Env) removeFromAgents() []string {
 		if !env.report(agent.Uninstall()) {
 			pending = append(pending, agent.Key())
 		}
+	}
+	// The usage metrics are recognized by the login, so they go before it.
+	// When they cannot be removed, Claude Code is kept for a retry.
+	if !usage.TurnOff(usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out}) && !slices.Contains(pending, "claude-code") {
+		pending = append(pending, "claude-code")
 	}
 	return pending
 }

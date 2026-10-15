@@ -162,7 +162,7 @@ func TestEnableStopsWhenTheSwitchWouldActivateAnotherSignal(t *testing.T) {
 				output, code := h.run(usage.Enable, "--force")
 
 				assertExit(t, code, 1, output)
-				assertContains(t, output, key+" is set in "+place+"; turning on telemetry would start that export too.")
+				assertContains(t, output, key+" is set in "+place+".")
 				if got := s.received(); len(got) != 0 {
 					t.Errorf("requests = %+v, want none", got)
 				}
@@ -171,34 +171,39 @@ func TestEnableStopsWhenTheSwitchWouldActivateAnotherSignal(t *testing.T) {
 	}
 }
 
-// Other signals already on by the user's own switch, or exporters set to
-// none, are the user's choice and not in the way.
-func TestEnableAcceptsOtherSignalsTheUserAlreadyTurnedOn(t *testing.T) {
-	for name, settings := range map[string]string{
-		"switch in settings": `{"env":{"CLAUDE_CODE_ENABLE_TELEMETRY":"1","OTEL_LOGS_EXPORTER":"otlp"}}`,
-		"exporter none":      `{"env":{"OTEL_LOGS_EXPORTER":"none","OTEL_TRACES_EXPORTER":"none"}}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			s := newServer(t)
-			h := newHarness(t)
-			h.login(s.URL)
-			writeRaw(t, h.settingsPath(), settings)
+// Exporters of other signals set to none only turn them off: they are
+// not in the way.
+func TestEnableAcceptsOtherSignalsTurnedOff(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	writeRaw(t, h.settingsPath(), `{"env":{"OTEL_LOGS_EXPORTER":"none","OTEL_TRACES_EXPORTER":"none"}}`)
+	h.env["OTEL_LOGS_EXPORTER"] = "none"
 
-			output, code := h.run(usage.Enable)
+	output, code := h.run(usage.Enable)
 
-			assertExit(t, code, 0, output)
-		})
-	}
-	t.Run("switch in environment", func(t *testing.T) {
+	assertExit(t, code, 0, output)
+}
+
+// A telemetry pipeline of the user's own, even with the switch already
+// on, is not memry's export: the allowlist leaves no room for it.
+func TestEnableStopsOnTheUsersOwnTelemetryEvenWithTheSwitchOn(t *testing.T) {
+	t.Run("settings", func(t *testing.T) {
+		s := newServer(t)
+		h := newHarness(t)
+		h.login(s.URL)
+		writeRaw(t, h.settingsPath(), `{"env":{"CLAUDE_CODE_ENABLE_TELEMETRY":"1","OTEL_LOGS_EXPORTER":"otlp"}}`)
+
+		enableBlocked(t, h, s, "OTEL_LOGS_EXPORTER is set in "+h.settingsPath()+".")
+	})
+	t.Run("environment", func(t *testing.T) {
 		s := newServer(t)
 		h := newHarness(t)
 		h.login(s.URL)
 		h.env["CLAUDE_CODE_ENABLE_TELEMETRY"] = "1"
 		h.env["OTEL_TRACES_EXPORTER"] = "otlp"
 
-		output, code := h.run(usage.Enable)
-
-		assertExit(t, code, 0, output)
+		enableBlocked(t, h, s, "OTEL_TRACES_EXPORTER is set in the environment.")
 	})
 }
 
@@ -214,5 +219,5 @@ func TestEnableAgainStopsOnALogsExportAddedAfterMemrysSwitch(t *testing.T) {
 	output, code := h.run(usage.Enable)
 
 	assertExit(t, code, 1, output)
-	assertContains(t, output, "OTEL_LOGS_EXPORTER is set in the environment; turning on telemetry would start that export too.")
+	assertContains(t, output, "OTEL_LOGS_EXPORTER is set in the environment.")
 }

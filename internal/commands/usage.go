@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"os"
 	"runtime"
 	"time"
 
@@ -50,6 +51,7 @@ func usageCommand(name, short, version string, run func(usage.Env) int) *cobra.C
 				GOOS:      runtime.GOOS,
 				Args:      args,
 				LookupEnv: lookupEnv,
+				Environ:   os.Environ,
 				Out:       cmd.OutOrStdout(),
 				HTTP:      client.New(version, 10*time.Second),
 				// Claude Code's managed settings, which win over the

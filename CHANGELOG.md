@@ -13,21 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JSON, never prompts or code) to the memry server you are logged in to, and nowhere else, so the
   dashboard can chart token usage and cost. Before asking for a token it discloses the payload:
   Claude Code has no per-metric filter, so all 8 of its metrics are sent, each with the user's
-  email, organization id, an anonymous user id and the terminal type; memry turns off the session
-  id and account uuid (`OTEL_METRICS_INCLUDE_*=false`), and the server keeps
+  email, organization id, an anonymous user id and the terminal type; memry turns off every
+  documented optional attribute (`OTEL_METRICS_INCLUDE_*=false`), and the server keeps
   only the token and cost data points. It is off by default and
   never turned on by `memry setup`. It requests a new usage token (`POST /api/auth/usage-token`, which
-  can only send usage metrics), saves its record, then merges eight `env` variables into
+  can only send usage metrics), saves its record, then merges eleven `env` variables into
   Claude Code's `settings.json`, keeping every other setting. It stops, without asking for a token,
   when one of memry's variables is set in the settings to a value memry did not write (`--force`
   replaces it), and, whatever `--force` says, when one of them is exported in the launch
   environment with another value, when a generic `OTEL_EXPORTER_OTLP_ENDPOINT`, `_HEADERS` or
   `_PROTOCOL` is set anywhere, or when turning telemetry on would start a logs or traces export the
-  user configured but did not turn on. It also stops when `OTEL_RESOURCE_ATTRIBUTES` or an
-  `otelHeadersHelper` is set, and when Claude Code's managed settings files
-  (`managed-settings.json` and `managed-settings.d/`) set telemetry or cannot be read; policies
-  memry cannot see, like server-managed settings or MDM, may still override it, so `memry usage
-  status` says "as far as memry can see". It writes the per-signal metrics protocol, never the
+  user configured but did not turn on. Beyond that, it works as an allowlist: any telemetry setting
+  that is not memry's own variable with memry's value stops it, whatever `--force` says, in the
+  launch environment, the user settings or Claude Code's managed settings files
+  (`managed-settings.json` and `managed-settings.d/`, which also stop it when they cannot be read).
+  Telemetry settings are recognized by namespace (`OTEL_*`, `CLAUDE_CODE_ENABLE_TELEMETRY*`,
+  `CLAUDE_CODE_ENHANCED_TELEMETRY*`, `ENABLE_ENHANCED_TELEMETRY*`, `CLAUDE_CODE_OTEL_*`,
+  `*BETA_TRACING*` and the top-level `otelHeadersHelper`), so beta tracing, repository attributes
+  and variables a later Claude Code adds are covered; only `OTEL_LOGS_EXPORTER=none`,
+  `OTEL_TRACES_EXPORTER=none` and variables already at memry's value are allowed. Policies memry
+  cannot see, like server-managed settings or MDM, may still override it, so `memry usage status`
+  says "as far as memry can see". memry sets every documented `OTEL_METRICS_INCLUDE_*` gate to
+  `false` (session id, account uuid, resource attributes, repository, version and entrypoint). It writes the per-signal metrics protocol, never the
   generic one. It refuses a non-loopback `http://` server unless `--insecure`. The settings
   file, which now holds the usage token, is created readable only by its owner, and an existing one
   loses any permission for other users.

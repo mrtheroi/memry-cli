@@ -188,8 +188,8 @@ memry usage disable   # turn it off again
 of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, with a relative
 `CLAUDE_CONFIG_DIR` resolved against the current directory): `CLAUDE_CODE_ENABLE_TELEMETRY`,
 `OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`,
-`OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and `OTEL_METRICS_INCLUDE_SESSION_ID`,
-`OTEL_METRICS_INCLUDE_ACCOUNT_UUID` and `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES` set to `false`.
+`OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and every `OTEL_METRICS_INCLUDE_*` gate (`SESSION_ID`,
+`ACCOUNT_UUID`, `RESOURCE_ATTRIBUTES`, `REPOSITORY`, `VERSION`, `ENTRYPOINT`) set to `false`.
 Restart Claude Code to apply it. The settings file holds the usage token, so memry leaves it
 readable by your user only.
 
@@ -211,36 +211,35 @@ What is sent, only to the server you logged in to:
 - Claude Code has no per-metric filter, so it sends all 8 of its metrics: session count, lines of
   code, pull requests, commits, cost, token usage, code edit tool decisions and active time.
 - Each metric carries your email, your organization id, an anonymous user id and the terminal type.
-  Claude Code cannot leave these out. memry turns off the session id and the account uuid. The OTLP
-  resource block also names the service and its version, the operating system type and version,
-  and the host architecture; memry does not turn usage metrics on while `OTEL_RESOURCE_ATTRIBUTES`
-  adds custom attributes to it.
+  Claude Code cannot leave these out. The OTLP resource block also names the service and its
+  version, the operating system type and version, and the host architecture. memry sets every
+  documented `OTEL_METRICS_INCLUDE_*` gate to `false`: session id, account uuid, repository,
+  version, entrypoint and custom resource attributes stay off. This is what Claude Code sends today;
+  a later version may add fields.
 - No prompts or code are sent: memry does not turn on Claude Code's logs or traces.
 - The memry server keeps only the token and cost data points, tied to your memry account: the
   count or cost, the model, the token type, the query source and the time window. It discards the
   other metrics on receipt and does not store your email or the other attributes; it only hashes
   them, with the metric, into a series identity.
 
-- `enable` stops, before asking for a token and whatever `--force` says, when:
-  - one of those variables is exported in the environment you run it from with another value
-    (Claude Code's launch environment wins over its settings, so it would override memry's). The
-    check reads the shell `memry usage enable` runs in: if Claude Code is launched from another
+- `enable` works as an allowlist: it stops, before asking for a token and whatever `--force` says,
+  on any telemetry setting that is not memry's own variable with memry's value. Telemetry settings
+  are recognized by namespace, so ones a later Claude Code adds are covered too: every `OTEL_*`
+  variable, `CLAUDE_CODE_ENABLE_TELEMETRY*`, `CLAUDE_CODE_ENHANCED_TELEMETRY*`,
+  `ENABLE_ENHANCED_TELEMETRY*`, `CLAUDE_CODE_OTEL_*` and `*BETA_TRACING*` variables, and the
+  top-level `otelHeadersHelper` setting. The only exceptions are `OTEL_LOGS_EXPORTER=none` and
+  `OTEL_TRACES_EXPORTER=none`, which only turn something off, and variables you had already set
+  to memry's value. This covers your own telemetry pipelines, logs, traces and beta tracing (which
+  can carry prompts and code), custom resource attributes, generic OTLP endpoints and headers, and
+  headers helpers (whose headers would be sent to memry). It checks:
+  - the environment you run `memry usage enable` from, which Claude Code's launch environment
+    usually is and which wins over the settings. If Claude Code is launched from another
     environment that exports OpenTelemetry variables, those take precedence;
-  - `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` or `OTEL_EXPORTER_OTLP_PROTOCOL` is
-    set in the environment or the settings (they would redirect your other telemetry, and Claude
-    Code adds the generic headers, often another collector's credentials, to the ones it sends to
-    memry);
-  - `OTEL_LOGS_EXPORTER` or `OTEL_TRACES_EXPORTER` is set (and not `none`) while you have not
-    turned telemetry on yourself: `CLAUDE_CODE_ENABLE_TELEMETRY` would start those exports too.
-  - `OTEL_RESOURCE_ATTRIBUTES` is set (Claude Code sends those attributes in the OTLP resource block
-    even with `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES=false`), or an `otelHeadersHelper` is set
-    (Claude Code adds its headers, often another collector's credentials, to the ones it sends);
-  - Claude Code's managed settings files set an `OTEL_*` variable, `CLAUDE_CODE_ENABLE_TELEMETRY`
-    or `otelHeadersHelper` (managed settings win, and a managed OTLP endpoint replaces memry's), or
-    one of them cannot be read or parsed, so where metrics go cannot be determined. memry reads
-    `managed-settings.json` and `managed-settings.d/*.json` in `/Library/Application
-    Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux and WSL and
-    `C:\Program Files\ClaudeCode` on Windows. Policies it cannot see, like server-managed
+  - `settings.json`;
+  - Claude Code's managed settings files, `managed-settings.json` and `managed-settings.d/*.json`
+    in `/Library/Application Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux and WSL and
+    `C:\Program Files\ClaudeCode` on Windows. One that cannot be read or parsed stops `enable`
+    too, as where metrics go cannot be determined. Policies memry cannot see, like server-managed
     settings from the claude.ai console, an MDM profile or the Windows registry, may still
     override what it sets.
 - When one of memry's variables is set in `settings.json` to a value memry did not write, `enable`

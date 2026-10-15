@@ -12,14 +12,14 @@ func TestDisableRemovesOnlyWhatEnableWrote(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.login(s.URL)
-	writeRaw(t, h.settingsPath(), `{"model":"opus","env":{"FOO":"bar","OTEL_SERVICE_NAME":"mine"}}`)
+	writeRaw(t, h.settingsPath(), `{"model":"opus","env":{"FOO":"bar","EDITOR":"vim"}}`)
 	h.run(usage.Enable)
 
 	output, code := h.run(usage.Disable)
 
 	assertExit(t, code, 0, output)
 	assertContains(t, output, "Usage metrics are off. Removed them from "+h.settingsPath()+"; restart Claude Code to apply it.")
-	want := map[string]any{"FOO": "bar", "OTEL_SERVICE_NAME": "mine"}
+	want := map[string]any{"FOO": "bar", "EDITOR": "vim"}
 	if got := h.settingsEnv(); !reflect.DeepEqual(got, want) {
 		t.Errorf("env = %v, want %v", got, want)
 	}
@@ -44,20 +44,21 @@ func TestDisableLeavesTelemetryMemryDidNotSetUp(t *testing.T) {
 	}
 }
 
-// A variable that already had memry's value before enable, as for a user
-// exporting logs elsewhere, was not written by memry: disable keeps it.
+// A variable that already had memry's value before enable was not written
+// by memry: disable keeps it.
 func TestDisableKeepsWhatTheUserHadSetBeforeEnable(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.login(s.URL)
-	writeRaw(t, h.settingsPath(), `{"env":{"CLAUDE_CODE_ENABLE_TELEMETRY":"1","OTEL_LOGS_EXPORTER":"console"}}`)
+	writeRaw(t, h.settingsPath(), `{"env":{"CLAUDE_CODE_ENABLE_TELEMETRY":"1","EDITOR":"vim"}}`)
 	h.run(usage.Enable)
 	h.run(usage.Enable) // Enabling again does not take it for memry's.
 
 	output, code := h.run(usage.Disable)
 
 	assertExit(t, code, 0, output)
-	want := map[string]any{"CLAUDE_CODE_ENABLE_TELEMETRY": "1", "OTEL_LOGS_EXPORTER": "console"}
+	assertContains(t, output, "Usage metrics are off.")
+	want := map[string]any{"CLAUDE_CODE_ENABLE_TELEMETRY": "1", "EDITOR": "vim"}
 	if got := h.settingsEnv(); !reflect.DeepEqual(got, want) {
 		t.Errorf("env = %v, want %v", got, want)
 	}

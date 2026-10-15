@@ -16,11 +16,11 @@ import (
 // endpoint at startup. The files are managed-settings.json and the *.json
 // drop-ins of managed-settings.d, which Claude Code merges. One that exists
 // but cannot be read leaves the destination unknown.
-func managedBlockers(dir string) []string {
+func managedBlockers(dir, endpoint string) []string {
 	if dir == "" {
 		return nil
 	}
-	lines := managedFileBlockers(filepath.Join(dir, "managed-settings.json"))
+	lines := managedFileBlockers(filepath.Join(dir, "managed-settings.json"), endpoint)
 	dropIns := filepath.Join(dir, "managed-settings.d")
 	entries, err := os.ReadDir(dropIns)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -29,7 +29,7 @@ func managedBlockers(dir string) []string {
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".json") && !entry.IsDir() {
-			lines = append(lines, managedFileBlockers(filepath.Join(dropIns, name))...)
+			lines = append(lines, managedFileBlockers(filepath.Join(dropIns, name), endpoint)...)
 		}
 	}
 	return lines
@@ -41,8 +41,9 @@ func unknownManaged(path string) string {
 }
 
 // managedFileBlockers says which telemetry settings the managed settings
-// file at path sets.
-func managedFileBlockers(path string) []string {
+// file at path sets that are not allowed next to memry's export to
+// endpoint (see isTelemetry and allowed).
+func managedFileBlockers(path, endpoint string) []string {
 	unknown := []string{unknownManaged(path)}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -68,8 +69,8 @@ func managedFileBlockers(path string) []string {
 	if !ok {
 		return unknown
 	}
-	for key := range env.All() {
-		if strings.HasPrefix(key, "OTEL_") || key == switchKey {
+	for key, value := range env.All() {
+		if isTelemetry(key) && !allowed(key, value, endpoint) {
 			lines = append(lines, key+" is set in the managed settings "+path+".")
 		}
 	}

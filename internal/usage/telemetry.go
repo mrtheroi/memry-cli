@@ -7,23 +7,51 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
-// genericKeys are the OTLP settings shared by every signal. memry never
-// writes them: a generic endpoint or protocol would redirect the user's
-// other telemetry, and Claude Code merges generic headers (often another
-// collector's credentials) into the metrics headers sent to memry.
-var genericKeys = []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS", "OTEL_EXPORTER_OTLP_PROTOCOL"}
+// isTelemetry reports whether key configures Claude Code's telemetry, by
+// namespace, so a variable a later Claude Code adds is covered too: every
+// OTEL_* variable, the telemetry switches and their aliases
+// (CLAUDE_CODE_ENABLE_TELEMETRY*, CLAUDE_CODE_ENHANCED_TELEMETRY*,
+// ENABLE_ENHANCED_TELEMETRY*), Claude Code's own OTel tuning
+// (CLAUDE_CODE_OTEL_*) and beta tracing (*BETA_TRACING*). See
+// https://code.claude.com/docs/en/monitoring-usage.
+func isTelemetry(key string) bool {
+	for _, prefix := range []string{"OTEL_", "CLAUDE_CODE_ENABLE_TELEMETRY", "CLAUDE_CODE_ENHANCED_TELEMETRY", "ENABLE_ENHANCED_TELEMETRY", "CLAUDE_CODE_OTEL_"} {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return strings.Contains(key, "BETA_TRACING")
+}
 
-// resourceKey adds custom attributes, like a team or a cost center, to the
-// OTLP resource block, which OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES=false
-// does not stop: memry never sends them.
-const resourceKey = "OTEL_RESOURCE_ATTRIBUTES"
+// isMemrys reports whether key is one of the variables memry writes.
+func isMemrys(key string) bool {
+	return key == endpointKey || key == headersKey || slices.ContainsFunc(constants, func(v variable) bool { return v.key == key })
+}
+
+// allowed reports whether a telemetry variable may be set to value next to
+// memry's export to endpoint: memry's own variable with memry's value, or
+// an exporter of another signal set to none, which only turns it off.
+// Headers are never allowed: their token is not memry's yet.
+func allowed(key string, value any, endpoint string) bool {
+	if (key == "OTEL_LOGS_EXPORTER" || key == "OTEL_TRACES_EXPORTER") && value == "none" {
+		return true
+	}
+	for _, v := range append(slices.Clone(constants), variable{endpointKey, endpoint}) {
+		if v.key == key {
+			return value == v.value
+		}
+	}
+	return false
+}
 
 // telemetry is the telemetry configuration Claude Code runs with: its
 // launch environment, which wins, and the env of its settings.json.
 type telemetry struct {
 	environment func(string) (string, bool)
-	settings    *phpjson.Object
-	path        string
+	// environ lists the launch environment as KEY=value.
+	environ  func() []string
+	settings *phpjson.Object
+	path     string
 	// helper is the otelHeadersHelper of the settings, nil when none.
 	helper any
 }
@@ -45,24 +73,8 @@ func (t telemetry) inSettings(key string) (any, bool) {
 	return value, value != nil && value != ""
 }
 
-// where says where key is set, the environment first, or "" when it is
-// not set.
-func (t telemetry) where(key string) string {
-	if _, ok := t.inEnvironment(key); ok {
-		return "the environment"
-	}
-	if _, ok := t.inSettings(key); ok {
-		return t.path
-	}
-	return ""
-}
-
 // helperKey is the settings key of a script that makes OTLP headers.
 const helperKey = "otelHeadersHelper"
-
-// otherSignals are the exporters of the signals besides metrics. Each is
-// started by CLAUDE_CODE_ENABLE_TELEMETRY.
-var otherSignals = []string{"OTEL_LOGS_EXPORTER", "OTEL_TRACES_EXPORTER"}
 
 // value is the value of key Claude Code runs with, the launch environment
 // first, or "" when it is not set (or not a string).
@@ -75,15 +87,40 @@ func (t telemetry) value(key string) string {
 	return text
 }
 
-// foreign says which settings memry does not write would redirect its
-// export or add to what it sends: the generic OTLP settings and custom
-// resource attributes, wherever they are set, and a headers helper, whose
-// headers Claude Code adds to the ones it sends.
-func (t telemetry) foreign() []string {
+// environmentKeys are the telemetry variables of the launch environment
+// with a value, in order.
+func (t telemetry) environmentKeys() []string {
+	var keys []string
+	if t.environ == nil {
+		return nil
+	}
+	for _, pair := range t.environ() {
+		key, value, _ := strings.Cut(pair, "=")
+		if isTelemetry(key) && value != "" {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	return slices.Compact(keys)
+}
+
+// foreign says which telemetry settings that are not memry's stand next
+// to memry's export to endpoint: any telemetry variable of the launch
+// environment or the settings that is not allowed (see allowed), but for
+// memry's own variables in the settings, which conflicts handles, and a
+// headers helper, whose headers Claude Code adds to the ones it sends.
+func (t telemetry) foreign(endpoint string) []string {
 	var lines []string
-	for _, key := range append(slices.Clone(genericKeys), resourceKey) {
-		if where := t.where(key); where != "" {
-			lines = append(lines, key+" is set in "+where+".")
+	for _, key := range t.environmentKeys() {
+		if value, _ := t.inEnvironment(key); !isMemrys(key) && !allowed(key, value, endpoint) {
+			lines = append(lines, key+" is set in the environment.")
+		}
+	}
+	if t.settings != nil {
+		for key, value := range t.settings.All() {
+			if isTelemetry(key) && value != nil && value != "" && !isMemrys(key) && !allowed(key, value, endpoint) {
+				lines = append(lines, key+" is set in "+t.path+".")
+			}
 		}
 	}
 	if t.helper != nil {
@@ -95,25 +132,17 @@ func (t telemetry) foreign() []string {
 // blockers says which settings stop memry from turning on usage metrics
 // to endpoint, whatever --force says: memry's variables exported in the
 // launch environment with another value (any headers there would replace
-// memry's token), the foreign settings (see foreign), and,
-// unless the user turned telemetry on themselves (userOn), the exporters
-// of other signals that memry's switch would start.
-func (t telemetry) blockers(endpoint string, userOn bool) []string {
+// memry's token), and every foreign setting (see foreign). Anything that
+// is not memry's export, or does not only turn something off, is in the
+// way: it may send more, or send elsewhere.
+func (t telemetry) blockers(endpoint string) []string {
 	var lines []string
-	// No value is memry's usage token, which is not issued yet.
-	wanted := append(slices.Clone(constants), variable{endpointKey, endpoint}, variable{headersKey, ""})
-	for _, v := range wanted {
-		if value, ok := t.inEnvironment(v.key); ok && value != v.value {
-			lines = append(lines, v.key+" is set in the environment.")
+	for _, key := range t.environmentKeys() {
+		if value, _ := t.inEnvironment(key); isMemrys(key) && !allowed(key, value, endpoint) {
+			lines = append(lines, key+" is set in the environment.")
 		}
 	}
-	lines = append(lines, t.foreign()...)
-	for _, key := range otherSignals {
-		if where := t.where(key); where != "" && !userOn && t.value(key) != "none" {
-			lines = append(lines, key+" is set in "+where+"; turning on telemetry would start that export too.")
-		}
-	}
-	return lines
+	return append(lines, t.foreign(endpoint)...)
 }
 
 // inactive says why Claude Code does not export metrics to endpoint with

@@ -44,13 +44,14 @@ Claude Code no permite filtrar métricas. Al activar las métricas de uso, enví
 OpenTelemetry al servidor de memry: número de sesiones, líneas de código, pull requests, commits,
 costo, uso de tokens, decisiones de la herramienta de edición de código y tiempo activo. Cada una
 lleva tu correo electrónico, el identificador de tu organización, un identificador de usuario
-anónimo y el tipo de terminal, que Claude Code no permite omitir. memry desactiva el identificador
-de sesión y el UUID de la cuenta. El bloque de recurso de OTLP también indica el servicio y su
-versión, el tipo y la versión del sistema operativo y la arquitectura del equipo; memry no activa
-las métricas de uso mientras `OTEL_RESOURCE_ATTRIBUTES` agregue atributos personalizados, haya un
-generador de encabezados (`otelHeadersHelper`) o la configuración administrada de Claude Code
-defina telemetría. Las políticas que memry no puede ver, como la configuración administrada desde
-el servidor o un perfil de MDM, pueden cambiar a dónde se envían las métricas. No se envían prompts ni código: memry
+anónimo y el tipo de terminal, que Claude Code no permite omitir. El bloque de recurso de OTLP también indica el servicio y su versión, el tipo y la versión
+del sistema operativo y la arquitectura del equipo. memry desactiva todos los atributos opcionales
+que documenta Claude Code (identificador de sesión, UUID de la cuenta, repositorio, versión, punto
+de entrada y atributos de recurso personalizados), y no activa las métricas de uso mientras exista
+cualquier otra configuración de telemetría, en tu entorno, en tu configuración o en la
+configuración administrada de Claude Code. Esto es lo que Claude Code envía hoy; una versión
+posterior podría agregar campos. Las políticas que memry no puede ver, como la configuración
+administrada desde el servidor o un perfil de MDM, pueden cambiar a dónde se envían las métricas. No se envían prompts ni código: memry
 no activa los registros (logs) ni las trazas de Claude Code. Antes de activar las métricas de uso,
 memry revisa la configuración de OpenTelemetry de la terminal donde se ejecuta
 `memry usage enable`; si Claude Code se inicia desde otro entorno que define variables de

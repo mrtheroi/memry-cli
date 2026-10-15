@@ -30,6 +30,9 @@ func TestEnableAddsTheMetricsExportKeepingEverythingElse(t *testing.T) {
 		"OTEL_METRICS_INCLUDE_SESSION_ID":          "false",
 		"OTEL_METRICS_INCLUDE_ACCOUNT_UUID":        "false",
 		"OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES": "false",
+		"OTEL_METRICS_INCLUDE_REPOSITORY":          "false",
+		"OTEL_METRICS_INCLUDE_VERSION":             "false",
+		"OTEL_METRICS_INCLUDE_ENTRYPOINT":          "false",
 	}
 	if got := h.settingsEnv(); !reflect.DeepEqual(got, wantEnv) {
 		t.Errorf("env = %v, want %v", got, wantEnv)
@@ -169,7 +172,9 @@ func disclosure(endpoint string) []string {
 		"It sends all 8 of its metrics: session count, lines of code, pull requests, commits, cost, token usage, code edit tool decisions and active time.",
 		"Each one carries your email, your organization id, an anonymous user id and the terminal type; Claude Code cannot leave these out.",
 		"The OTLP resource block also names the service and its version, the operating system type and version, and the host architecture.",
-		"memry turns off the session id and the account uuid, and does not turn usage metrics on while OTEL_RESOURCE_ATTRIBUTES adds custom attributes.",
+		"memry turns off every optional attribute Claude Code documents: the session id, the account uuid, the repository, the version, the entrypoint and custom resource attributes.",
+		"It does not turn usage metrics on while any other telemetry setting is present, in the environment, the settings or the managed settings.",
+		"This is what Claude Code sends today; a later version may add fields.",
 		"The memry server keeps only the token and cost data points, tied to your memry account: the count or cost, the model, the token type, the query source and the time window.",
 		"It discards the other metrics on receipt and does not store your email or the other attributes; it only hashes them, with the metric, into a series identity.",
 		"No prompts or code are sent. If you later turn on a logs or traces exporter, the telemetry switch memry sets starts it too.",

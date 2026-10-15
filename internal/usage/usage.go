@@ -26,8 +26,10 @@ type Env struct {
 	// Args are the arguments after the command name.
 	Args      []string
 	LookupEnv func(string) (string, bool)
-	Out       io.Writer
-	HTTP      *http.Client
+	// Environ lists the environment as KEY=value, like os.Environ.
+	Environ func() []string
+	Out     io.Writer
+	HTTP    *http.Client
 	// ManagedDir is the directory of Claude Code's managed settings
 	// files (see ManagedSettingsDir); empty, there are none to read.
 	ManagedDir string
@@ -73,9 +75,9 @@ func Enable(env Env) int {
 		return failure
 	}
 	helper, _, _ := st.settings.Setting(helperKey)
-	model := telemetry{environment: env.LookupEnv, settings: current, path: st.settings.Path(), helper: helper}
-	blockers := model.blockers(st.url+metricsPath, model.value(switchKey) == "1" && (model.where(switchKey) == "the environment" || slices.Contains(st.kept(current, st.url+metricsPath), switchKey)))
-	blockers = append(blockers, managedBlockers(env.ManagedDir)...)
+	model := telemetry{environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: helper}
+	blockers := model.blockers(st.url + metricsPath)
+	blockers = append(blockers, managedBlockers(env.ManagedDir, st.url+metricsPath)...)
 	if len(blockers) > 0 {
 		for _, line := range blockers {
 			env.line(line)
@@ -187,7 +189,9 @@ func disclosure(endpoint string) []string {
 		"It sends all 8 of its metrics: session count, lines of code, pull requests, commits, cost, token usage, code edit tool decisions and active time.",
 		"Each one carries your email, your organization id, an anonymous user id and the terminal type; Claude Code cannot leave these out.",
 		"The OTLP resource block also names the service and its version, the operating system type and version, and the host architecture.",
-		"memry turns off the session id and the account uuid, and does not turn usage metrics on while OTEL_RESOURCE_ATTRIBUTES adds custom attributes.",
+		"memry turns off every optional attribute Claude Code documents: the session id, the account uuid, the repository, the version, the entrypoint and custom resource attributes.",
+		"It does not turn usage metrics on while any other telemetry setting is present, in the environment, the settings or the managed settings.",
+		"This is what Claude Code sends today; a later version may add fields.",
 		"The memry server keeps only the token and cost data points, tied to your memry account: the count or cost, the model, the token type, the query source and the time window.",
 		"It discards the other metrics on receipt and does not store your email or the other attributes; it only hashes them, with the metric, into a series identity.",
 		"No prompts or code are sent. If you later turn on a logs or traces exporter, the telemetry switch memry sets starts it too.",
@@ -388,10 +392,15 @@ var constants = []variable{
 	{switchKey, "1"},
 	{"OTEL_METRICS_EXPORTER", "otlp"},
 	{"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json"},
-	// Leave out of every metric what memry has no use for.
+	// Leave out of every metric what memry has no use for: every
+	// documented OTEL_METRICS_INCLUDE_* gate, off
+	// (https://code.claude.com/docs/en/monitoring-usage#metrics-cardinality-control).
 	{"OTEL_METRICS_INCLUDE_SESSION_ID", "false"},
 	{"OTEL_METRICS_INCLUDE_ACCOUNT_UUID", "false"},
 	{"OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES", "false"},
+	{"OTEL_METRICS_INCLUDE_REPOSITORY", "false"},
+	{"OTEL_METRICS_INCLUDE_VERSION", "false"},
+	{"OTEL_METRICS_INCLUDE_ENTRYPOINT", "false"},
 }
 
 // Variables memry writes besides the constants.
@@ -546,9 +555,9 @@ func Status(env Env) int {
 		endpoint = st.url + metricsPath
 	}
 	helper, _, _ := st.settings.Setting(helperKey)
-	model := telemetry{environment: env.LookupEnv, settings: current, path: st.settings.Path(), helper: helper}
-	reasons := append(model.inactive(endpoint), model.foreign()...)
-	if reasons = append(reasons, managedBlockers(env.ManagedDir)...); len(reasons) > 0 {
+	model := telemetry{environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: helper}
+	reasons := append(model.inactive(endpoint), model.foreign(endpoint)...)
+	if reasons = append(reasons, managedBlockers(env.ManagedDir, endpoint)...); len(reasons) > 0 {
 		env.line("Usage metrics are not active:")
 		for _, reason := range reasons {
 			env.line("- " + reason)

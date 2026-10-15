@@ -170,6 +170,13 @@ func (h *harness) run(command func(usage.Env) int, argv ...string) (string, int)
 			value, ok := h.env[key]
 			return value, ok
 		},
+		Environ: func() []string {
+			var vars []string
+			for key, value := range h.env {
+				vars = append(vars, key+"="+value)
+			}
+			return vars
+		},
 		Out:        &out,
 		HTTP:       h.client(),
 		ManagedDir: h.managedDir,

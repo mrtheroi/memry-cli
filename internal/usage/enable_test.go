@@ -35,11 +35,10 @@ func TestEnableAddsTheMetricsExportKeepingEverythingElse(t *testing.T) {
 		t.Errorf("env = %v, want %v", got, wantEnv)
 	}
 	assertContains(t, readText(t, h.settingsPath()), `"model": "opus"`)
-	// A new token first, then, once it is in the settings, the others
-	// revoked, both with the login token.
+	// A first enable has no previous token to revoke: only the new one is
+	// asked for, with the login token.
 	want := []request{
 		{"POST", "/api/auth/usage-token", "", "Bearer 1|login-token"},
-		{"DELETE", "/api/auth/usage-tokens", "keep=7", "Bearer 1|login-token"},
 	}
 	if got := s.received(); !reflect.DeepEqual(got, want) {
 		t.Errorf("requests = %+v, want %+v", got, want)
@@ -198,17 +197,40 @@ func TestEnableLeavesSettingsThatAreNotValidJSONUntouched(t *testing.T) {
 	}
 }
 
-// Revoking the older usage tokens is best effort: they stop working after
-// 30 days without use anyway.
-func TestEnableSucceedsWithAWarningWhenTheOlderTokensCannotBeRevoked(t *testing.T) {
+// Revoking the previous usage token is best effort: it stops working
+// after 30 days without use anyway.
+func TestEnableAgainSucceedsWithAWarningWhenThePreviousTokenCannotBeRevoked(t *testing.T) {
 	s := newServer(t)
-	s.answerRevoke(500)
 	h := newHarness(t)
 	h.login(s.URL)
+	h.run(usage.Enable)
+	s.answerRevoke(500)
 
 	output, code := h.run(usage.Enable)
 
 	assertExit(t, code, 0, output)
-	assertContains(t, output, "Could not revoke your older usage tokens; they stop working after 30 days without use.")
+	assertContains(t, output, "Could not revoke your previous usage token; it stops working after 30 days without use.")
 	assertContains(t, output, "Usage metrics are on.")
+}
+
+// Enabling again revokes exactly the token this machine used before: a
+// usage token of another machine, older or newer, survives.
+func TestEnableAgainRevokesOnlyThePreviousTokenOfThisMachine(t *testing.T) {
+	s := newServer(t)
+	older := s.issueElsewhere()
+	h := newHarness(t)
+	h.login(s.URL)
+	h.run(usage.Enable)
+	newer := s.issueElsewhere()
+
+	output, code := h.run(usage.Enable)
+
+	assertExit(t, code, 0, output)
+	if got, want := s.activeTokens(), []int{older, newer, newer + 1}; !reflect.DeepEqual(got, want) {
+		t.Errorf("active tokens = %v, want %v", got, want)
+	}
+	got := s.received()
+	if last := got[len(got)-1]; last != (request{"DELETE", "/api/auth/tokens/8", "", "Bearer 1|login-token"}) {
+		t.Errorf("last request = %+v, want DELETE /api/auth/tokens/8", last)
+	}
 }

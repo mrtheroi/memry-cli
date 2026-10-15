@@ -5,7 +5,7 @@ package usage_test
 import (
 	"os"
 	"path/filepath"
-	"slices"
+	"reflect"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/usage"
@@ -22,9 +22,7 @@ func readOnly(t *testing.T, dir string) {
 }
 
 // When the record of the new token cannot be saved, nothing changes: the
-// settings keep the working token, which is not revoked. The new one,
-// never written anywhere, cannot be revoked alone (keep revokes only older
-// tokens); it dies at idle expiry.
+// settings keep the working token, and the new one is revoked.
 func TestEnableAgainChangesNothingWhenTheRecordCannotBeSaved(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
@@ -40,13 +38,14 @@ func TestEnableAgainChangesNothingWhenTheRecordCannotBeSaved(t *testing.T) {
 	if got := readText(t, h.settingsPath()); got != settings {
 		t.Errorf("settings =\n%s\nwant them unchanged:\n%s", got, settings)
 	}
-	if got := s.activeTokens(); !slices.Contains(got, 7) {
-		t.Errorf("active tokens = %v, want the old one kept", got)
+	if got := s.activeTokens(); !reflect.DeepEqual(got, []int{7}) {
+		t.Errorf("active tokens = %v, want the old one only", got)
 	}
 }
 
-// When the settings cannot be written, the previous record is restored:
-// the old headers, and the old token they hold, keep working.
+// When the settings cannot be written, the previous record is restored
+// and the new token revoked: the old headers, and the old token they hold,
+// keep working.
 func TestEnableAgainRestoresTheRecordWhenTheSettingsCannotBeWritten(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
@@ -65,8 +64,8 @@ func TestEnableAgainRestoresTheRecordWhenTheSettingsCannotBeWritten(t *testing.T
 	if got := readText(t, h.configPath); got != record {
 		t.Errorf("config =\n%s\nwant the previous record:\n%s", got, record)
 	}
-	if got := s.activeTokens(); !slices.Contains(got, 7) {
-		t.Errorf("active tokens = %v, want the old one kept", got)
+	if got := s.activeTokens(); !reflect.DeepEqual(got, []int{7}) {
+		t.Errorf("active tokens = %v, want the old one only", got)
 	}
 }
 

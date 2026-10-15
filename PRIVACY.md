@@ -46,7 +46,10 @@ OpenTelemetry metrics to the memry server: session count, lines of code, pull re
 cost, token usage, code edit tool decisions and active time. Each one carries your email, your
 organization id, an anonymous user id and the terminal type, which Claude Code cannot leave out.
 memry turns off the session id, the account uuid and the resource attributes. No prompts or code
-are sent: memry does not turn on Claude Code's logs or traces.
+are sent: memry does not turn on Claude Code's logs or traces. Before turning usage metrics on,
+memry checks the OpenTelemetry settings of the shell `memry usage enable` runs in; if Claude Code
+is launched from a different environment that exports OpenTelemetry variables, those take
+precedence over what memry set.
 
 The memry server keeps only the token and cost data points, tied to your memry account: the token
 count or cost, the model, the token type (input, output, cache read or cache creation), the query

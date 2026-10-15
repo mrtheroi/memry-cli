@@ -46,7 +46,10 @@ costo, uso de tokens, decisiones de la herramienta de edición de código y tiem
 lleva tu correo electrónico, el identificador de tu organización, un identificador de usuario
 anónimo y el tipo de terminal, que Claude Code no permite omitir. memry desactiva el identificador
 de sesión, el UUID de la cuenta y los atributos de recurso. No se envían prompts ni código: memry
-no activa los registros (logs) ni las trazas de Claude Code.
+no activa los registros (logs) ni las trazas de Claude Code. Antes de activar las métricas de uso,
+memry revisa la configuración de OpenTelemetry de la terminal donde se ejecuta
+`memry usage enable`; si Claude Code se inicia desde otro entorno que define variables de
+OpenTelemetry, estas tienen prioridad sobre lo que memry configuró.
 
 El servidor de memry conserva solo los datos de tokens y de costo, asociados a tu cuenta de memry:
 el número de tokens o el costo, el modelo, el tipo de token (entrada, salida, lectura de caché o

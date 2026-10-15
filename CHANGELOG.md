@@ -36,12 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launch environment first, exports them to memry with a bearer token, and otherwise lists what is
   missing or overridden, never printing the token. `memry uninstall` and `memry delete-account`
   turn usage metrics off too; a delete-account retry keeps the record.
-- Usage tokens change transactionally: a failed record save changes nothing, a failed settings
-  write restores the previous record, so the token in use keeps working, and only after the new
-  token is in the settings are the older ones revoked (`DELETE /api/auth/usage-tokens?keep=<id>`,
-  which revokes the ones issued before it). `memry usage disable` and `memry uninstall` revoke the
-  usage tokens (`DELETE /api/auth/usage-tokens`). Revocation is best effort, with a warning:
-  unused usage tokens stop working after 30 days.
+- Usage tokens change transactionally, and memry revokes only exact token ids it recorded
+  (`DELETE /api/auth/tokens/<id>`; a 404 counts as already revoked), so other machines' usage
+  tokens are never touched. If the record cannot be saved, or the settings cannot be written (the
+  previous record is then restored), the new token is revoked and nothing changes, so the token in
+  use keeps working. Only after the new token is in the settings is the one this machine used
+  before revoked. `memry usage disable` and `memry uninstall` revoke the recorded token.
+  Revocation is best effort, with a warning: unused usage tokens stop working after 30 days.
 
 ### Changed
 

@@ -192,12 +192,13 @@ of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): `CLAUDE_CO
 Restart Claude Code to apply it. The settings file holds the usage token, so memry leaves it
 readable by your user only.
 
-`enable` saves its record (see below) before it writes the settings, and if the settings cannot
-be written it puts the previous record back, so a failed `enable` changes nothing and the token
-already in use keeps working. Only once the new token is in the settings does it revoke your
-older usage tokens (those issued before it). `disable` revokes your usage tokens after removing
-memry's variables. Both revocations are best effort: a usage token that is not used stops working
-after 30 days.
+`enable` saves its record (see below) before it writes the settings. If the record cannot be
+saved, or the settings cannot be written (it then puts the previous record back), it revokes the
+new token, so a failed `enable` changes nothing and the token already in use keeps working. Only
+once the new token is in the settings does it revoke the one this machine used before. `disable`
+revokes the token this machine recorded after removing memry's variables. memry only revokes the
+exact tokens it recorded, so the usage tokens of your other machines keep working. Revocation is
+best effort: a usage token that is not used stops working after 30 days.
 
 What is sent, only to the server you logged in to:
 
@@ -214,7 +215,9 @@ What is sent, only to the server you logged in to:
 
 - `enable` stops, before asking for a token and whatever `--force` says, when:
   - one of those variables is exported in the environment you run it from with another value
-    (Claude Code's launch environment wins over its settings, so it would override memry's);
+    (Claude Code's launch environment wins over its settings, so it would override memry's). The
+    check reads the shell `memry usage enable` runs in: if Claude Code is launched from another
+    environment that exports OpenTelemetry variables, those take precedence;
   - `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` or `OTEL_EXPORTER_OTLP_PROTOCOL` is
     set in the environment or the settings (they would redirect your other telemetry, and Claude
     Code adds the generic headers, often another collector's credentials, to the ones it sends to

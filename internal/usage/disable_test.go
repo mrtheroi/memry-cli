@@ -99,25 +99,29 @@ func TestDisableRecognizesTheEndpointEnableWroteAfterTheServerChanged(t *testing
 	}
 }
 
-// Disable revokes the usage tokens once memry's variables are gone.
-func TestDisableRevokesTheUsageTokens(t *testing.T) {
+// Disable revokes exactly the usage token this machine recorded, once
+// memry's variables are gone; another machine's survives.
+func TestDisableRevokesTheRecordedUsageTokenOnly(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.login(s.URL)
 	h.run(usage.Enable)
+	other := s.issueElsewhere()
 
 	output, code := h.run(usage.Disable)
 
 	assertExit(t, code, 0, output)
-	if got := s.activeTokens(); len(got) != 0 {
-		t.Errorf("active tokens = %v, want none", got)
+	if got := s.activeTokens(); !reflect.DeepEqual(got, []int{other}) {
+		t.Errorf("active tokens = %v, want only the other machine's", got)
 	}
-	if got := s.received(); got[len(got)-1] != (request{"DELETE", "/api/auth/usage-tokens", "", "Bearer 1|login-token"}) {
-		t.Errorf("last request = %+v, want DELETE /api/auth/usage-tokens without keep", got[len(got)-1])
+	for _, r := range s.received() {
+		if r.Path == "/api/auth/usage-tokens" {
+			t.Errorf("sent %s %s?%s, want no bulk revocation", r.Method, r.Path, r.Query)
+		}
 	}
 }
 
-func TestDisableSucceedsWithAWarningWhenTheTokensCannotBeRevoked(t *testing.T) {
+func TestDisableSucceedsWithAWarningWhenTheTokenCannotBeRevoked(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.login(s.URL)
@@ -127,7 +131,21 @@ func TestDisableSucceedsWithAWarningWhenTheTokensCannotBeRevoked(t *testing.T) {
 	output, code := h.run(usage.Disable)
 
 	assertExit(t, code, 0, output)
-	assertContains(t, output, "Could not revoke your usage tokens; they stop working after 30 days without use.")
+	assertContains(t, output, "Could not revoke your usage token; it stops working after 30 days without use.")
 	assertContains(t, output, "Usage metrics are off.")
 	assertNotContains(t, readText(t, h.configPath), `"usage_metrics"`)
+}
+
+// A recorded token the server no longer has (404) is already revoked.
+func TestDisableTakesATokenAlreadyGoneAsRevoked(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	h.run(usage.Enable)
+	s.answerRevoke(404)
+
+	output, code := h.run(usage.Disable)
+
+	assertExit(t, code, 0, output)
+	assertNotContains(t, output, "Could not revoke")
 }

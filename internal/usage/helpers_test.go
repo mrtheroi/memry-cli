@@ -28,9 +28,8 @@ type request struct {
 
 // server fakes the usage token endpoints of the memry server, keeping the
 // usage tokens it issued: POST /api/auth/usage-token issues one (ids from
-// 7) without revoking any, DELETE /api/auth/usage-tokens revokes them all,
-// or with ?keep=<id> only the ones issued before it (422 when it is not one
-// of them).
+// 7) without revoking any, and DELETE /api/auth/tokens/<id> revokes exactly
+// that one (404 when there is no such token).
 type server struct {
 	*httptest.Server
 	// issueStatus and issueBody, when issueStatus is set, are the answer
@@ -68,22 +67,15 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		s.active[id] = true
 		w.WriteHeader(http.StatusCreated)
 		_, _ = fmt.Fprintf(w, `{"id":%d,"token":%q}`, id, usageToken(id))
-	case r.Method == http.MethodDelete && r.URL.Path == "/api/auth/usage-tokens" && s.revokeStatus != 0:
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/auth/tokens/") && s.revokeStatus != 0:
 		w.WriteHeader(s.revokeStatus)
-	case r.Method == http.MethodDelete && r.URL.Path == "/api/auth/usage-tokens":
-		keep, hasKeep := 0, r.URL.Query().Has("keep")
-		if hasKeep {
-			keep, _ = strconv.Atoi(r.URL.Query().Get("keep"))
-			if !s.active[keep] {
-				w.WriteHeader(http.StatusUnprocessableEntity)
-				return
-			}
+	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/auth/tokens/"):
+		id, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/api/auth/tokens/"))
+		if !s.active[id] {
+			w.WriteHeader(http.StatusNotFound)
+			return
 		}
-		for id := range s.active {
-			if !hasKeep || id < keep {
-				delete(s.active, id)
-			}
-		}
+		delete(s.active, id)
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		w.WriteHeader(http.StatusNotFound)
@@ -263,4 +255,15 @@ func (s *server) answerRevoke(status int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.revokeStatus = status
+}
+
+// issueElsewhere issues a usage token as another machine would, returning
+// its id.
+func (s *server) issueElsewhere() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id := s.nextID
+	s.nextID++
+	s.active[id] = true
+	return id
 }

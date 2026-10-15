@@ -11,17 +11,15 @@ import (
 )
 
 // The memry server's usage token API, all in one place. Both calls take
-// the login (full access) token.
+// the login (full access) token. memry only ever revokes exact token ids
+// it recorded, so the usage tokens of other machines are never touched.
 const (
 	// issuePath issues a new usage token, which can only send usage
 	// metrics, without revoking any: 201 {"id": 42, "token": "42|plain"}.
 	issuePath = "/api/auth/usage-token"
-	// revokePath revokes every usage token of the caller or, with
-	// ?keep=<id>, only the ones issued before that one (a later one of
-	// another client survives); 422, revoking none, when it is not one of
-	// them. It answers 204.
-	revokePath = "/api/auth/usage-tokens"
-	keepParam  = "keep"
+	// tokenPath revokes exactly the caller's token /<id>: 204, or 404
+	// when there is no such token.
+	tokenPath = "/api/auth/tokens/"
 )
 
 // issued is a usage token the server issued.
@@ -57,16 +55,11 @@ func (env Env) issueToken(url, token string) (issued, string) {
 	return body.issued, ""
 }
 
-// revokeTokens revokes the usage tokens of the login token on the memry
-// server at url, all of them or, with keep, the ones issued before it,
-// reporting whether it did.
-func (env Env) revokeTokens(url, token string, keep int64) bool {
-	target := url + revokePath
-	if keep != 0 {
-		target += "?" + keepParam + "=" + strconv.FormatInt(keep, 10)
-	}
-	status, _, err := env.send(http.MethodDelete, target, token)
-	return err == nil && succeeded(status)
+// revokeToken revokes the token id of the login token on the memry server
+// at url, reporting whether it is gone: a 404 means it already was.
+func (env Env) revokeToken(url, token string, id int64) bool {
+	status, _, err := env.send(http.MethodDelete, url+tokenPath+strconv.FormatInt(id, 10), token)
+	return err == nil && (succeeded(status) || status == http.StatusNotFound)
 }
 
 // send sends a request that accepts JSON with the bearer token, returning

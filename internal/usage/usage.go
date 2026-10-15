@@ -102,6 +102,7 @@ func Enable(env Env) int {
 	// be turned off.
 	st.cfg.SetUsageMetrics(config.UsageMetrics{SettingsPath: st.settings.Path(), Values: values, Kept: kept, TokenID: issued.ID})
 	if err := st.cfg.Save(); err != nil {
+		env.revokeNew(st, issued.ID)
 		env.line("Could not save the usage metrics record to " + st.cfgPath + ": " + err.Error() + ". Nothing was changed.")
 		return failure
 	}
@@ -109,15 +110,25 @@ func Enable(env Env) int {
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
 		env.line("Could not turn on usage metrics: " + failed)
 		env.restore(st)
+		env.revokeNew(st, issued.ID)
 		return failure
 	}
-	// Only now that the new token is in use are the older ones revoked.
-	if !env.revokeTokens(st.url, st.token, issued.ID) {
-		env.line("Could not revoke your older usage tokens; they stop working after 30 days without use.")
+	// Only now that the new token is in use is the one this machine used
+	// before revoked; other machines' tokens are never touched.
+	if st.record.TokenID != 0 && !env.revokeToken(st.url, st.token, st.record.TokenID) {
+		env.line("Could not revoke your previous usage token; it stops working after 30 days without use.")
 	}
 	env.line("Usage metrics are on. Saved in " + st.settings.Path() + "; restart Claude Code to apply it.")
 	env.line("Run `memry usage disable` to turn it off.")
 	return success
+}
+
+// revokeNew revokes the usage token id enable was just issued and could
+// not put to use, best effort: unused, it stops working after 30 days.
+func (env Env) revokeNew(st state, id int64) {
+	if !env.revokeToken(st.url, st.token, id) {
+		env.line("Could not revoke the new usage token; it stops working after 30 days without use.")
+	}
 }
 
 // restore puts back the usage metrics record st was loaded with, after the
@@ -332,8 +343,8 @@ func Disable(env Env) int {
 }
 
 // TurnOff turns off the usage metrics memry set up, saying so, and says
-// nothing when they are not on. With revoke it revokes the usage tokens
-// too (not needed once the account is deleted). It reports false, after
+// nothing when they are not on. With revoke it revokes the usage token it
+// recorded too (not needed once the account is deleted). It reports false, after
 // telling why, when they could not be removed; the record then stays for
 // a retry.
 func TurnOff(env Env, revoke bool) bool {
@@ -342,8 +353,9 @@ func TurnOff(env Env, revoke bool) bool {
 }
 
 // turnOff removes what the record says enable wrote, from the settings it
-// wrote, then, with revoke, revokes the usage tokens (best effort: they
-// stop working after 30 days without use), and forgets the record. It
+// wrote, then, with revoke, revokes the usage token it recorded (best
+// effort: it stops working after 30 days without use), and forgets the
+// record. It
 // reports whether there was anything to remove and whether that worked.
 func (env Env) turnOff(revoke bool) (removed, ok bool) {
 	st := env.load()
@@ -363,8 +375,8 @@ func (env Env) turnOff(revoke bool) (removed, ok bool) {
 			return false, false
 		}
 	}
-	if revoke && !(st.loggedIn && env.revokeTokens(st.url, st.token, 0)) {
-		env.line("Could not revoke your usage tokens; they stop working after 30 days without use.")
+	if revoke && st.record.TokenID != 0 && !(st.loggedIn && env.revokeToken(st.url, st.token, st.record.TokenID)) {
+		env.line("Could not revoke your usage token; it stops working after 30 days without use.")
 	}
 	st.cfg.DeleteUsageMetrics()
 	if err := st.cfg.Save(); err != nil {

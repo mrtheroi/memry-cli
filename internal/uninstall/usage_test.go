@@ -3,6 +3,7 @@ package uninstall_test
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/uninstall"
@@ -20,7 +21,7 @@ func TestUninstallTurnsOffUsageMetrics(t *testing.T) {
 		"OTEL_EXPORTER_OTLP_METRICS_HEADERS":  "Authorization=Bearer 7|usage",
 	}
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"claude-code"},
-		"usage_metrics": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}}})
+		"usage_metrics": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7}})
 	env := map[string]string{"FOO": "bar"}
 	for key, value := range values {
 		env[key] = value
@@ -40,8 +41,8 @@ func TestUninstallTurnsOffUsageMetrics(t *testing.T) {
 		t.Errorf("env = %v, want %v", settings.Env, want)
 	}
 	// With the login token, before it is revoked.
-	if got := s.received(); len(got) < 2 || got[0].Method != "DELETE" || got[0].Path != "/api/auth/usage-tokens" || got[1].Path != "/api/auth/token" {
-		t.Errorf("requests = %+v, want the usage tokens revoked, then the login token", got)
+	if got := s.received(); len(got) < 2 || got[0].Method != "DELETE" || got[0].Path != "/api/auth/tokens/7" || got[1].Path != "/api/auth/token" {
+		t.Errorf("requests = %+v, want the recorded usage token revoked, then the login token", got)
 	}
 }
 
@@ -88,7 +89,7 @@ func TestDeleteAccountKeepsTheUsageMetricsRecordForARetry(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
-	record := map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}}
+	record := map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}, "token_id": 7}
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"}, "usage_metrics": record})
 	writeRaw(t, h.settingsPath, `{"env":`)
 
@@ -101,7 +102,7 @@ func TestDeleteAccountKeepsTheUsageMetricsRecordForARetry(t *testing.T) {
 	}
 	// The account deletion revoked every token already.
 	for _, r := range s.received() {
-		if r.Path == "/api/auth/usage-tokens" {
+		if strings.HasPrefix(r.Path, "/api/auth/tokens/") || r.Path == "/api/auth/usage-tokens" {
 			t.Errorf("sent %s %s, want no usage token revocation", r.Method, r.Path)
 		}
 	}

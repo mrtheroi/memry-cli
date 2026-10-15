@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -9,17 +10,15 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
-// Timing of the config lock, replaced in the tests (SetLockTiming).
+// Timing of the config lock, replaced in the tests (SetLockWait).
 var (
 	// lockWait is how long a command waits for another one.
 	lockWait = 15 * time.Second
-	// lockStale is how old a lock is when its command must have died: a
-	// command holds it for seconds, its requests 10 at most each.
-	lockStale = 2 * time.Minute
-	lockPoll  = 50 * time.Millisecond
+	lockPoll = 50 * time.Millisecond
 )
 
 // Errors of Lock.
@@ -48,13 +47,14 @@ func LockPath(cacheDir, configPath string) string {
 
 // Lock takes the lock of the memry config at configPath, the exclusive
 // lock every command that reads, changes and saves the config holds
-// (setup and the usage commands), so none overwrites another's changes.
-// It is a file created only when there is none (O_EXCL), holding the pid
-// and the time of its command, in a directory only this user can write
-// to. A regular lock older than lockStale is taken over; anything else at
-// the lock path is refused, never followed or removed. It waits up to
-// lockWait for another command, then returns ErrLocked. The returned
-// function releases it.
+// (setup, uninstall and the usage commands), so none overwrites another's
+// changes. It is a file created only when there is none (O_EXCL), in a
+// directory only this user can write to, holding a random token that is
+// its owner's, and the pid and time for people. It is never taken over,
+// whatever its age, as its command may only be paused: after lockWait it
+// returns ErrLocked. Anything at the lock path that is not a regular file
+// is refused, never followed or removed. The returned function releases
+// the lock, removing the file only while it still holds this token.
 func Lock(cacheDir, configPath string) (func(), error) {
 	path := LockPath(cacheDir, configPath)
 	dir := filepath.Dir(path)
@@ -64,11 +64,16 @@ func Lock(cacheDir, configPath string) (func(), error) {
 	if info, err := os.Lstat(dir); err != nil || !private(info) {
 		return nil, ErrNotPrivate
 	}
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return nil, err
+	}
+	token := hex.EncodeToString(random)
 	deadline := time.Now().Add(lockWait)
 	for {
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil {
-			_, err = fmt.Fprintf(file, "%s %s\n", strconv.Itoa(os.Getpid()), time.Now().UTC().Format(time.RFC3339))
+			_, err = fmt.Fprintf(file, "%s %s %s\n", token, strconv.Itoa(os.Getpid()), time.Now().UTC().Format(time.RFC3339))
 			if closeErr := file.Close(); err == nil {
 				err = closeErr
 			}
@@ -76,20 +81,15 @@ func Lock(cacheDir, configPath string) (func(), error) {
 				_ = os.Remove(path)
 				return nil, err
 			}
-			return func() { _ = os.Remove(path) }, nil
+			return func() { unlock(path, token) }, nil
 		}
 		if !errors.Is(err, fs.ErrExist) {
 			return nil, err
 		}
 		// Lstat: a symlink is never followed, and anything but a regular
-		// file was not made by memry, so it is never removed.
-		info, err := os.Lstat(path)
-		if err == nil && !info.Mode().IsRegular() {
+		// file was not made by memry.
+		if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
 			return nil, ErrNotRegular
-		}
-		if err == nil && time.Since(info.ModTime()) > lockStale {
-			_ = os.Remove(path)
-			continue
 		}
 		if time.Now().After(deadline) {
 			return nil, ErrLocked
@@ -98,12 +98,25 @@ func Lock(cacheDir, configPath string) (func(), error) {
 	}
 }
 
+// unlock removes the lock at path while it still holds token: if someone
+// replaced it (after deleting a lock they took for a crashed command's),
+// it is theirs.
+func unlock(path, token string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	if owner, _, _ := strings.Cut(string(data), " "); owner == token {
+		_ = os.Remove(path)
+	}
+}
+
 // LockFailure says why Lock failed with err for the config at configPath.
 func LockFailure(err error, cacheDir, configPath string) string {
 	path := LockPath(cacheDir, configPath)
 	switch {
 	case errors.Is(err, ErrLocked):
-		return "Another memry command is changing the memry config; try again when it is done. If none is, delete " + path + "."
+		return "Another memry command is changing the memry config. If none is running (for example after a crash), delete " + path + " and try again."
 	case errors.Is(err, ErrNotPrivate):
 		return filepath.Dir(path) + " is writable by other users or not yours; memry does not keep its lock there. Make it yours with mode 0700, then try again."
 	case errors.Is(err, ErrNotRegular):
@@ -112,10 +125,10 @@ func LockFailure(err error, cacheDir, configPath string) string {
 	return "Could not lock " + path + ": " + err.Error() + "."
 }
 
-// SetLockTiming sets how long Lock waits for another command and when a
-// lock is stale, until restore; for the tests.
-func SetLockTiming(wait, stale time.Duration) (restore func()) {
-	beforeWait, beforeStale := lockWait, lockStale
-	lockWait, lockStale = wait, stale
-	return func() { lockWait, lockStale = beforeWait, beforeStale }
+// SetLockWait sets how long Lock waits for another command, until
+// restore; for the tests.
+func SetLockWait(wait time.Duration) (restore func()) {
+	before := lockWait
+	lockWait = wait
+	return func() { lockWait = before }
 }

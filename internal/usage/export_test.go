@@ -14,10 +14,10 @@ func SetBeforeSettingsWrite(f func()) (restore func()) {
 	return func() { beforeSettingsWrite = before }
 }
 
-// SetLockTiming sets how long a usage command waits for the lock and when
-// a lock is stale, until the test ends.
-func SetLockTiming(wait, stale time.Duration) (restore func()) {
-	return config.SetLockTiming(wait, stale)
+// SetLockWait sets how long a usage command waits for the lock, until
+// the test ends.
+func SetLockWait(wait time.Duration) (restore func()) {
+	return config.SetLockWait(wait)
 }
 
 // LockPath is the usage lock env takes.

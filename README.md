@@ -247,7 +247,8 @@ memry can see". If you use mTLS, Claude Code may also present its client certifi
   wins. Usage
   commands, `memry setup`, `memry uninstall` and `memry delete-account` share a lock in `memry/`
   under your user cache directory, which must be private to you, so they never overwrite each
-  other's changes to the memry config.
+  other's changes to the memry config. A lock is never taken over; after a crash, the error names
+  the lock file to delete.
 - If the memry config exists but cannot be read as a JSON object, the usage commands, `memry
   uninstall` and `memry delete-account` stop without changing anything.
 

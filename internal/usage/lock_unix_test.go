@@ -12,10 +12,10 @@ import (
 )
 
 // Something at the lock path that is not a regular file was not made by
-// memry: it is refused, never followed or removed, even when stale.
+// memry: it is refused, never followed or removed.
 func TestASymlinkAtTheLockPathIsRefused(t *testing.T) {
 	h := newHarness(t)
-	t.Cleanup(usage.SetLockTiming(50*time.Millisecond, 0))
+	t.Cleanup(usage.SetLockWait(50 * time.Millisecond))
 	victim := filepath.Join(t.TempDir(), "victim")
 	writeRaw(t, victim, "keep me")
 	lock := h.lockPath()

@@ -24,7 +24,7 @@ func TestOverlappingEnablesNeverInterleave(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.login(s.URL)
-	t.Cleanup(usage.SetLockTiming(50*time.Millisecond, time.Hour))
+	t.Cleanup(usage.SetLockWait(50 * time.Millisecond))
 	var second string
 	var secondCode int
 	var started atomic.Bool
@@ -38,7 +38,7 @@ func TestOverlappingEnablesNeverInterleave(t *testing.T) {
 
 	assertExit(t, code, 0, output)
 	assertExit(t, secondCode, 1, second)
-	assertContains(t, second, "Another memry command is changing the memry config; try again when it is done.")
+	assertContains(t, second, "Another memry command is changing the memry config. If none is running (for example after a crash), delete ")
 	if got := s.activeTokens(); !reflect.DeepEqual(got, []int{7}) {
 		t.Errorf("active tokens = %v, want only the first enable's", got)
 	}
@@ -76,7 +76,7 @@ func TestSetupDuringEnableWaitsForTheLock(t *testing.T) {
 	t.Cleanup(other.Close)
 	h := newHarness(t)
 	h.login(s.URL)
-	t.Cleanup(usage.SetLockTiming(50*time.Millisecond, time.Hour))
+	t.Cleanup(usage.SetLockWait(50 * time.Millisecond))
 	var out bytes.Buffer
 	setupCode := -1
 	var started atomic.Bool
@@ -102,7 +102,7 @@ func TestSetupDuringEnableWaitsForTheLock(t *testing.T) {
 
 	assertExit(t, code, 0, output)
 	assertExit(t, setupCode, 1, out.String())
-	assertContains(t, out.String(), "Another memry command is changing the memry config; try again when it is done.")
+	assertContains(t, out.String(), "Another memry command is changing the memry config. If none is running (for example after a crash), delete ")
 	cfg := readText(t, h.configPath)
 	assertContains(t, cfg, `"url": "`+s.URL+`"`)
 	assertContains(t, cfg, `"token_id": 7`)
@@ -115,7 +115,7 @@ func TestUninstallDuringEnableWaitsForTheLock(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.login(s.URL)
-	t.Cleanup(usage.SetLockTiming(50*time.Millisecond, time.Hour))
+	t.Cleanup(usage.SetLockWait(50 * time.Millisecond))
 	var out bytes.Buffer
 	uninstallCode := -1
 	var started atomic.Bool
@@ -140,7 +140,7 @@ func TestUninstallDuringEnableWaitsForTheLock(t *testing.T) {
 
 	assertExit(t, code, 0, output)
 	assertExit(t, uninstallCode, 1, out.String())
-	assertContains(t, out.String(), "Another memry command is changing the memry config; try again when it is done.")
+	assertContains(t, out.String(), "Another memry command is changing the memry config. If none is running (for example after a crash), delete ")
 	cfg := readText(t, h.configPath)
 	assertContains(t, cfg, `"token": "1|login-token"`)
 	assertContains(t, cfg, `"token_id": 7`)

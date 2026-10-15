@@ -186,16 +186,24 @@ memry usage disable   # turn it off again
 `memry usage enable` asks your memry server for a usage token (it can only send usage metrics, and
 asking again replaces it) and sets Claude Code's OpenTelemetry export in the `env` of
 `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): `CLAUDE_CODE_ENABLE_TELEMETRY`,
-`OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` and
+`OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` and
 `OTEL_EXPORTER_OTLP_METRICS_HEADERS`. Claude Code then sends its token counts and cost per model,
 only metrics, never prompts or code, to the server you logged in to, and nowhere else. Restart
 Claude Code to apply it. The settings file holds the usage token, so memry leaves it readable by
 your user only.
 
-- If any of those variables, or `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_HEADERS`, is
-  already set to a value memry did not write, `enable` stops and names it. `--force` replaces
-  memry's variables anyway (and leaves the other two as they are). A plain `http://` server that is
-  not this machine needs `--insecure`, like `memry setup`.
+- `enable` stops, before asking for a token and whatever `--force` says, when:
+  - one of those variables is exported in the environment you run it from with another value
+    (Claude Code's launch environment wins over its settings, so it would override memry's);
+  - `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` or `OTEL_EXPORTER_OTLP_PROTOCOL` is
+    set in the environment or the settings (they would redirect your other telemetry, and Claude
+    Code adds the generic headers, often another collector's credentials, to the ones it sends to
+    memry);
+  - `OTEL_LOGS_EXPORTER` or `OTEL_TRACES_EXPORTER` is set (and not `none`) while you have not
+    turned telemetry on yourself: `CLAUDE_CODE_ENABLE_TELEMETRY` would start those exports too.
+- When one of memry's variables is set in `settings.json` to a value memry did not write, `enable`
+  stops and names it; `--force` replaces it. A plain `http://` server that is not this machine
+  needs `--insecure`, like `memry setup`.
 - memry recognizes its own export by the metrics endpoint: the one of the server you are logged in
   to, or the one it saved under `usage_metrics` in the memry config. `disable` removes only the
   variables memry wrote and that still have memry's values, keeps the ones you had already set to

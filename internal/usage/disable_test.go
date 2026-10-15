@@ -12,14 +12,14 @@ func TestDisableRemovesOnlyWhatEnableWrote(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.login(s.URL)
-	writeRaw(t, h.settingsPath(), `{"model":"opus","env":{"FOO":"bar","OTEL_LOGS_EXPORTER":"console"}}`)
+	writeRaw(t, h.settingsPath(), `{"model":"opus","env":{"FOO":"bar","OTEL_SERVICE_NAME":"mine"}}`)
 	h.run(usage.Enable)
 
 	output, code := h.run(usage.Disable)
 
 	assertExit(t, code, 0, output)
 	assertContains(t, output, "Usage metrics are off. Removed them from "+h.settingsPath()+"; restart Claude Code to apply it.")
-	want := map[string]any{"FOO": "bar", "OTEL_LOGS_EXPORTER": "console"}
+	want := map[string]any{"FOO": "bar", "OTEL_SERVICE_NAME": "mine"}
 	if got := h.settingsEnv(); !reflect.DeepEqual(got, want) {
 		t.Errorf("env = %v, want %v", got, want)
 	}

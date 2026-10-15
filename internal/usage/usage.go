@@ -63,6 +63,14 @@ func Enable(env Env) int {
 		env.line("Could not turn on usage metrics: " + failed)
 		return failure
 	}
+	model := telemetry{environment: env.LookupEnv, settings: current, path: st.settings.Path()}
+	if blockers := model.blockers(st.url+metricsPath, model.value(switchKey) == "1" && (model.where(switchKey) == "the environment" || slices.Contains(st.kept(current), switchKey))); len(blockers) > 0 {
+		for _, line := range blockers {
+			env.line(line)
+		}
+		env.line(pronoun(len(blockers), "Remove it, then try again; --force does not override it.", "Remove them, then try again; --force does not override them."))
+		return failure
+	}
 	force := flags.HasParameterOption(env.Args, "--force")
 	if inTheWay := conflicts(current, st.ours); len(inTheWay) > 0 && !force {
 		for _, key := range inTheWay {
@@ -81,7 +89,7 @@ func Enable(env Env) int {
 	ok, err = st.settings.SetEnv(phpjson.NewObject(
 		"CLAUDE_CODE_ENABLE_TELEMETRY", "1",
 		"OTEL_METRICS_EXPORTER", "otlp",
-		"OTEL_EXPORTER_OTLP_PROTOCOL", "http/json",
+		"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json",
 		endpointKey, endpoint,
 		headersKey, "Authorization=Bearer "+usageToken,
 	))
@@ -188,15 +196,20 @@ func settingsFailure(settings *agentfiles.ClaudeSettings, ok bool, err error) st
 	return ""
 }
 
+// variable is an environment variable memry sets, and its value.
+type variable struct{ key, value string }
+
 // constants are the variables memry sets to the same value for everyone.
-var constants = []struct{ key, value string }{
-	{"CLAUDE_CODE_ENABLE_TELEMETRY", "1"},
+var constants = []variable{
+	{switchKey, "1"},
 	{"OTEL_METRICS_EXPORTER", "otlp"},
-	{"OTEL_EXPORTER_OTLP_PROTOCOL", "http/json"},
+	{"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json"},
 }
 
 // Variables memry writes besides the constants.
 const (
+	// switchKey turns on Claude Code's telemetry, every signal of it.
+	switchKey   = "CLAUDE_CODE_ENABLE_TELEMETRY"
 	endpointKey = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
 	headersKey  = "OTEL_EXPORTER_OTLP_METRICS_HEADERS"
 )
@@ -229,15 +242,15 @@ func conflicts(current *phpjson.Object, ours func(any) bool) []string {
 	if _, ok := has(headersKey); ok && !isOurs {
 		inTheWay = append(inTheWay, headersKey)
 	}
-	if value, ok := has("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"); ok && value != "http/json" {
-		inTheWay = append(inTheWay, "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")
-	}
-	for _, key := range []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS"} {
-		if _, ok := has(key); ok {
-			inTheWay = append(inTheWay, key)
-		}
-	}
 	return inTheWay
+}
+
+// pronoun is one when there is a single thing, else many.
+func pronoun(count int, one, many string) string {
+	if count == 1 {
+		return one
+	}
+	return many
 }
 
 // usageToken asks the memry server at url for the user's usage token,

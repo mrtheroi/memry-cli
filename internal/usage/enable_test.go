@@ -24,7 +24,7 @@ func TestEnableAddsTheMetricsExportKeepingEverythingElse(t *testing.T) {
 		"FOO":                                 "bar",
 		"CLAUDE_CODE_ENABLE_TELEMETRY":        "1",
 		"OTEL_METRICS_EXPORTER":               "otlp",
-		"OTEL_EXPORTER_OTLP_PROTOCOL":         "http/json",
+		"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL": "http/json",
 		"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": s.URL + "/api/otlp/v1/metrics",
 		"OTEL_EXPORTER_OTLP_METRICS_HEADERS":  "Authorization=Bearer 7|usage-secret",
 	}

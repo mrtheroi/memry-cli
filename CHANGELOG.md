@@ -15,8 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never turned on by `memry setup`. It requests a usage token (`POST /api/auth/usage-token`, which
   can only send usage metrics; enabling again rotates it) and merges five `env` variables into
   Claude Code's `settings.json`, keeping every other setting. It stops, without asking for a token,
-  when a telemetry variable is already set to a value memry did not write (`--force` replaces
-  memry's variables), and refuses a non-loopback `http://` server unless `--insecure`. The settings
+  when one of memry's variables is set in the settings to a value memry did not write (`--force`
+  replaces it), and, whatever `--force` says, when one of them is exported in the launch
+  environment with another value, when a generic `OTEL_EXPORTER_OTLP_ENDPOINT`, `_HEADERS` or
+  `_PROTOCOL` is set anywhere, or when turning telemetry on would start a logs or traces export the
+  user configured but did not turn on. It writes the per-signal metrics protocol, never the
+  generic one. It refuses a non-loopback `http://` server unless `--insecure`. The settings
   file, which now holds the usage token, is created readable only by its owner, and an existing one
   loses any permission for other users.
 - `memry usage disable` removes only the variables memry wrote and that still have memry's values,

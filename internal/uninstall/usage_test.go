@@ -14,7 +14,7 @@ func TestUninstallTurnsOffUsageMetrics(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"claude-code"}})
-	writeRaw(t, h.settingsPath, `{"env":{"FOO":"bar","CLAUDE_CODE_ENABLE_TELEMETRY":"1","OTEL_METRICS_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_PROTOCOL":"http/json","OTEL_EXPORTER_OTLP_METRICS_ENDPOINT":"`+s.URL+`/api/otlp/v1/metrics","OTEL_EXPORTER_OTLP_METRICS_HEADERS":"Authorization=Bearer 7|usage"}}`)
+	writeRaw(t, h.settingsPath, `{"env":{"FOO":"bar","CLAUDE_CODE_ENABLE_TELEMETRY":"1","OTEL_METRICS_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_METRICS_PROTOCOL":"http/json","OTEL_EXPORTER_OTLP_METRICS_ENDPOINT":"`+s.URL+`/api/otlp/v1/metrics","OTEL_EXPORTER_OTLP_METRICS_HEADERS":"Authorization=Bearer 7|usage"}}`)
 
 	output, code := h.run(uninstall.Uninstall, force)
 

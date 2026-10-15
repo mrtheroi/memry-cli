@@ -16,11 +16,11 @@ import (
 // endpoint at startup. The files are managed-settings.json and the *.json
 // drop-ins of managed-settings.d, which Claude Code merges. One that exists
 // but cannot be read leaves the destination unknown.
-func managedBlockers(dir, endpoint string) []string {
+func managedBlockers(dir, endpoint, goos string) []string {
 	if dir == "" {
 		return nil
 	}
-	lines := managedFileBlockers(filepath.Join(dir, "managed-settings.json"), endpoint)
+	lines := managedFileBlockers(filepath.Join(dir, "managed-settings.json"), endpoint, goos)
 	dropIns := filepath.Join(dir, "managed-settings.d")
 	entries, err := os.ReadDir(dropIns)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -29,7 +29,7 @@ func managedBlockers(dir, endpoint string) []string {
 	for _, entry := range entries {
 		name := entry.Name()
 		if !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".json") && !entry.IsDir() {
-			lines = append(lines, managedFileBlockers(filepath.Join(dropIns, name), endpoint)...)
+			lines = append(lines, managedFileBlockers(filepath.Join(dropIns, name), endpoint, goos)...)
 		}
 	}
 	return lines
@@ -43,7 +43,7 @@ func unknownManaged(path string) string {
 // managedFileBlockers says which telemetry settings the managed settings
 // file at path sets that are not allowed next to memry's export to
 // endpoint (see isTelemetry and allowed).
-func managedFileBlockers(path, endpoint string) []string {
+func managedFileBlockers(path, endpoint, goos string) []string {
 	unknown := []string{unknownManaged(path)}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -75,8 +75,8 @@ func managedFileBlockers(path, endpoint string) []string {
 		return unknown
 	}
 	for key, value := range env.All() {
-		if isTelemetry(key) && !allowed(key, value, endpoint) {
-			lines = append(lines, key+" is set in the managed settings "+path+".")
+		if name := envName(goos, key); isTelemetry(name) && !allowed(name, value, endpoint) {
+			lines = append(lines, name+" is set in the managed settings "+path+".")
 		}
 	}
 	return lines

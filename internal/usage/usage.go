@@ -91,7 +91,7 @@ func (env Env) enable() int {
 	current := snapshot.Env()
 	model := telemetry{goos: env.GOOS, environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
 	blockers := model.blockers(st.url + metricsPath)
-	blockers = append(blockers, managedBlockers(env.ManagedDir, st.url+metricsPath)...)
+	blockers = append(blockers, managedBlockers(env.ManagedDir, st.url+metricsPath, env.GOOS)...)
 	if len(blockers) > 0 {
 		for _, line := range blockers {
 			env.line(line)
@@ -637,7 +637,7 @@ func (env Env) status() int {
 	}
 	model := telemetry{goos: env.GOOS, environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
 	reasons := append(model.inactive(endpoint), model.foreign(endpoint)...)
-	if reasons = append(reasons, managedBlockers(env.ManagedDir, endpoint)...); len(reasons) > 0 {
+	if reasons = append(reasons, managedBlockers(env.ManagedDir, endpoint, env.GOOS)...); len(reasons) > 0 {
 		env.line("Usage metrics are not active:")
 		for _, reason := range reasons {
 			env.line("- " + reason)

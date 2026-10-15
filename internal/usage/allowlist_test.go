@@ -76,3 +76,37 @@ func TestEnableOnWindowsMatchesEnvironmentNamesCaseInsensitively(t *testing.T) {
 		})
 	}
 }
+
+// On Windows the settings' env names become case-insensitive environment
+// names too: lowercase ones in the user or managed settings are matched
+// like the launch environment's.
+func TestEnableOnWindowsMatchesSettingsNamesCaseInsensitively(t *testing.T) {
+	t.Run("user settings", func(t *testing.T) {
+		s := newServer(t)
+		h := newHarness(t)
+		h.goos = "windows"
+		h.login(s.URL)
+		writeRaw(t, h.settingsPath(), `{"env":{"otel_logs_exporter":"otlp"}}`)
+
+		enableBlocked(t, h, s, "OTEL_LOGS_EXPORTER is set in "+h.settingsPath()+".")
+	})
+	t.Run("user settings, memry's own variable", func(t *testing.T) {
+		s := newServer(t)
+		h := newHarness(t)
+		h.goos = "windows"
+		h.login(s.URL)
+		writeRaw(t, h.settingsPath(), `{"env":{"otel_metrics_exporter":"prometheus"}}`)
+
+		enableBlocked(t, h, s, "OTEL_METRICS_EXPORTER is set in "+h.settingsPath()+".")
+	})
+	t.Run("managed drop-in", func(t *testing.T) {
+		s := newServer(t)
+		h := newHarness(t)
+		h.goos = "windows"
+		h.login(s.URL)
+		dropIn := filepath.Join(h.managedDir, "managed-settings.d", "10.json")
+		writeRaw(t, dropIn, `{"env":{"otel_exporter_otlp_endpoint":"https://collector.example.com"}}`)
+
+		enableBlocked(t, h, s, "OTEL_EXPORTER_OTLP_ENDPOINT is set in the managed settings "+dropIn+".")
+	})
+}

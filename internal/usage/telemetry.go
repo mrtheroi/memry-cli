@@ -64,21 +64,36 @@ type telemetry struct {
 // matches whatever its case, as Claude Code reads it.
 func (t telemetry) inEnvironment(key string) (string, bool) {
 	if t.goos == "windows" && t.environ != nil {
-		value, ok := t.environmentVars()[strings.ToUpper(key)]
+		value, ok := t.environmentVars()[envName(t.goos, key)]
 		return value, ok
 	}
 	value, ok := t.environment(key)
 	return value, ok && value != ""
 }
 
-// inSettings returns the value of key in the settings' env. A null or
-// empty value is no value.
+// inSettings returns the value of key in the settings' env, its name
+// matched as envName does. A null or empty value is no value.
 func (t telemetry) inSettings(key string) (any, bool) {
 	if t.settings == nil {
 		return nil, false
 	}
-	value, _ := t.settings.Get(key)
-	return value, value != nil && value != ""
+	for name, value := range t.settings.All() {
+		if envName(t.goos, name) == envName(t.goos, key) && value != nil && value != "" {
+			return value, true
+		}
+	}
+	return nil, false
+}
+
+// envName is key as an environment name on goos, the one name every
+// source of variables (the launch environment, the user settings, the
+// managed settings) is matched by: in upper case on Windows, where names
+// are case-insensitive, else as it is.
+func envName(goos, key string) string {
+	if goos == "windows" {
+		return strings.ToUpper(key)
+	}
+	return key
 }
 
 // helperKey is the settings key of a script that makes OTLP headers.
@@ -94,9 +109,7 @@ func (t telemetry) environmentVars() map[string]string {
 	}
 	for _, pair := range t.environ() {
 		key, value, _ := strings.Cut(pair, "=")
-		if t.goos == "windows" {
-			key = strings.ToUpper(key)
-		}
+		key = envName(t.goos, key)
 		if value != "" {
 			vars[key] = value
 		}
@@ -131,8 +144,14 @@ func (t telemetry) foreign(endpoint string) []string {
 	}
 	if t.settings != nil {
 		for key, value := range t.settings.All() {
-			if isTelemetry(key) && value != nil && value != "" && !isMemrys(key) && !allowed(key, value, endpoint) {
-				lines = append(lines, key+" is set in "+t.path+".")
+			name := envName(t.goos, key)
+			if !isTelemetry(name) || value == nil || value == "" {
+				continue
+			}
+			// A name spelled in another case is never memry's: memry
+			// writes, owns and compares its variables by their names.
+			if name != key || !isMemrys(name) && !allowed(name, value, endpoint) {
+				lines = append(lines, name+" is set in "+t.path+".")
 			}
 		}
 	}

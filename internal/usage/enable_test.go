@@ -21,12 +21,15 @@ func TestEnableAddsTheMetricsExportKeepingEverythingElse(t *testing.T) {
 
 	assertExit(t, code, 0, output)
 	want := map[string]any{
-		"FOO":                                 "bar",
-		"CLAUDE_CODE_ENABLE_TELEMETRY":        "1",
-		"OTEL_METRICS_EXPORTER":               "otlp",
-		"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL": "http/json",
-		"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": s.URL + "/api/otlp/v1/metrics",
-		"OTEL_EXPORTER_OTLP_METRICS_HEADERS":  "Authorization=Bearer 7|usage-secret",
+		"FOO":                                      "bar",
+		"CLAUDE_CODE_ENABLE_TELEMETRY":             "1",
+		"OTEL_METRICS_EXPORTER":                    "otlp",
+		"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL":      "http/json",
+		"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT":      s.URL + "/api/otlp/v1/metrics",
+		"OTEL_EXPORTER_OTLP_METRICS_HEADERS":       "Authorization=Bearer 7|usage-secret",
+		"OTEL_METRICS_INCLUDE_SESSION_ID":          "false",
+		"OTEL_METRICS_INCLUDE_ACCOUNT_UUID":        "false",
+		"OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES": "false",
 	}
 	if got := h.settingsEnv(); !reflect.DeepEqual(got, want) {
 		t.Errorf("env = %v, want %v", got, want)
@@ -122,7 +125,23 @@ func TestEnableAgainOnlyRotatesTheToken(t *testing.T) {
 	}
 }
 
-func TestEnableExplainsWhatIsSentWhereAndHowToStopIt(t *testing.T) {
+// What Claude Code sends, and what the server keeps, is told before the
+// usage token is asked for, so even a failed enable has said it.
+func TestEnableDisclosesThePayloadBeforeAskingForAToken(t *testing.T) {
+	s := newServer(t)
+	s.answer(500, `{}`)
+	h := newHarness(t)
+	h.login(s.URL)
+
+	output, code := h.run(usage.Enable)
+
+	assertExit(t, code, 1, output)
+	for _, line := range disclosure(s.URL + metricsPath) {
+		assertContains(t, output, line)
+	}
+}
+
+func TestEnableSaysWhereItIsSavedAndHowToStopIt(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.login(s.URL)
@@ -130,12 +149,22 @@ func TestEnableExplainsWhatIsSentWhereAndHowToStopIt(t *testing.T) {
 	output, code := h.run(usage.Enable)
 
 	assertExit(t, code, 0, output)
-	assertContains(t, output, "Usage metrics are on.")
-	assertContains(t, output, "Claude Code will send its token counts and cost per model to "+s.URL+metricsPath+", your memry server, and nowhere else.")
-	assertContains(t, output, "No prompts, code or file contents are sent.")
-	assertContains(t, output, "Saved in "+h.settingsPath()+"; restart Claude Code to apply it.")
+	assertContains(t, output, "Usage metrics are on. Saved in "+h.settingsPath()+"; restart Claude Code to apply it.")
 	assertContains(t, output, "Run `memry usage disable` to turn it off.")
 	assertNotContains(t, output, "usage-secret")
+	assertNotContains(t, output, "only token counts")
+}
+
+func disclosure(endpoint string) []string {
+	return []string{
+		"Claude Code will send its OpenTelemetry metrics to " + endpoint + ", your memry server, and nowhere else.",
+		"It sends all 8 of its metrics: session count, lines of code, pull requests, commits, cost, token usage, code edit tool decisions and active time.",
+		"Each one carries your email, your organization id, an anonymous user id and the terminal type; Claude Code cannot leave these out.",
+		"memry turns off the session id, the account uuid and the resource attributes.",
+		"The memry server keeps only the token and cost data points, tied to your memry account: the count or cost, the model, the token type, the query source and the time window.",
+		"It discards the other metrics on receipt and does not store your email or the other attributes; it only hashes them, with the metric, into a series identity.",
+		"No prompts or code are sent. If you later turn on a logs or traces exporter, the telemetry switch memry sets starts it too.",
+	}
 }
 
 const metricsPath = "/api/otlp/v1/metrics"

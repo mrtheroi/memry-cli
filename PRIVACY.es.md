@@ -18,7 +18,7 @@ Dudas y solicitudes: **mrtheroi@gmail.com**
 | Códigos de acceso, guardados solo como hash | Para iniciar sesión. Vencen a los 5 minutos y se eliminan un día después. |
 | Tokens de acceso, guardados solo como hash | Para que tu equipo use el servicio sin volver a iniciar sesión. |
 | Tu dirección IP | Para limitar los intentos de inicio de sesión, y en los registros operativos del servidor, que el proveedor de hosting conserva por un tiempo limitado. |
-| **Solo si ejecutas `memry usage enable`:** los conteos de tokens y el costo por modelo de Claude Code, con el tipo de token, el modelo, el origen de la consulta, el identificador de sesión y la ventana de tiempo de cada dato | Para graficar tu uso de Claude Code en el panel de memry. No se envían prompts, código ni contenido de archivos. |
+| **Solo si ejecutas `memry usage enable`:** los datos de tokens y de costo de Claude Code: el número de tokens o el costo, el modelo, el tipo de token, el origen de la consulta y la ventana de tiempo de cada uno, y un hash de todos sus atributos | Para graficar tu uso de Claude Code en el panel de memry. |
 
 Lo que guardan tus agentes depende de ti y de ellos. **No permitas que guarden contraseñas, llaves de
 API ni otros secretos** en memry.
@@ -37,6 +37,24 @@ En tu equipo, `memry setup` guarda la URL del servidor y tu token de acceso en
 - La CLI de memry no envía telemetría. Las métricas de uso están desactivadas por defecto: Claude
   Code las envía solo después de que ejecutas `memry usage enable`, y solo al servidor de memry en
   el que iniciaste sesión, nunca a nadie más.
+
+## Métricas de uso, en detalle
+
+Claude Code no permite filtrar métricas. Al activar las métricas de uso, envía sus 8 métricas de
+OpenTelemetry al servidor de memry: número de sesiones, líneas de código, pull requests, commits,
+costo, uso de tokens, decisiones de la herramienta de edición de código y tiempo activo. Cada una
+lleva tu correo electrónico, el identificador de tu organización, un identificador de usuario
+anónimo y el tipo de terminal, que Claude Code no permite omitir. memry desactiva el identificador
+de sesión, el UUID de la cuenta y los atributos de recurso. No se envían prompts ni código: memry
+no activa los registros (logs) ni las trazas de Claude Code.
+
+El servidor de memry conserva solo los datos de tokens y de costo, asociados a tu cuenta de memry:
+el número de tokens o el costo, el modelo, el tipo de token (entrada, salida, lectura de caché o
+creación de caché), el origen de la consulta, la ventana de tiempo y la hora en que se recibió.
+Descarta las otras 6 métricas al recibirlas. No guarda tu correo electrónico, el identificador de
+tu organización, el identificador de usuario, el tipo de terminal ni ningún otro atributo: solo
+calcula un hash SHA-256 del nombre de la métrica y de todos los atributos de cada dato, y guarda
+ese hash para distinguir las series e ignorar los envíos repetidos.
 
 ## Quién más trata tus datos
 

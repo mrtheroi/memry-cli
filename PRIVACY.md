@@ -18,7 +18,7 @@ Questions and requests: **mrtheroi@gmail.com**
 | Login codes, stored only as a hash | To log you in. They expire after 5 minutes and are deleted a day later. |
 | Access tokens, stored only as a hash | To let your machine use the service without logging in again. |
 | Your IP address | To rate-limit login attempts, and in the server's operational logs, which the hosting provider keeps for a limited time. |
-| **Only if you run `memry usage enable`:** Claude Code's token counts and cost per model, with the token type, model, query source, session id and the time window of each data point | To chart your Claude Code usage in the memry dashboard. No prompts, code or file contents are sent. |
+| **Only if you run `memry usage enable`:** the token and cost data points of Claude Code: the token count or cost, the model, the token type, the query source and the time window of each one, and a hash of all its attributes | To chart your Claude Code usage in the memry dashboard. |
 
 What your agents save is up to you and them. **Do not let them save passwords, API keys or other
 secrets** in memry.
@@ -38,6 +38,22 @@ On your machine, `memry setup` keeps the server URL and your access token in
 - The memry CLI sends no telemetry. Usage metrics are off by default: Claude Code sends them only
   after you run `memry usage enable`, and only to the memry server you logged in to, never to
   anyone else.
+
+## Usage metrics, in detail
+
+Claude Code has no per-metric filter. Once you turn usage metrics on, it sends all 8 of its
+OpenTelemetry metrics to the memry server: session count, lines of code, pull requests, commits,
+cost, token usage, code edit tool decisions and active time. Each one carries your email, your
+organization id, an anonymous user id and the terminal type, which Claude Code cannot leave out.
+memry turns off the session id, the account uuid and the resource attributes. No prompts or code
+are sent: memry does not turn on Claude Code's logs or traces.
+
+The memry server keeps only the token and cost data points, tied to your memry account: the token
+count or cost, the model, the token type (input, output, cache read or cache creation), the query
+source, the time window and the time it was received. It discards the other 6 metrics on receipt.
+It does not store your email, organization id, user id, terminal type or any other attribute: it
+only computes a SHA-256 hash of the metric name and all the attributes of a data point, and keeps
+that hash to tell series apart and to ignore retried exports.
 
 ## Who else handles your data
 

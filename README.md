@@ -183,14 +183,27 @@ memry usage status    # on or off, and where the metrics go (never prints the to
 memry usage disable   # turn it off again
 ```
 
-`memry usage enable` asks your memry server for a usage token (it can only send usage metrics, and
-asking again replaces it) and sets Claude Code's OpenTelemetry export in the `env` of
-`~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): `CLAUDE_CODE_ENABLE_TELEMETRY`,
-`OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` and
-`OTEL_EXPORTER_OTLP_METRICS_HEADERS`. Claude Code then sends its token counts and cost per model,
-only metrics, never prompts or code, to the server you logged in to, and nowhere else. Restart
-Claude Code to apply it. The settings file holds the usage token, so memry leaves it readable by
-your user only.
+`memry usage enable` first tells you what is sent, then asks your memry server for a usage token
+(it can only send usage metrics) and sets Claude Code's OpenTelemetry metrics export in the `env`
+of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): `CLAUDE_CODE_ENABLE_TELEMETRY`,
+`OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and `OTEL_METRICS_INCLUDE_SESSION_ID`,
+`OTEL_METRICS_INCLUDE_ACCOUNT_UUID` and `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES` set to `false`.
+Restart Claude Code to apply it. The settings file holds the usage token, so memry leaves it
+readable by your user only.
+
+What is sent, only to the server you logged in to:
+
+- Claude Code has no per-metric filter, so it sends all 8 of its metrics: session count, lines of
+  code, pull requests, commits, cost, token usage, code edit tool decisions and active time.
+- Each metric carries your email, your organization id, an anonymous user id and the terminal type.
+  Claude Code cannot leave these out. memry turns off the session id, the account uuid and the
+  resource attributes.
+- No prompts or code are sent: memry does not turn on Claude Code's logs or traces.
+- The memry server keeps only the token and cost data points, tied to your memry account: the
+  count or cost, the model, the token type, the query source and the time window. It discards the
+  other metrics on receipt and does not store your email or the other attributes; it only hashes
+  them, with the metric, into a series identity.
 
 - `enable` stops, before asking for a token and whatever `--force` says, when:
   - one of those variables is exported in the environment you run it from with another value

@@ -15,7 +15,7 @@ func TestStatusShowsTheEndpointButNeverTheToken(t *testing.T) {
 	output, code := h.run(usage.Status)
 
 	assertExit(t, code, 0, output)
-	assertContains(t, output, "Usage metrics are on: Claude Code sends its token counts and cost per model to "+s.URL+metricsPath+".")
+	assertContains(t, output, "Usage metrics are on: Claude Code sends its metrics to "+s.URL+metricsPath+".")
 	assertContains(t, output, "Set in "+h.settingsPath()+".")
 	assertNotContains(t, output, "usage-secret")
 	assertNotContains(t, output, "login-token")

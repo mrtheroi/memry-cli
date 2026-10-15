@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Opt-in usage metrics: `memry usage enable` lets Claude Code send its token counts and cost per
-  model (OpenTelemetry metrics over OTLP/HTTP JSON, never prompts or code) to the memry server you
-  are logged in to, and nowhere else, so the dashboard can chart them. It is off by default and
+- Opt-in usage metrics: `memry usage enable` lets Claude Code send its OpenTelemetry metrics (OTLP/HTTP
+  JSON, never prompts or code) to the memry server you are logged in to, and nowhere else, so the
+  dashboard can chart token usage and cost. Before asking for a token it discloses the payload:
+  Claude Code has no per-metric filter, so all 8 of its metrics are sent, each with the user's
+  email, organization id, an anonymous user id and the terminal type; memry turns off the session
+  id, account uuid and resource attributes (`OTEL_METRICS_INCLUDE_*=false`), and the server keeps
+  only the token and cost data points. It is off by default and
   never turned on by `memry setup`. It requests a usage token (`POST /api/auth/usage-token`, which
-  can only send usage metrics; enabling again rotates it) and merges five `env` variables into
+  can only send usage metrics; enabling again rotates it) and merges eight `env` variables into
   Claude Code's `settings.json`, keeping every other setting. It stops, without asking for a token,
   when one of memry's variables is set in the settings to a value memry did not write (`--force`
   replaces it), and, whatever `--force` says, when one of them is exported in the launch

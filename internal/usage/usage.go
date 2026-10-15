@@ -79,6 +79,9 @@ func Enable(env Env) int {
 		env.line("Pass --force to replace it, or remove it from the settings first.")
 		return failure
 	}
+	for _, line := range disclosure(st.url + metricsPath) {
+		env.line(line)
+	}
 	usageToken, failed := env.usageToken(st.url, st.token)
 	if failed != "" {
 		env.line(failed)
@@ -86,13 +89,13 @@ func Enable(env Env) int {
 	}
 	endpoint := st.url + metricsPath
 	kept := st.kept(current)
-	ok, err = st.settings.SetEnv(phpjson.NewObject(
-		"CLAUDE_CODE_ENABLE_TELEMETRY", "1",
-		"OTEL_METRICS_EXPORTER", "otlp",
-		"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json",
-		endpointKey, endpoint,
-		headersKey, "Authorization=Bearer "+usageToken,
-	))
+	vars := phpjson.NewObject()
+	for _, c := range constants {
+		vars.Set(c.key, c.value)
+	}
+	vars.Set(endpointKey, endpoint)
+	vars.Set(headersKey, "Authorization=Bearer "+usageToken)
+	ok, err = st.settings.SetEnv(vars)
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
 		env.line("Could not turn on usage metrics: " + failed)
 		return failure
@@ -102,12 +105,24 @@ func Enable(env Env) int {
 		env.line("Could not save what memry wrote to " + st.cfgPath + ": " + err.Error() + ".")
 		return failure
 	}
-	env.line("Usage metrics are on.")
-	env.line("Claude Code will send its token counts and cost per model to " + endpoint + ", your memry server, and nowhere else.")
-	env.line("No prompts, code or file contents are sent.")
-	env.line("Saved in " + st.settings.Path() + "; restart Claude Code to apply it.")
+	env.line("Usage metrics are on. Saved in " + st.settings.Path() + "; restart Claude Code to apply it.")
 	env.line("Run `memry usage disable` to turn it off.")
 	return success
+}
+
+// disclosure tells what Claude Code sends to endpoint once usage metrics
+// are on, and what the memry server keeps of it, before memry asks for a
+// usage token. Keep it in step with PRIVACY.md and the server.
+func disclosure(endpoint string) []string {
+	return []string{
+		"Claude Code will send its OpenTelemetry metrics to " + endpoint + ", your memry server, and nowhere else.",
+		"It sends all 8 of its metrics: session count, lines of code, pull requests, commits, cost, token usage, code edit tool decisions and active time.",
+		"Each one carries your email, your organization id, an anonymous user id and the terminal type; Claude Code cannot leave these out.",
+		"memry turns off the session id, the account uuid and the resource attributes.",
+		"The memry server keeps only the token and cost data points, tied to your memry account: the count or cost, the model, the token type, the query source and the time window.",
+		"It discards the other metrics on receipt and does not store your email or the other attributes; it only hashes them, with the metric, into a series identity.",
+		"No prompts or code are sent. If you later turn on a logs or traces exporter, the telemetry switch memry sets starts it too.",
+	}
 }
 
 // start checks the arguments of command, which takes only the global
@@ -204,6 +219,10 @@ var constants = []variable{
 	{switchKey, "1"},
 	{"OTEL_METRICS_EXPORTER", "otlp"},
 	{"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json"},
+	// Leave out of every metric what memry has no use for.
+	{"OTEL_METRICS_INCLUDE_SESSION_ID", "false"},
+	{"OTEL_METRICS_INCLUDE_ACCOUNT_UUID", "false"},
+	{"OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES", "false"},
 }
 
 // Variables memry writes besides the constants.
@@ -402,7 +421,7 @@ func Status(env Env) int {
 		return success
 	}
 	endpoint, _ := current.Get(endpointKey)
-	env.line(fmt.Sprintf("Usage metrics are on: Claude Code sends its token counts and cost per model to %s.", endpoint))
+	env.line(fmt.Sprintf("Usage metrics are on: Claude Code sends its metrics to %s.", endpoint))
 	env.line("Set in " + st.settings.Path() + ".")
 	return success
 }

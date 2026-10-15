@@ -256,6 +256,8 @@ func (f *File) Delete(key string) {
 // holds the login token. The PHP CLI does not know this key and keeps it
 // as it is.
 type UsageMetrics struct {
+	// ServerURL is the memry server the usage token belongs to.
+	ServerURL string `json:"server_url"`
 	// SettingsPath is the settings file memry wrote.
 	SettingsPath string `json:"settings_path"`
 	// Values are the variables memry wrote there, with their values.

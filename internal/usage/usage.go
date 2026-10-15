@@ -8,6 +8,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"slices"
+	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/agentfiles"
 	"github.com/mrtheroi/memry-cli/internal/agents"
@@ -55,6 +56,10 @@ func Enable(env Env) int {
 		parsed, _ := neturl.Parse(st.url)
 		env.line("Refusing to send usage metrics over plain HTTP to " + parsed.Host +
 			". Use an https:// server, or pass --insecure to allow it (for example on a trusted LAN).")
+		return failure
+	}
+	if st.hasRecord && !st.sameServer() {
+		env.line("Usage metrics are on for " + st.record.ServerURL + ". Run `memry usage disable` before enabling for " + st.url + ".")
 		return failure
 	}
 	if st.settings.Path() != st.activePath {
@@ -106,7 +111,7 @@ func Enable(env Env) int {
 	}
 	// The record goes first: settings memry has no record of could never
 	// be turned off.
-	st.cfg.SetUsageMetrics(config.UsageMetrics{SettingsPath: st.settings.Path(), Values: values, Kept: kept, TokenID: issued.ID})
+	st.cfg.SetUsageMetrics(config.UsageMetrics{ServerURL: normalizeServer(st.url), SettingsPath: st.settings.Path(), Values: values, Kept: kept, TokenID: issued.ID})
 	if err := st.cfg.Save(); err != nil {
 		env.revokeNew(st, issued.ID)
 		env.line("Could not save the usage metrics record to " + st.cfgPath + ": " + err.Error() + ". Nothing was changed.")
@@ -222,6 +227,23 @@ func (env Env) load() state {
 	}
 	st.settings = agentfiles.NewClaudeSettings(path)
 	return st
+}
+
+// sameServer reports whether memry is logged in to the server the
+// recorded usage token belongs to: only that server can revoke it.
+func (st state) sameServer() bool {
+	return st.loggedIn && normalizeServer(st.url) == st.record.ServerURL
+}
+
+// normalizeServer is a server URL with its scheme and host in lower case
+// and no trailing slash, so two spellings of one server compare equal.
+func normalizeServer(raw string) string {
+	parsed, err := neturl.Parse(strings.TrimRight(raw, "/"))
+	if err != nil {
+		return raw
+	}
+	parsed.Scheme, parsed.Host = strings.ToLower(parsed.Scheme), strings.ToLower(parsed.Host)
+	return parsed.String()
 }
 
 // owned reports whether key of current is memry's: it is there with
@@ -382,7 +404,12 @@ func (env Env) turnOff(revoke bool) (removed, ok bool) {
 			return false, false
 		}
 	}
-	if revoke && st.record.TokenID != 0 && (!st.loggedIn || !env.revokeToken(st.url, st.token, st.record.TokenID)) {
+	switch {
+	case !revoke || st.record.TokenID == 0:
+	case st.loggedIn && !st.sameServer():
+		// Its id means nothing to another server.
+		env.line("Did not revoke the usage token of " + st.record.ServerURL + ": you are logged in to another server now. It stops working after 30 days without use.")
+	case !st.loggedIn || !env.revokeToken(st.url, st.token, st.record.TokenID):
 		env.line("Could not revoke your usage token; it stops working after 30 days without use.")
 	}
 	st.cfg.DeleteUsageMetrics()

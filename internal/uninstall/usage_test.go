@@ -21,7 +21,7 @@ func TestUninstallTurnsOffUsageMetrics(t *testing.T) {
 		"OTEL_EXPORTER_OTLP_METRICS_HEADERS":  "Authorization=Bearer 7|usage",
 	}
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"claude-code"},
-		"usage_metrics": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7}})
+		"usage_metrics": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7, "server_url": s.URL}})
 	env := map[string]string{"FOO": "bar"}
 	for key, value := range values {
 		env[key] = value
@@ -89,7 +89,7 @@ func TestDeleteAccountKeepsTheUsageMetricsRecordForARetry(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
-	record := map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}, "token_id": 7}
+	record := map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}, "token_id": 7, "server_url": s.URL}
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"}, "usage_metrics": record})
 	writeRaw(t, h.settingsPath, `{"env":`)
 

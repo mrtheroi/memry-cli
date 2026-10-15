@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launch environment first, exports them to memry with a bearer token, and otherwise lists what is
   missing or overridden, never printing the token. `memry uninstall` and `memry delete-account`
   turn usage metrics off too; a delete-account retry keeps the record.
+- `memry usage enable` writes the settings as a compare-and-swap: only if memry's variables still
+  have the values it validated before asking for the token. An edit in between stops it with
+  nothing written, the previous record restored and the new token revoked.
 - The usage metrics record survives an interrupted enable: the new setup is saved as `pending`
   next to the `current` one before the settings are written, and becomes current once they are.
   Every later usage command, and uninstall, settles a leftover pending setup first: current when

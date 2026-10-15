@@ -175,9 +175,29 @@ func withoutHooks(groups []any, marker string) ([]any, bool) {
 // false, leaving the file untouched, when it is not well formed or its env
 // is not an object.
 func (s *ClaudeSettings) SetEnv(vars *phpjson.Object) (bool, error) {
+	return s.SetEnvIf(nil, vars)
+}
+
+// ErrChanged is returned by SetEnvIf when a variable no longer has the
+// value expected.
+var ErrChanged = errors.New("a variable changed")
+
+// SetEnvIf is SetEnv when each variable of expected still has its value
+// (nil for a missing or null one), as read when the caller decided on the
+// change; otherwise it returns ErrChanged, leaving the file untouched.
+func (s *ClaudeSettings) SetEnvIf(expected map[string]any, vars *phpjson.Object) (bool, error) {
 	settings, env, ok, err := s.readEnv()
 	if !ok || err != nil {
 		return false, err
+	}
+	for key, want := range expected {
+		var value any
+		if env != nil {
+			value, _ = env.Get(key)
+		}
+		if value != want {
+			return false, ErrChanged
+		}
 	}
 	if env == nil {
 		env = phpjson.NewObject()

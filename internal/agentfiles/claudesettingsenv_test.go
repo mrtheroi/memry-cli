@@ -1,6 +1,7 @@
 package agentfiles_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/agentfiles"
@@ -111,4 +112,18 @@ func TestClaudeSettingsEnvReadsTheVariables(t *testing.T) {
 	if value, _ := env.Get("FOO"); value != "bar" {
 		t.Errorf("FOO = %v, want bar", value)
 	}
+}
+
+// SetEnvIf writes only when the variables still have the values the
+// caller decided on: a change since then makes it stop, untouched.
+func TestClaudeSettingsSetEnvIfStopsWhenAVariableChanged(t *testing.T) {
+	path := settingsPath(t)
+	writeFile(t, path, `{"env":{"A":"2"}}`)
+
+	ok, err := agentfiles.NewClaudeSettings(path).SetEnvIf(map[string]any{"A": "1", "B": nil}, phpjson.NewObject("A", "x", "B", "y"))
+
+	if !errors.Is(err, agentfiles.ErrChanged) || ok {
+		t.Errorf("SetEnvIf = %v, %v; want false, ErrChanged", ok, err)
+	}
+	assertContents(t, path, `{"env":{"A":"2"}}`)
 }

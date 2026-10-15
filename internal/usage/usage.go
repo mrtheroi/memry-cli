@@ -4,6 +4,7 @@
 package usage
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	neturl "net/url"
@@ -124,7 +125,16 @@ func Enable(env Env) int {
 		return failure
 	}
 	beforeSettingsWrite()
-	ok, err = st.settings.SetEnv(vars)
+	// Written only if memry's variables still have the values enable
+	// decided on above, before the token was issued.
+	expected := map[string]any{}
+	for _, v := range append(wanted(endpoint), variable{headersKey, ""}) {
+		expected[v.key] = nil
+		if current != nil {
+			expected[v.key], _ = current.Get(v.key)
+		}
+	}
+	ok, err = st.settings.SetEnvIf(expected, vars)
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
 		env.line("Could not turn on usage metrics: " + failed)
 		env.restore(st)
@@ -360,6 +370,8 @@ func (st state) kept(current *phpjson.Object, endpoint string) []string {
 // nothing when they could.
 func settingsFailure(settings *agentfiles.ClaudeSettings, ok bool, err error) string {
 	switch {
+	case errors.Is(err, agentfiles.ErrChanged):
+		return settings.Path() + " changed while memry was turning on usage metrics, so nothing was written. Try again."
 	case err != nil:
 		return err.Error() + "."
 	case !ok:

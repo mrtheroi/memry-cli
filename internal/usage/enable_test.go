@@ -235,3 +235,26 @@ func TestEnableAgainRevokesOnlyThePreviousTokenOfThisMachine(t *testing.T) {
 		t.Errorf("last request = %+v, want DELETE /api/auth/tokens/8", last)
 	}
 }
+
+// A telemetry setting edited while the token is being issued is never
+// overwritten: enable decided on the settings it read before.
+func TestEnableStopsWhenTheSettingsChangeMeanwhile(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	writeRaw(t, h.settingsPath(), `{"env":{"FOO":"bar"}}`)
+	edited := `{"env":{"FOO":"bar","OTEL_METRICS_EXPORTER":"prometheus"}}`
+	s.onIssue = func() { writeRaw(t, h.settingsPath(), edited) }
+
+	output, code := h.run(usage.Enable)
+
+	assertExit(t, code, 1, output)
+	assertContains(t, output, "Could not turn on usage metrics: "+h.settingsPath()+" changed while memry was turning on usage metrics, so nothing was written. Try again.")
+	if got := readText(t, h.settingsPath()); got != edited {
+		t.Errorf("settings = %s, want the edit kept", got)
+	}
+	if got := s.activeTokens(); len(got) != 0 {
+		t.Errorf("active tokens = %v, want the new one revoked", got)
+	}
+	assertNotContains(t, readText(t, h.configPath), `"usage_metrics"`)
+}

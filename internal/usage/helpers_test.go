@@ -38,6 +38,8 @@ type server struct {
 	issueBody   string
 	// revokeStatus, when set, is the answer to DELETE instead.
 	revokeStatus int
+	// onIssue, when set, runs while a usage token is being issued.
+	onIssue func()
 
 	mu       sync.Mutex
 	requests []request
@@ -62,6 +64,9 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(s.issueStatus)
 		_, _ = io.WriteString(w, s.issueBody)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/usage-token":
+		if s.onIssue != nil {
+			s.onIssue()
+		}
 		id := s.nextID
 		s.nextID++
 		s.active[id] = true

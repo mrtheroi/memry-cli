@@ -1,6 +1,6 @@
 # Aviso de privacidad de memry
 
-Última actualización: 2026-09-29 · [English version](PRIVACY.md)
+Última actualización: 2026-10-15 · [English version](PRIVACY.md)
 
 memry es un servicio de memoria persistente para agentes de IA de programación. Lo opera Cesar
 Valero, con domicilio en México ("nosotros"). Este aviso explica qué datos guarda memry, para qué,
@@ -18,12 +18,15 @@ Dudas y solicitudes: **mrtheroi@gmail.com**
 | Códigos de acceso, guardados solo como hash | Para iniciar sesión. Vencen a los 5 minutos y se eliminan un día después. |
 | Tokens de acceso, guardados solo como hash | Para que tu equipo use el servicio sin volver a iniciar sesión. |
 | Tu dirección IP | Para limitar los intentos de inicio de sesión, y en los registros operativos del servidor, que el proveedor de hosting conserva por un tiempo limitado. |
+| **Solo si ejecutas `memry usage enable`:** los conteos de tokens y el costo por modelo de Claude Code, con el tipo de token, el modelo, el origen de la consulta, el identificador de sesión y la ventana de tiempo de cada dato | Para graficar tu uso de Claude Code en el panel de memry. No se envían prompts, código ni contenido de archivos. |
 
 Lo que guardan tus agentes depende de ti y de ellos. **No permitas que guarden contraseñas, llaves de
 API ni otros secretos** en memry.
 
 En tu equipo, `memry setup` guarda la URL del servidor y tu token de acceso en
-`~/.config/memry/config.json`, que solo puede leer tu usuario.
+`~/.config/memry/config.json`, que solo puede leer tu usuario. Si activas las métricas de uso,
+`memry usage enable` también escribe un token de uso, que solo sirve para enviar métricas de uso, en
+`~/.claude/settings.json` de Claude Code, y deja ese archivo legible solo para tu usuario.
 
 ## Lo que no hacemos
 
@@ -31,6 +34,9 @@ En tu equipo, `memry setup` guarda la URL del servidor y tu token de acceso en
 - No usamos tus memorias para entrenar modelos de IA.
 - No leemos tus memorias, salvo que nos pidas ayuda con un problema o que la ley lo exija.
 - memry no usa rastreo web, analítica ni cookies.
+- La CLI de memry no envía telemetría. Las métricas de uso están desactivadas por defecto: Claude
+  Code las envía solo después de que ejecutas `memry usage enable`, y solo al servidor de memry en
+  el que iniciaste sesión, nunca a nadie más.
 
 ## Quién más trata tus datos
 
@@ -42,7 +48,9 @@ Toda la comunicación entre tu equipo y memry usa HTTPS.
 
 ## Cuánto tiempo los conservamos
 
-Conservamos tu cuenta, tus memorias y tus prompts hasta que los elimines. Los códigos de acceso se
+Conservamos tu cuenta, tus memorias, tus prompts y tus métricas de uso hasta que los elimines.
+Desactivar las métricas de uso detiene el envío de nuevas; las ya enviadas se eliminan con tu
+cuenta. Los códigos de acceso se
 eliminan un día después de vencer. Los proveedores de hosting y de correo pueden conservar registros
 operativos por un tiempo limitado conforme a sus propias políticas.
 
@@ -50,8 +58,10 @@ operativos por un tiempo limitado conforme a sus propias políticas.
 
 - **Dejar de usar memry en un equipo:** `memry uninstall` revoca el token de ese equipo y quita
   memry de Claude Code.
-- **Eliminar todo:** `memry delete-account` elimina de forma permanente tu cuenta, todas tus memorias
-  y prompts, tus tokens y tus códigos de acceso. No se puede deshacer.
+- **Dejar de enviar métricas de uso:** `memry usage disable` (o `memry uninstall`) quita el ajuste
+  de Claude Code. `memry usage status` muestra si están activadas.
+- **Eliminar todo:** `memry delete-account` elimina de forma permanente tu cuenta, todas tus memorias,
+  prompts y métricas de uso, tus tokens y tus códigos de acceso. No se puede deshacer.
 - **Acceder a tus datos, rectificarlos, cancelarlos u oponerte a su uso (derechos ARCO):** escribe a
   mrtheroi@gmail.com. Responderemos en un plazo máximo de 20 días hábiles.
 

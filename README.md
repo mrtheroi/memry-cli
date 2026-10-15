@@ -172,6 +172,36 @@ removes just what setup added. Your login token is never written to an agent's f
   {"project": "my-product"}
   ```
 
+## Usage metrics (opt-in)
+
+memry sends no telemetry. If you want the memry dashboard to chart your Claude Code token usage and
+cost, turn it on explicitly:
+
+```bash
+memry usage enable    # off by default
+memry usage status    # on or off, and where the metrics go (never prints the token)
+memry usage disable   # turn it off again
+```
+
+`memry usage enable` asks your memry server for a usage token (it can only send usage metrics, and
+asking again replaces it) and sets Claude Code's OpenTelemetry export in the `env` of
+`~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): `CLAUDE_CODE_ENABLE_TELEMETRY`,
+`OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` and
+`OTEL_EXPORTER_OTLP_METRICS_HEADERS`. Claude Code then sends its token counts and cost per model,
+only metrics, never prompts or code, to the server you logged in to, and nowhere else. Restart
+Claude Code to apply it. The settings file holds the usage token, so memry leaves it readable by
+your user only.
+
+- If any of those variables, or `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_HEADERS`, is
+  already set to a value memry did not write, `enable` stops and names it. `--force` replaces
+  memry's variables anyway (and leaves the other two as they are). A plain `http://` server that is
+  not this machine needs `--insecure`, like `memry setup`.
+- memry recognizes its own export by the metrics endpoint: the one of the server you are logged in
+  to, or the one it saved under `usage_metrics` in the memry config. `disable` removes only the
+  variables memry wrote and that still have memry's values, keeps the ones you had already set to
+  the same value, and drops the `env` object if that leaves it empty. `memry uninstall` turns usage
+  metrics off too.
+
 ## Update
 
 ```bash
@@ -208,7 +238,8 @@ be undone, so it asks you to type your account email to confirm.
 
 Your memories are stored on the memry server and tied to your account. `memry uninstall` revokes
 the token on this machine, so it can no longer access them. `memry delete-account` deletes them.
-See the [privacy policy](PRIVACY.md) ([en español](PRIVACY.es.md)) for what memry stores and who handles it.
+Usage metrics are sent only if you turn them on (see
+[Usage metrics](#usage-metrics-opt-in)). See the [privacy policy](PRIVACY.md) ([en español](PRIVACY.es.md)) for what memry stores and who handles it.
 
 ## License
 

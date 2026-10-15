@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in usage metrics: `memry usage enable` lets Claude Code send its token counts and cost per
+  model (OpenTelemetry metrics over OTLP/HTTP JSON, never prompts or code) to the memry server you
+  are logged in to, and nowhere else, so the dashboard can chart them. It is off by default and
+  never turned on by `memry setup`. It requests a usage token (`POST /api/auth/usage-token`, which
+  can only send usage metrics; enabling again rotates it) and merges five `env` variables into
+  Claude Code's `settings.json`, keeping every other setting. It stops, without asking for a token,
+  when a telemetry variable is already set to a value memry did not write (`--force` replaces
+  memry's variables), and refuses a non-loopback `http://` server unless `--insecure`. The settings
+  file, which now holds the usage token, is created readable only by its owner, and an existing one
+  loses any permission for other users.
+- `memry usage disable` removes only the variables memry wrote and that still have memry's values,
+  keeps the ones that already had them before `enable`, and drops an `env` left empty.
+  `memry usage status` says whether the metrics are on and where they go, never printing the token.
+  `memry uninstall` and `memry delete-account` turn usage metrics off too.
+
+### Changed
+
+- The privacy policy ([PRIVACY.md](PRIVACY.md), [PRIVACY.es.md](PRIVACY.es.md)) describes the
+  opt-in usage metrics: what is sent, where, how long it is kept and how to turn it off.
+
 ## [1.1.3] - 2026-10-14
 
 ### Security

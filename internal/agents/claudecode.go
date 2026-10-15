@@ -44,14 +44,20 @@ func (a *claudeCode) Install(url string) Result {
 // hookMarker identifies memry's SessionStart hook by its command.
 const hookMarker = "hook:session-start"
 
-// settings is Claude Code's settings.json: $CLAUDE_CONFIG_DIR/settings.json,
-// or ~/.claude/settings.json by default.
+// settings is Claude Code's settings.json (see ClaudeSettingsPath).
 func (a *claudeCode) settings() *agentfiles.ClaudeSettings {
-	dir := a.env.Getenv("CLAUDE_CONFIG_DIR")
+	return agentfiles.NewClaudeSettings(ClaudeSettingsPath(a.env.GOOS, a.env.Getenv))
+}
+
+// ClaudeSettingsPath is Claude Code's settings.json for goos (the zero
+// value means Unix): $CLAUDE_CONFIG_DIR/settings.json, or
+// ~/.claude/settings.json by default.
+func ClaudeSettingsPath(goos string, getenv func(string) string) string {
+	dir := getenv("CLAUDE_CONFIG_DIR")
 	if dir == "" {
-		dir = a.env.homePath(".claude")
+		dir = Env{GOOS: goos, Getenv: getenv}.homePath(".claude")
 	}
-	return agentfiles.NewClaudeSettings(home.Join(dir, "settings.json"))
+	return home.Join(dir, "settings.json")
 }
 
 // installSessionStartHook installs the Claude Code SessionStart hook that

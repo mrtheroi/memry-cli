@@ -256,8 +256,10 @@ What is sent, only to the server you logged in to:
   `CLAUDE_CONFIG_DIR` changed since, drops the `env` object if that leaves it empty, and keeps the
   record until that worked, so a retry can finish it. `enable` for another `CLAUDE_CONFIG_DIR`
   stops until you `disable` the first one.
-- The record also names the server the usage token belongs to, and memry sends a token id only to
-  that server. `memry setup` to another server keeps the record and the export to the old server;
+- The record also names the server the usage token belongs to, the only truth for the token and
+  the endpoint: memry sends a token id only to that server, and `status` derives the endpoint from
+  it. `memry delete-account` on that server deletes the token with the account; on another one it
+  warns that the token on the recorded server stays valid until it goes 30 days without use. `memry setup` to another server keeps the record and the export to the old server;
   `enable` then stops until you `disable`, and `disable` (or `memry uninstall`) removes memry's
   variables but leaves the old token to expire after 30 days without use, with a warning.
 - If the memry config exists but cannot be read as a JSON object, the usage commands, `memry

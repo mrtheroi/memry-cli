@@ -76,17 +76,6 @@ func (t telemetry) inSettings(key string) (any, bool) {
 // helperKey is the settings key of a script that makes OTLP headers.
 const helperKey = "otelHeadersHelper"
 
-// value is the value of key Claude Code runs with, the launch environment
-// first, or "" when it is not set (or not a string).
-func (t telemetry) value(key string) string {
-	if value, ok := t.inEnvironment(key); ok {
-		return value
-	}
-	value, _ := t.inSettings(key)
-	text, _ := value.(string)
-	return text
-}
-
 // environmentKeys are the telemetry variables of the launch environment
 // with a value, in order.
 func (t telemetry) environmentKeys() []string {

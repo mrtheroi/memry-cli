@@ -65,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Every later usage command, and uninstall, settles a leftover pending setup first: current when
   the settings hold its headers (the previous token is then revoked), dropped otherwise (its token
   is revoked). Until then, disable removes the values of either setup.
+- The recorded server is the only truth for the usage token and endpoint: revocations go to it,
+  `memry usage status` derives a kept endpoint from it, and `memry delete-account` relies on the
+  account deletion only when the account is on that server, warning otherwise that the recorded
+  token stays valid until 30 days without use.
 - The usage metrics record names the server its token belongs to, and memry revokes a token id only
   on that server. After `memry setup` to another server, which keeps the record, `memry usage
   enable` stops until the old setup is disabled, and disable or uninstall removes memry's variables

@@ -58,3 +58,20 @@ func TestDisableOnAnotherServerSkipsTheRevoke(t *testing.T) {
 		t.Errorf("env = %v, want memry's variables removed", got)
 	}
 }
+
+// The recorded server is the only truth: an endpoint the user had already
+// set to memry's value (kept) still points to the recorded server after a
+// setup to another one.
+func TestStatusDerivesAKeptEndpointFromTheRecordedServer(t *testing.T) {
+	first, second := newServer(t), newServer(t)
+	h := newHarness(t)
+	h.login(first.URL)
+	writeRaw(t, h.settingsPath(), `{"env":{"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT":"`+first.URL+`/api/otlp/v1/metrics"}}`)
+	h.run(usage.Enable)
+	h.switchServer(second.URL)
+
+	output, code := h.run(usage.Status)
+
+	assertExit(t, code, 0, output)
+	assertContains(t, output, "Usage metrics are on, as far as memry can see: Claude Code sends its metrics to "+first.URL+metricsPath+".")
+}

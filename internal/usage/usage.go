@@ -156,7 +156,7 @@ func (env Env) enable() int {
 		// The settings hold the new setup: the next usage command finds
 		// it pending and makes it current.
 		env.line("Could not update the usage metrics record in " + st.cfgPath + ": " + err.Error() + ". The next `memry usage` command finishes it.")
-	case st.record.TokenID != 0 && !env.revokeToken(st.url, st.token, st.record.TokenID):
+	case st.record.TokenID != 0 && !env.revokeToken(st.record.ServerURL, st.token, st.record.TokenID):
 		// Only now that the new token is in use is the one this machine
 		// used before revoked; other machines' tokens are never touched.
 		env.line("Could not revoke your previous usage token; it stops working after 30 days without use.")
@@ -334,7 +334,7 @@ func (env Env) reconcile(st state) state {
 		return st
 	}
 	if revoke.TokenID != 0 && st.loggedIn && normalizeServer(st.url) == revoke.ServerURL {
-		_ = env.revokeToken(st.url, st.token, revoke.TokenID)
+		_ = env.revokeToken(revoke.ServerURL, st.token, revoke.TokenID)
 	}
 	return env.load()
 }
@@ -500,7 +500,7 @@ func Disable(env Env) int {
 
 // disable is Disable once the usage lock is held.
 func (env Env) disable() int {
-	removed, ok := env.turnOff(true)
+	removed, ok := env.turnOff(false)
 	switch {
 	case !ok:
 		return failure
@@ -511,13 +511,13 @@ func (env Env) disable() int {
 }
 
 // TurnOff turns off the usage metrics memry set up, saying so, and says
-// nothing when they are not on. With revoke it revokes the usage token it
-// recorded too (not needed once the account is deleted). It reports false, after
-// telling why, when they could not be removed; the record then stays for
-// a retry.
-func TurnOff(env Env, revoke bool) bool {
+// nothing when they are not on. It revokes the usage token it recorded
+// too, unless accountDeleted on the recorded server, which revoked it with
+// the account. It reports false, after telling why, when they could not be
+// removed; the record then stays for a retry.
+func TurnOff(env Env, accountDeleted bool) bool {
 	return env.locked(func() int {
-		if _, ok := env.turnOff(revoke); !ok {
+		if _, ok := env.turnOff(accountDeleted); !ok {
 			return failure
 		}
 		return success
@@ -529,7 +529,7 @@ func TurnOff(env Env, revoke bool) bool {
 // effort: it stops working after 30 days without use), and forgets the
 // record. It
 // reports whether there was anything to remove and whether that worked.
-func (env Env) turnOff(revoke bool) (removed, ok bool) {
+func (env Env) turnOff(accountDeleted bool) (removed, ok bool) {
 	st := env.reconcile(env.load())
 	if env.unknown(st) {
 		return false, false
@@ -552,11 +552,17 @@ func (env Env) turnOff(revoke bool) (removed, ok bool) {
 		}
 	}
 	switch {
-	case !revoke || st.record.TokenID == 0:
+	// Only the recorded server knows the token: memry revokes it there,
+	// with the login, when that is the server it is logged in to.
+	case st.record.TokenID == 0:
+	case accountDeleted && st.sameServer():
+		// Deleted with the account.
+	case accountDeleted:
+		env.line("The usage token on " + st.record.ServerURL + " stays valid until it goes 30 days without use.")
 	case st.loggedIn && !st.sameServer():
 		// Its id means nothing to another server.
 		env.line("Did not revoke the usage token of " + st.record.ServerURL + ": you are logged in to another server now. It stops working after 30 days without use.")
-	case !st.loggedIn || !env.revokeToken(st.url, st.token, st.record.TokenID):
+	case !st.loggedIn || !env.revokeToken(st.record.ServerURL, st.token, st.record.TokenID):
 		env.line("Could not revoke your usage token; it stops working after 30 days without use.")
 	}
 	st.cfg.DeleteUsageMetrics()
@@ -613,9 +619,11 @@ func (env Env) status() int {
 		return failure
 	}
 	current := snapshot.Env()
+	// The recorded server is the one the token and endpoint belong to,
+	// even when the endpoint was kept (already set by the user).
 	endpoint := st.record.Values[endpointKey]
 	if endpoint == "" {
-		endpoint = st.url + metricsPath
+		endpoint = st.record.ServerURL + metricsPath
 	}
 	model := telemetry{environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
 	reasons := append(model.inactive(endpoint), model.foreign(endpoint)...)

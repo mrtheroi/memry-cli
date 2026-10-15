@@ -137,3 +137,38 @@ func TestRemovalLeavesAMalformedConfigUntouched(t *testing.T) {
 		})
 	}
 }
+
+// Deleting the account on one server revokes only that server's tokens: a
+// usage token recorded for another server stays valid, and memry says so.
+func TestDeleteAccountWarnsAboutAUsageTokenOnAnotherServer(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
+	other := "https://other.example.com"
+	values := map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}
+	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"},
+		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7, "server_url": other}}})
+	writeRaw(t, h.settingsPath, `{"env":{"OTEL_METRICS_EXPORTER":"otlp"}}`)
+
+	output, code := h.run(uninstall.DeleteAccount, nil, answer{label: typeYourEmail, value: "ana@example.com"})
+
+	assertExit(t, code, 0, output)
+	assertContains(t, output, "The usage token on "+other+" stays valid until it goes 30 days without use.")
+}
+
+// Deleting the account on the recorded server revoked the usage token
+// with it: nothing to warn about.
+func TestDeleteAccountOnTheRecordedServerSaysNothingAboutTheUsageToken(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
+	values := map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}
+	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"},
+		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7, "server_url": s.URL}}})
+	writeRaw(t, h.settingsPath, `{"env":{"OTEL_METRICS_EXPORTER":"otlp"}}`)
+
+	output, code := h.run(uninstall.DeleteAccount, nil, answer{label: typeYourEmail, value: "ana@example.com"})
+
+	assertExit(t, code, 0, output)
+	assertNotContains(t, output, "usage token")
+}

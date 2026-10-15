@@ -739,9 +739,9 @@ func (env Env) locked(command func() int) int {
 		return failure
 	}
 	path, _ := config.Path(env.GOOS, env.getenv)
-	unlock, err := config.Lock(env.CacheDir, path)
+	unlock, err := config.Lock(env.CacheDir, path, env.GOOS)
 	if err != nil {
-		env.line(config.LockFailure(err, env.CacheDir, path))
+		env.line(config.LockFailure(err, env.CacheDir, path, env.GOOS))
 		return failure
 	}
 	defer unlock()

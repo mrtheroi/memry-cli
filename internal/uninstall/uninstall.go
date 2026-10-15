@@ -188,12 +188,12 @@ func (env Env) lockConfig() (unlock func(), held, ok bool) {
 		return none, false, true
 	}
 	path, _ := config.Path(env.GOOS, env.getenv)
-	unlock, err := config.Lock(env.CacheDir, path)
+	unlock, err := config.Lock(env.CacheDir, path, env.GOOS)
 	switch {
 	case err == nil:
 		return unlock, true, true
 	case errors.Is(err, config.ErrLocked), errors.Is(err, config.ErrNotRegular):
-		env.line(config.LockFailure(err, env.CacheDir, path))
+		env.line(config.LockFailure(err, env.CacheDir, path, env.GOOS))
 		env.line("Nothing else was changed in the memry config; try again.")
 		return nil, false, false
 	}

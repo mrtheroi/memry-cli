@@ -15,7 +15,7 @@ import (
 func TestLockNeverTakesOverAnOldLock(t *testing.T) {
 	cache, configPath := t.TempDir(), filepath.Join(t.TempDir(), "config.json")
 	t.Cleanup(config.SetLockWait(50 * time.Millisecond))
-	path := config.LockPath(cache, configPath)
+	path := config.LockPath(cache, configPath, "linux")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestLockNeverTakesOverAnOldLock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := config.Lock(cache, configPath)
+	_, err := config.Lock(cache, configPath, "linux")
 
 	if !errors.Is(err, config.ErrLocked) {
 		t.Errorf("Lock = %v, want ErrLocked", err)
@@ -42,11 +42,11 @@ func TestLockNeverTakesOverAnOldLock(t *testing.T) {
 // a crashed command's) stays.
 func TestUnlockLeavesALockWithAnotherToken(t *testing.T) {
 	cache, configPath := t.TempDir(), filepath.Join(t.TempDir(), "config.json")
-	unlock, err := config.Lock(cache, configPath)
+	unlock, err := config.Lock(cache, configPath, "linux")
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := config.LockPath(cache, configPath)
+	path := config.LockPath(cache, configPath, "linux")
 	if err := os.WriteFile(path, []byte("their-token 2 2026-10-15T00:00:00Z\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -61,14 +61,14 @@ func TestUnlockLeavesALockWithAnotherToken(t *testing.T) {
 // Releasing its own lock removes it.
 func TestUnlockRemovesItsOwnLock(t *testing.T) {
 	cache, configPath := t.TempDir(), filepath.Join(t.TempDir(), "config.json")
-	unlock, err := config.Lock(cache, configPath)
+	unlock, err := config.Lock(cache, configPath, "linux")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	unlock()
 
-	if _, err := os.Lstat(config.LockPath(cache, configPath)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(config.LockPath(cache, configPath, "linux")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("lock stat = %v, want it removed", err)
 	}
 }
@@ -77,9 +77,22 @@ func TestUnlockRemovesItsOwnLock(t *testing.T) {
 func TestLockFailureNamesTheLock(t *testing.T) {
 	cache, configPath := t.TempDir(), filepath.Join(t.TempDir(), "config.json")
 
-	got := config.LockFailure(config.ErrLocked, cache, configPath)
+	got := config.LockFailure(config.ErrLocked, cache, configPath, "linux")
 
-	if want := "Another memry command is changing the memry config. If none is running (for example after a crash), delete " + config.LockPath(cache, configPath) + " and try again."; got != want {
+	if want := "Another memry command is changing the memry config. If none is running (for example after a crash), delete " + config.LockPath(cache, configPath, "linux") + " and try again."; got != want {
 		t.Errorf("LockFailure = %q, want %q", got, want)
+	}
+}
+
+// On Windows, where paths are case-insensitive, case variants of the
+// config path are one config: one lock.
+func TestLockPathIsTheSameForCaseVariantsOnWindows(t *testing.T) {
+	cache := t.TempDir()
+
+	upper := config.LockPath(cache, filepath.Join("Memry", "Config.json"), "windows")
+	lower := config.LockPath(cache, filepath.Join("memry", "config.json"), "windows")
+
+	if upper != lower {
+		t.Errorf("lock paths %q and %q differ, want one", upper, lower)
 	}
 }

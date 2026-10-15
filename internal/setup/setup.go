@@ -284,9 +284,9 @@ func (env Env) lock(path string) (func(), bool) {
 	if env.CacheDir == "" {
 		return func() {}, true
 	}
-	unlock, err := config.Lock(env.CacheDir, path)
+	unlock, err := config.Lock(env.CacheDir, path, env.GOOS)
 	if err != nil {
-		env.line(config.LockFailure(err, env.CacheDir, path))
+		env.line(config.LockFailure(err, env.CacheDir, path, env.GOOS))
 		return nil, false
 	}
 	return unlock, true

@@ -23,7 +23,7 @@ func SetLockWait(wait time.Duration) (restore func()) {
 // LockPath is the usage lock env takes.
 func LockPath(env Env) string {
 	path, _ := config.Path(env.GOOS, env.getenv)
-	return config.LockPath(env.CacheDir, path)
+	return config.LockPath(env.CacheDir, path, env.GOOS)
 }
 
 // WrittenKeys are the variables enable writes, in order.

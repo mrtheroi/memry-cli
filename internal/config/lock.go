@@ -35,14 +35,31 @@ var (
 
 // LockPath is the lock of the memry config at configPath: in memry's
 // directory of the user's cache directory, which other users cannot write
-// to, named after the config's absolute path, so it works even where the
-// config's own directory is read-only, and two configs never share one.
-func LockPath(cacheDir, configPath string) string {
-	if abs, err := filepath.Abs(configPath); err == nil {
-		configPath = abs
-	}
-	sum := sha256.Sum256([]byte(configPath))
+// to, named after the config's canonical path (see canonicalPath), so it
+// works even where the config's own directory is read-only, every alias
+// of one config shares one lock, and two configs never do.
+func LockPath(cacheDir, configPath, goos string) string {
+	sum := sha256.Sum256([]byte(canonicalPath(configPath, goos)))
 	return filepath.Join(cacheDir, "memry", "memry-usage-"+hex.EncodeToString(sum[:8])+".lock")
+}
+
+// canonicalPath is the one name of the file at path whatever alias it is
+// reached by: absolute, with its symlinks resolved (its directory's,
+// while the file does not exist yet), and, on Windows, where paths are
+// case-insensitive, in lower case.
+func canonicalPath(path, goos string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		path = real
+	} else if dir, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		path = filepath.Join(dir, filepath.Base(path))
+	}
+	if goos == "windows" {
+		path = strings.ToLower(path)
+	}
+	return path
 }
 
 // Lock takes the lock of the memry config at configPath, the exclusive
@@ -55,8 +72,8 @@ func LockPath(cacheDir, configPath string) string {
 // returns ErrLocked. Anything at the lock path that is not a regular file
 // is refused, never followed or removed. The returned function releases
 // the lock, removing the file only while it still holds this token.
-func Lock(cacheDir, configPath string) (func(), error) {
-	path := LockPath(cacheDir, configPath)
+func Lock(cacheDir, configPath, goos string) (func(), error) {
+	path := LockPath(cacheDir, configPath, goos)
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
@@ -112,8 +129,8 @@ func unlock(path, token string) {
 }
 
 // LockFailure says why Lock failed with err for the config at configPath.
-func LockFailure(err error, cacheDir, configPath string) string {
-	path := LockPath(cacheDir, configPath)
+func LockFailure(err error, cacheDir, configPath, goos string) string {
+	path := LockPath(cacheDir, configPath, goos)
 	switch {
 	case errors.Is(err, ErrLocked):
 		return "Another memry command is changing the memry config. If none is running (for example after a crash), delete " + path + " and try again."

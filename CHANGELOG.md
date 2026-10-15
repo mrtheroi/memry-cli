@@ -67,7 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written. A failed enable restores the previous record and revokes the new token, but only while
   the pending setup is still its own. Usage commands and uninstall run under an exclusive lock, a
   file created with `O_EXCL` and mode 0600 in `memry/` under the user's cache directory (never the
-  shared temporary directory), named after the memry config and holding a random ownership
+  shared temporary directory), named after the memry config's canonical path (absolute,
+  symlinks resolved, lower case on Windows, so every alias of one config shares one lock) and
+  holding a random ownership
   token, the pid and the time. The directory must be the user's own and not group- or
   world-writable on Unix; anything at the lock path that is not a regular file is refused, never
   followed or removed. A lock is never taken over, whatever its age, as its command may only be

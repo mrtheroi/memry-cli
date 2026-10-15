@@ -22,7 +22,7 @@ func TestClaudeSettingsPath(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := agents.ClaudeSettingsPath(tt.goos, func(key string) string { return tt.vars[key] })
+			got, _ := agents.ClaudeSettingsPath(tt.goos, func(key string) string { return tt.vars[key] })
 			if got != tt.want {
 				t.Errorf("ClaudeSettingsPath = %q, want %q", got, tt.want)
 			}
@@ -36,7 +36,7 @@ func TestClaudeSettingsPathResolvesARelativeConfigDir(t *testing.T) {
 	work := filepath.Join(t.TempDir(), "work")
 	t.Cleanup(agents.SetGetwd(func() (string, error) { return work, nil }))
 
-	got := agents.ClaudeSettingsPath("linux", func(key string) string {
+	got, _ := agents.ClaudeSettingsPath("linux", func(key string) string {
 		return map[string]string{"CLAUDE_CONFIG_DIR": "profile"}[key]
 	})
 
@@ -72,7 +72,7 @@ func TestClaudeSettingsPathResolvesConfigDirsLikeTheOS(t *testing.T) {
 		t.Run(tt.goos+" "+tt.dir, func(t *testing.T) {
 			t.Cleanup(agents.SetGetwd(func() (string, error) { return cwds[tt.goos], nil }))
 
-			got := agents.ClaudeSettingsPath(tt.goos, func(key string) string {
+			got, _ := agents.ClaudeSettingsPath(tt.goos, func(key string) string {
 				return map[string]string{"CLAUDE_CONFIG_DIR": tt.dir}[key]
 			})
 
@@ -89,4 +89,16 @@ func unixAbsolute(dir string) string {
 		return dir
 	}
 	return filepath.Join("/work", dir)
+}
+
+// A Windows path relative to a drive's current directory (C:profile)
+// cannot be resolved without per-drive working directories: it is refused.
+func TestClaudeSettingsPathRefusesADriveRelativeConfigDir(t *testing.T) {
+	_, err := agents.ClaudeSettingsPath("windows", func(key string) string {
+		return map[string]string{"CLAUDE_CONFIG_DIR": "C:profile"}[key]
+	})
+
+	if err == nil || err.Error() != `CLAUDE_CONFIG_DIR C:profile is relative to a drive's current directory; set it to an absolute path, like C:\profile` {
+		t.Errorf("ClaudeSettingsPath error = %v, want the drive-relative refusal", err)
+	}
 }

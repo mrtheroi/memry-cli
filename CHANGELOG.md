@@ -47,7 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already had memry's value before the first enable, and a variable is memry's only while it is
   in that file with exactly the recorded value. A relative `CLAUDE_CONFIG_DIR` is resolved the way the
   OS does, so the recorded path is absolute: against the current directory, or, on Windows, a
-  path rooted without a drive (`\x`) on the current directory's drive. It cleans up the recorded file even if
+  path rooted without a drive (`\x`) on the current directory's drive. A drive-relative Windows path such as
+  `C:profile` is refused with a request for an absolute path, as memry does not guess per-drive
+  current directories. It cleans up the recorded file even if
   `CLAUDE_CONFIG_DIR` changed, drops an `env` left empty and keeps the record until the cleanup
   worked. `memry usage status` reports the metrics on only when the effective configuration, the
   launch environment first, exports them to memry with a bearer token, and otherwise lists what is

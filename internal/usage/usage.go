@@ -77,6 +77,10 @@ func (env Env) enable() int {
 		env.line("Usage metrics are on for " + st.record.ServerURL + ". Run `memry usage disable` before enabling for " + st.url + ".")
 		return failure
 	}
+	if st.activePathErr != nil {
+		env.line("Could not turn on usage metrics: " + st.activePathErr.Error() + ".")
+		return failure
+	}
 	if st.settings.Path() != st.activePath {
 		env.line("Usage metrics are on in " + st.settings.Path() + ". Run `memry usage disable` first to move them to " + st.activePath + ".")
 		return failure
@@ -249,6 +253,8 @@ type state struct {
 	// the ones Claude Code reads now (activePath).
 	settings   *agentfiles.ClaudeSettings
 	activePath string
+	// activePathErr is why there is no activePath, if there is none.
+	activePathErr error
 	// unreadable is why the config could not be read, if it could not:
 	// then nothing is known about the usage metrics.
 	unreadable error
@@ -257,7 +263,8 @@ type state struct {
 // load reads the config file, which like the other commands is empty when
 // it is missing or cannot be read as a JSON object.
 func (env Env) load() state {
-	st := state{activePath: agents.ClaudeSettingsPath(env.GOOS, env.getenv)}
+	st := state{}
+	st.activePath, st.activePathErr = agents.ClaudeSettingsPath(env.GOOS, env.getenv)
 	st.cfgPath, _ = config.Path(env.GOOS, env.getenv)
 	// Unlike the other commands, a config that cannot be read as a JSON
 	// object is no empty config here: it may hold the usage record.

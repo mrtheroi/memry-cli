@@ -160,7 +160,7 @@ func (env Env) removeFromAgents() []string {
 // accountDeleted, a usage token on that server was deleted with the
 // account; see usage.TurnOff. With held, the config lock is already held.
 func (env Env) turnOffUsage(pending []string, accountDeleted, held bool) []string {
-	usageEnv := usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out, HTTP: env.HTTP, CacheDir: env.CacheDir}
+	usageEnv := env.usageEnv()
 	turnOff := usage.TurnOff
 	if held {
 		turnOff = usage.TurnOffLocked
@@ -169,6 +169,11 @@ func (env Env) turnOffUsage(pending []string, accountDeleted, held bool) []strin
 		pending = append(pending, "claude-code")
 	}
 	return pending
+}
+
+// usageEnv is env for the usage commands.
+func (env Env) usageEnv() usage.Env {
+	return usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out, HTTP: env.HTTP, CacheDir: env.CacheDir}
 }
 
 // lockConfig takes the config lock setup and the usage commands take, for
@@ -356,11 +361,7 @@ func (env Env) configReadable() bool {
 		// A config that is not a JSON object may hold the record of the
 		// usage metrics: deleting or overwriting it would lose what
 		// memry wrote in Claude Code's settings.
-		cfg, err := config.Load(path)
-		if err == nil {
-			_, _, err = cfg.UsageMetrics()
-		}
-		if err != nil {
+		if usage.Preflight(env.usageEnv()) == usage.RecordInvalid {
 			env.line("Could not read the memry config " + path + ", so memry cannot tell whether usage metrics are on. Fix it, then try again.")
 			return false
 		}

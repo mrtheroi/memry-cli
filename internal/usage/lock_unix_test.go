@@ -14,7 +14,9 @@ import (
 // Something at the lock path that is not a regular file was not made by
 // memry: it is refused, never followed or removed.
 func TestASymlinkAtTheLockPathIsRefused(t *testing.T) {
+	s := newServer(t)
 	h := newHarness(t)
+	h.login(s.URL)
 	t.Cleanup(usage.SetLockWait(50 * time.Millisecond))
 	victim := filepath.Join(t.TempDir(), "victim")
 	writeRaw(t, victim, "keep me")
@@ -26,7 +28,7 @@ func TestASymlinkAtTheLockPathIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	output, code := h.run(usage.Status)
+	output, code := h.run(usage.Enable)
 
 	assertExit(t, code, 1, output)
 	assertContains(t, output, lock+" is not a regular file; memry does not touch it. Remove it, then try again.")
@@ -42,7 +44,9 @@ func TestASymlinkAtTheLockPathIsRefused(t *testing.T) {
 // memry refuses it.
 func TestAWritableByOthersLockDirectoryIsRefused(t *testing.T) {
 	for _, mode := range []os.FileMode{0o770, 0o707} {
+		s := newServer(t)
 		h := newHarness(t)
+		h.login(s.URL)
 		dir := filepath.Dir(h.lockPath())
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
@@ -51,7 +55,7 @@ func TestAWritableByOthersLockDirectoryIsRefused(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		output, code := h.run(usage.Status)
+		output, code := h.run(usage.Enable)
 
 		assertExit(t, code, 1, output)
 		assertContains(t, output, dir+" is writable by other users or not yours; memry does not keep its lock there. Make it yours with mode 0700, then try again.")

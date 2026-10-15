@@ -69,7 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   followed or removed. A lock is never taken over, whatever its age, as its command may only be
   paused: a command waits up to 15 seconds, then says another command is changing the config and
   names the lock to delete if none is running (after a crash). Releasing removes the lock only
-  while it still holds its owner's token. `memry setup` takes the
+  while it still holds its owner's token. `memry usage status` and `disable` read the config without the lock
+  first and take it only when there is a record to reconcile or clean up, so with no usage
+  metrics they answer even when the cache directory cannot hold a lock. `memry setup` takes the
   same lock around its config writes, re-reading the config before its second save, so setup and
   the usage commands never overwrite each other's changes. Uninstall and
   delete-account take it too, from the usage cleanup to the config's deletion, after removing memry

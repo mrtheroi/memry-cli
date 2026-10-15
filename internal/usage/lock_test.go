@@ -145,3 +145,26 @@ func TestUninstallDuringEnableWaitsForTheLock(t *testing.T) {
 	assertContains(t, cfg, `"token": "1|login-token"`)
 	assertContains(t, cfg, `"token_id": 7`)
 }
+
+// Without a usage record there is nothing to reconcile or clean up: status
+// and disable answer without the lock, so a cache directory that cannot
+// hold it does not matter.
+func TestStatusAndDisableWithoutARecordNeedNoLock(t *testing.T) {
+	for name, want := range map[string]string{"status": "Usage metrics are off.", "disable": "Usage metrics are not on; nothing to remove."} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.login("https://memry.example.com")
+			h.cacheDir = filepath.Join(t.TempDir(), "not-a-directory")
+			writeRaw(t, h.cacheDir, "a file")
+			command := usage.Status
+			if name == "disable" {
+				command = usage.Disable
+			}
+
+			output, code := h.run(command)
+
+			assertExit(t, code, 0, output)
+			assertContains(t, output, want)
+		})
+	}
+}

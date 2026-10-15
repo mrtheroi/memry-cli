@@ -304,13 +304,50 @@ func (env Env) load() state {
 	return st
 }
 
+// Record is what the memry config says about the usage metrics record.
+type Record int
+
+const (
+	// RecordAbsent means there is no record: nothing to reconcile or
+	// clean up.
+	RecordAbsent Record = iota
+	// RecordValid means there is a valid record.
+	RecordValid
+	// RecordInvalid means the config or its record cannot be read: the
+	// usage metrics state is unknown.
+	RecordInvalid
+)
+
+// Preflight reads the memry config without the lock and says whether it
+// has a usage metrics record, so a command takes the lock only when there
+// is one to reconcile or clean up (or enable goes on). The command reads
+// it again under the lock.
+func Preflight(env Env) Record {
+	st := env.load()
+	switch {
+	case st.unreadable != nil:
+		return RecordInvalid
+	case len(st.setups()) == 0:
+		return RecordAbsent
+	}
+	return RecordValid
+}
+
+// unknownConfig fails, saying the config cannot be read, so the usage
+// metrics state is unknown.
+func (env Env) unknownConfig() int {
+	path, _ := config.Path(env.GOOS, env.getenv)
+	env.line("Could not read the memry config " + path + ", so memry cannot tell whether usage metrics are on. Fix it, then try again.")
+	return failure
+}
+
 // unknown reports, after saying so, whether the config could not be read,
 // so the usage metrics state is unknown and nothing may be done.
 func (env Env) unknown(st state) bool {
 	if st.unreadable == nil {
 		return false
 	}
-	env.line("Could not read the memry config " + st.cfgPath + ", so memry cannot tell whether usage metrics are on. Fix it, then try again.")
+	env.unknownConfig()
 	return true
 }
 
@@ -509,6 +546,13 @@ func Disable(env Env) int {
 	if !ok {
 		return failure
 	}
+	switch Preflight(env) {
+	case RecordAbsent:
+		env.line("Usage metrics are not on; nothing to remove.")
+		return success
+	case RecordInvalid:
+		return env.unknownConfig()
+	}
 	return env.locked(env.disable)
 }
 
@@ -534,7 +578,7 @@ func TurnOff(env Env, accountDeleted bool) bool {
 	// Without a record there is nothing to clean up, and no need for the
 	// lock, which may not be available (a cache directory that cannot be
 	// used). An unreadable config still goes through, to fail closed.
-	if st := env.load(); st.unreadable == nil && len(st.setups()) == 0 {
+	if Preflight(env) == RecordAbsent {
 		return true
 	}
 	return env.locked(func() int {
@@ -626,6 +670,13 @@ func Status(env Env) int {
 	env, ok := env.start("usage status")
 	if !ok {
 		return failure
+	}
+	switch Preflight(env) {
+	case RecordAbsent:
+		env.line("Usage metrics are off.")
+		return success
+	case RecordInvalid:
+		return env.unknownConfig()
 	}
 	return env.locked(env.status)
 }

@@ -260,3 +260,14 @@ func (s *ClaudeSettings) Env() (*phpjson.Object, bool, error) {
 	_, env, ok, err := s.readEnv()
 	return env, ok, err
 }
+
+// Setting returns the top-level setting key, nil when it is missing or
+// null. It returns false when the file is not well formed.
+func (s *ClaudeSettings) Setting(key string) (any, bool, error) {
+	settings, ok, err := s.read()
+	if !ok || err != nil {
+		return nil, ok, err
+	}
+	value, _ := settings.Get(key)
+	return value, true, nil
+}

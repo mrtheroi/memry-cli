@@ -1,6 +1,7 @@
 package usage_test
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/usage"
@@ -15,7 +16,7 @@ func TestStatusShowsTheEndpointButNeverTheToken(t *testing.T) {
 	output, code := h.run(usage.Status)
 
 	assertExit(t, code, 0, output)
-	assertContains(t, output, "Usage metrics are on: Claude Code sends its metrics to "+s.URL+metricsPath+".")
+	assertContains(t, output, "Usage metrics are on, as far as memry can see: Claude Code sends its metrics to "+s.URL+metricsPath+".")
 	assertContains(t, output, "Set in "+h.settingsPath()+".")
 	assertNotContains(t, output, "usage-secret")
 	assertNotContains(t, output, "login-token")
@@ -82,4 +83,20 @@ func TestStatusReportsHeadersWithoutAToken(t *testing.T) {
 	assertContains(t, output, "- OTEL_EXPORTER_OTLP_METRICS_HEADERS is overridden in the environment.\n")
 	assertNotContains(t, output, "secret")
 	assertExit(t, code, 0, output)
+}
+
+// What would stop enable now also keeps status from claiming the metrics
+// reach memry, such as a managed endpoint or a headers helper.
+func TestStatusReportsManagedSettingsAndHelpersInTheWay(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	h.run(usage.Enable)
+	managed := filepath.Join(h.managedDir, "managed-settings.json")
+	writeRaw(t, managed, `{"env":{"OTEL_EXPORTER_OTLP_ENDPOINT":"https://collector.example.com"}}`)
+
+	output, code := h.run(usage.Status)
+
+	assertExit(t, code, 0, output)
+	assertContains(t, output, "Usage metrics are not active:\n- OTEL_EXPORTER_OTLP_ENDPOINT is set in the managed settings "+managed+".\n")
 }

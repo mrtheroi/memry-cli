@@ -26,6 +26,9 @@ type Env struct {
 	LookupEnv func(string) (string, bool)
 	Out       io.Writer
 	HTTP      *http.Client
+	// ManagedDir is the directory of Claude Code's managed settings
+	// files (see ManagedSettingsDir); empty, there are none to read.
+	ManagedDir string
 }
 
 // Exit codes, as in the other commands.
@@ -63,8 +66,11 @@ func Enable(env Env) int {
 		env.line("Could not turn on usage metrics: " + failed)
 		return failure
 	}
-	model := telemetry{environment: env.LookupEnv, settings: current, path: st.settings.Path()}
-	if blockers := model.blockers(st.url+metricsPath, model.value(switchKey) == "1" && (model.where(switchKey) == "the environment" || slices.Contains(st.kept(current, st.url+metricsPath), switchKey))); len(blockers) > 0 {
+	helper, _, _ := st.settings.Setting(helperKey)
+	model := telemetry{environment: env.LookupEnv, settings: current, path: st.settings.Path(), helper: helper}
+	blockers := model.blockers(st.url+metricsPath, model.value(switchKey) == "1" && (model.where(switchKey) == "the environment" || slices.Contains(st.kept(current, st.url+metricsPath), switchKey)))
+	blockers = append(blockers, managedBlockers(env.ManagedDir)...)
+	if len(blockers) > 0 {
 		for _, line := range blockers {
 			env.line(line)
 		}
@@ -152,7 +158,8 @@ func disclosure(endpoint string) []string {
 		"Claude Code will send its OpenTelemetry metrics to " + endpoint + ", your memry server, and nowhere else.",
 		"It sends all 8 of its metrics: session count, lines of code, pull requests, commits, cost, token usage, code edit tool decisions and active time.",
 		"Each one carries your email, your organization id, an anonymous user id and the terminal type; Claude Code cannot leave these out.",
-		"memry turns off the session id, the account uuid and the resource attributes.",
+		"The OTLP resource block also names the service and its version, the operating system type and version, and the host architecture.",
+		"memry turns off the session id and the account uuid, and does not turn usage metrics on while OTEL_RESOURCE_ATTRIBUTES adds custom attributes.",
 		"The memry server keeps only the token and cost data points, tied to your memry account: the count or cost, the model, the token type, the query source and the time window.",
 		"It discards the other metrics on receipt and does not store your email or the other attributes; it only hashes them, with the metric, into a series identity.",
 		"No prompts or code are sent. If you later turn on a logs or traces exporter, the telemetry switch memry sets starts it too.",
@@ -425,15 +432,17 @@ func Status(env Env) int {
 	if endpoint == "" {
 		endpoint = st.url + metricsPath
 	}
-	model := telemetry{environment: env.LookupEnv, settings: current, path: st.settings.Path()}
-	if reasons := model.inactive(endpoint); len(reasons) > 0 {
+	helper, _, _ := st.settings.Setting(helperKey)
+	model := telemetry{environment: env.LookupEnv, settings: current, path: st.settings.Path(), helper: helper}
+	reasons := append(model.inactive(endpoint), model.foreign()...)
+	if reasons = append(reasons, managedBlockers(env.ManagedDir)...); len(reasons) > 0 {
 		env.line("Usage metrics are not active:")
 		for _, reason := range reasons {
 			env.line("- " + reason)
 		}
 		return success
 	}
-	env.line("Usage metrics are on: Claude Code sends its metrics to " + endpoint + ".")
-	env.line("Set in " + st.settings.Path() + ".")
+	env.line("Usage metrics are on, as far as memry can see: Claude Code sends its metrics to " + endpoint + ".")
+	env.line("Set in " + st.settings.Path() + ". Policies memry cannot read, like server-managed settings or an MDM profile, may still override it.")
 	return success
 }

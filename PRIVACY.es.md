@@ -45,7 +45,12 @@ OpenTelemetry al servidor de memry: número de sesiones, líneas de código, pul
 costo, uso de tokens, decisiones de la herramienta de edición de código y tiempo activo. Cada una
 lleva tu correo electrónico, el identificador de tu organización, un identificador de usuario
 anónimo y el tipo de terminal, que Claude Code no permite omitir. memry desactiva el identificador
-de sesión, el UUID de la cuenta y los atributos de recurso. No se envían prompts ni código: memry
+de sesión y el UUID de la cuenta. El bloque de recurso de OTLP también indica el servicio y su
+versión, el tipo y la versión del sistema operativo y la arquitectura del equipo; memry no activa
+las métricas de uso mientras `OTEL_RESOURCE_ATTRIBUTES` agregue atributos personalizados, haya un
+generador de encabezados (`otelHeadersHelper`) o la configuración administrada de Claude Code
+defina telemetría. Las políticas que memry no puede ver, como la configuración administrada desde
+el servidor o un perfil de MDM, pueden cambiar a dónde se envían las métricas. No se envían prompts ni código: memry
 no activa los registros (logs) ni las trazas de Claude Code. Antes de activar las métricas de uso,
 memry revisa la configuración de OpenTelemetry de la terminal donde se ejecuta
 `memry usage enable`; si Claude Code se inicia desde otro entorno que define variables de

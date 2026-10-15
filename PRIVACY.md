@@ -45,7 +45,11 @@ Claude Code has no per-metric filter. Once you turn usage metrics on, it sends a
 OpenTelemetry metrics to the memry server: session count, lines of code, pull requests, commits,
 cost, token usage, code edit tool decisions and active time. Each one carries your email, your
 organization id, an anonymous user id and the terminal type, which Claude Code cannot leave out.
-memry turns off the session id, the account uuid and the resource attributes. No prompts or code
+memry turns off the session id and the account uuid. The OTLP resource block also names the
+service and its version, the operating system type and version, and the host architecture; memry
+does not turn usage metrics on while `OTEL_RESOURCE_ATTRIBUTES` adds custom attributes to it, a
+headers helper is set, or Claude Code's managed settings files set telemetry. Policies memry cannot
+see, like server-managed settings or an MDM profile, may still change where metrics go. No prompts or code
 are sent: memry does not turn on Claude Code's logs or traces. Before turning usage metrics on,
 memry checks the OpenTelemetry settings of the shell `memry usage enable` runs in; if Claude Code
 is launched from a different environment that exports OpenTelemetry variables, those take

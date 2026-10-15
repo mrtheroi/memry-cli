@@ -205,8 +205,10 @@ What is sent, only to the server you logged in to:
 - Claude Code has no per-metric filter, so it sends all 8 of its metrics: session count, lines of
   code, pull requests, commits, cost, token usage, code edit tool decisions and active time.
 - Each metric carries your email, your organization id, an anonymous user id and the terminal type.
-  Claude Code cannot leave these out. memry turns off the session id, the account uuid and the
-  resource attributes.
+  Claude Code cannot leave these out. memry turns off the session id and the account uuid. The OTLP
+  resource block also names the service and its version, the operating system type and version,
+  and the host architecture; memry does not turn usage metrics on while `OTEL_RESOURCE_ATTRIBUTES`
+  adds custom attributes to it.
 - No prompts or code are sent: memry does not turn on Claude Code's logs or traces.
 - The memry server keeps only the token and cost data points, tied to your memry account: the
   count or cost, the model, the token type, the query source and the time window. It discards the
@@ -224,6 +226,17 @@ What is sent, only to the server you logged in to:
     memry);
   - `OTEL_LOGS_EXPORTER` or `OTEL_TRACES_EXPORTER` is set (and not `none`) while you have not
     turned telemetry on yourself: `CLAUDE_CODE_ENABLE_TELEMETRY` would start those exports too.
+  - `OTEL_RESOURCE_ATTRIBUTES` is set (Claude Code sends those attributes in the OTLP resource block
+    even with `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES=false`), or an `otelHeadersHelper` is set
+    (Claude Code adds its headers, often another collector's credentials, to the ones it sends);
+  - Claude Code's managed settings files set an `OTEL_*` variable, `CLAUDE_CODE_ENABLE_TELEMETRY`
+    or `otelHeadersHelper` (managed settings win, and a managed OTLP endpoint replaces memry's), or
+    one of them cannot be read or parsed, so where metrics go cannot be determined. memry reads
+    `managed-settings.json` and `managed-settings.d/*.json` in `/Library/Application
+    Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux and WSL and
+    `C:\Program Files\ClaudeCode` on Windows. Policies it cannot see, like server-managed
+    settings from the claude.ai console, an MDM profile or the Windows registry, may still
+    override what it sets.
 - When one of memry's variables is set in `settings.json` to a value memry did not write, `enable`
   stops and names it; `--force` replaces it. A plain `http://` server that is not this machine
   needs `--insecure`, like `memry setup`.
@@ -235,9 +248,10 @@ What is sent, only to the server you logged in to:
   `CLAUDE_CONFIG_DIR` changed since, drops the `env` object if that leaves it empty, and keeps the
   record until that worked, so a retry can finish it. `enable` for another `CLAUDE_CONFIG_DIR`
   stops until you `disable` the first one.
-- `status` says the metrics are on only when what Claude Code runs with, the launch environment
-  first, has the switch on, the `otlp` exporter, the `http/json` protocol, memry's endpoint and a
-  bearer token; otherwise it lists what is missing or overridden. It never prints the token.
+- `status` says the metrics are on, as far as memry can see, only when what Claude Code runs with,
+  the launch environment first, has the switch on, the `otlp` exporter, the `http/json` protocol,
+  memry's endpoint and a bearer token, and nothing that would stop `enable` is set; otherwise it
+  lists what is missing, overridden or in the way. It never prints the token.
 
 ## Update
 

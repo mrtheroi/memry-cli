@@ -13,12 +13,19 @@ import (
 // collector's credentials) into the metrics headers sent to memry.
 var genericKeys = []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS", "OTEL_EXPORTER_OTLP_PROTOCOL"}
 
+// resourceKey adds custom attributes, like a team or a cost center, to the
+// OTLP resource block, which OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES=false
+// does not stop: memry never sends them.
+const resourceKey = "OTEL_RESOURCE_ATTRIBUTES"
+
 // telemetry is the telemetry configuration Claude Code runs with: its
 // launch environment, which wins, and the env of its settings.json.
 type telemetry struct {
 	environment func(string) (string, bool)
 	settings    *phpjson.Object
 	path        string
+	// helper is the otelHeadersHelper of the settings, nil when none.
+	helper any
 }
 
 // inEnvironment returns the value of key in the launch environment. Like
@@ -50,6 +57,9 @@ func (t telemetry) where(key string) string {
 	return ""
 }
 
+// helperKey is the settings key of a script that makes OTLP headers.
+const helperKey = "otelHeadersHelper"
+
 // otherSignals are the exporters of the signals besides metrics. Each is
 // started by CLAUDE_CODE_ENABLE_TELEMETRY.
 var otherSignals = []string{"OTEL_LOGS_EXPORTER", "OTEL_TRACES_EXPORTER"}
@@ -65,10 +75,27 @@ func (t telemetry) value(key string) string {
 	return text
 }
 
+// foreign says which settings memry does not write would redirect its
+// export or add to what it sends: the generic OTLP settings and custom
+// resource attributes, wherever they are set, and a headers helper, whose
+// headers Claude Code adds to the ones it sends.
+func (t telemetry) foreign() []string {
+	var lines []string
+	for _, key := range append(slices.Clone(genericKeys), resourceKey) {
+		if where := t.where(key); where != "" {
+			lines = append(lines, key+" is set in "+where+".")
+		}
+	}
+	if t.helper != nil {
+		lines = append(lines, helperKey+" is set in "+t.path+".")
+	}
+	return lines
+}
+
 // blockers says which settings stop memry from turning on usage metrics
 // to endpoint, whatever --force says: memry's variables exported in the
 // launch environment with another value (any headers there would replace
-// memry's token), the generic OTLP settings, wherever they are set, and,
+// memry's token), the foreign settings (see foreign), and,
 // unless the user turned telemetry on themselves (userOn), the exporters
 // of other signals that memry's switch would start.
 func (t telemetry) blockers(endpoint string, userOn bool) []string {
@@ -80,11 +107,7 @@ func (t telemetry) blockers(endpoint string, userOn bool) []string {
 			lines = append(lines, v.key+" is set in the environment.")
 		}
 	}
-	for _, key := range genericKeys {
-		if where := t.where(key); where != "" {
-			lines = append(lines, key+" is set in "+where+".")
-		}
-	}
+	lines = append(lines, t.foreign()...)
 	for _, key := range otherSignals {
 		if where := t.where(key); where != "" && !userOn && t.value(key) != "none" {
 			lines = append(lines, key+" is set in "+where+"; turning on telemetry would start that export too.")

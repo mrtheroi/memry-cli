@@ -52,6 +52,9 @@ func usageCommand(name, short, version string, run func(usage.Env) int) *cobra.C
 				LookupEnv: lookupEnv,
 				Out:       cmd.OutOrStdout(),
 				HTTP:      client.New(version, 10*time.Second),
+				// Claude Code's managed settings, which win over the
+				// user's.
+				ManagedDir: usage.ManagedSettingsDir(runtime.GOOS),
 			})
 			if code != 0 {
 				return errFailed

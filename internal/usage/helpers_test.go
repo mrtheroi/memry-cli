@@ -123,12 +123,14 @@ type harness struct {
 	// via, when set, receives every request whatever its host, so a
 	// remote server URL never reaches the network.
 	via *server
+	// managedDir stands for Claude Code's managed settings directory.
+	managedDir string
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	dir := t.TempDir()
-	h := &harness{t: t, home: dir, configPath: filepath.Join(dir, "memry", "config.json")}
+	h := &harness{t: t, home: dir, configPath: filepath.Join(dir, "memry", "config.json"), managedDir: filepath.Join(dir, "managed")}
 	h.env = map[string]string{"HOME": dir, "USERPROFILE": dir, "MEMRY_CONFIG": h.configPath}
 	return h
 }
@@ -163,8 +165,9 @@ func (h *harness) run(command func(usage.Env) int, argv ...string) (string, int)
 			value, ok := h.env[key]
 			return value, ok
 		},
-		Out:  &out,
-		HTTP: h.client(),
+		Out:        &out,
+		HTTP:       h.client(),
+		ManagedDir: h.managedDir,
 	})
 	return out.String(), code
 }

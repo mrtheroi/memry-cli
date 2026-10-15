@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard can chart token usage and cost. Before asking for a token it discloses the payload:
   Claude Code has no per-metric filter, so all 8 of its metrics are sent, each with the user's
   email, organization id, an anonymous user id and the terminal type; memry turns off the session
-  id, account uuid and resource attributes (`OTEL_METRICS_INCLUDE_*=false`), and the server keeps
+  id and account uuid (`OTEL_METRICS_INCLUDE_*=false`), and the server keeps
   only the token and cost data points. It is off by default and
   never turned on by `memry setup`. It requests a new usage token (`POST /api/auth/usage-token`, which
   can only send usage metrics), saves its record, then merges eight `env` variables into
@@ -23,7 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   replaces it), and, whatever `--force` says, when one of them is exported in the launch
   environment with another value, when a generic `OTEL_EXPORTER_OTLP_ENDPOINT`, `_HEADERS` or
   `_PROTOCOL` is set anywhere, or when turning telemetry on would start a logs or traces export the
-  user configured but did not turn on. It writes the per-signal metrics protocol, never the
+  user configured but did not turn on. It also stops when `OTEL_RESOURCE_ATTRIBUTES` or an
+  `otelHeadersHelper` is set, and when Claude Code's managed settings files
+  (`managed-settings.json` and `managed-settings.d/`) set telemetry or cannot be read; policies
+  memry cannot see, like server-managed settings or MDM, may still override it, so `memry usage
+  status` says "as far as memry can see". It writes the per-signal metrics protocol, never the
   generic one. It refuses a non-loopback `http://` server unless `--insecure`. The settings
   file, which now holds the usage token, is created readable only by its owner, and an existing one
   loses any permission for other users.

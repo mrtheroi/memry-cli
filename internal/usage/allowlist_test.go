@@ -2,6 +2,7 @@ package usage_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -58,4 +59,20 @@ func TestEnableStopsOnRepositoryAttributesInTheEnvironment(t *testing.T) {
 	h.env["OTEL_METRICS_INCLUDE_REPOSITORY"] = "true"
 
 	enableBlocked(t, h, s, "OTEL_METRICS_INCLUDE_REPOSITORY is set in the environment.")
+}
+
+// Windows environment names are case-insensitive: Claude Code reads
+// otel_logs_exporter as OTEL_LOGS_EXPORTER, so the scan does too.
+func TestEnableOnWindowsMatchesEnvironmentNamesCaseInsensitively(t *testing.T) {
+	for key, value := range map[string]string{"otel_logs_exporter": "otlp", "Otel_Exporter_Otlp_Headers": "x-api-key=secret", "otel_metrics_exporter": "none"} {
+		t.Run(key, func(t *testing.T) {
+			s := newServer(t)
+			h := newHarness(t)
+			h.goos = "windows"
+			h.login(s.URL)
+			h.env[key] = value
+
+			enableBlocked(t, h, s, strings.ToUpper(key)+" is set in the environment.")
+		})
+	}
 }

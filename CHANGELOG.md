@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what memry can and cannot check: it reads this shell's environment, the user settings and the
   managed settings files, but not per-session `--settings`, managed policy helpers, MDM, the
   registry, server-managed settings or Claude Code's own launch environment. memry turns off every
-  documented optional attribute (`OTEL_METRICS_INCLUDE_*=false`). A managed settings file that sets a `policyHelper`
+  documented optional attribute (`OTEL_METRICS_INCLUDE_*=false`). On Windows, environment names are matched case-insensitively, as Claude Code
+  reads them. A managed settings file that sets a `policyHelper`
   stops it, as the effective policy cannot be determined; memry never runs helpers. It is off by default and
   never turned on by `memry setup`. It requests a new usage token (`POST /api/auth/usage-token`, which
   can only send usage metrics), saves its record, then merges eleven `env` variables into

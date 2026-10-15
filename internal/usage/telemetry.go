@@ -47,6 +47,9 @@ func allowed(key string, value any, endpoint string) bool {
 // telemetry is the telemetry configuration Claude Code runs with: its
 // launch environment, which wins, and the env of its settings.json.
 type telemetry struct {
+	// goos is the operating system; on Windows environment names are
+	// case-insensitive.
+	goos        string
 	environment func(string) (string, bool)
 	// environ lists the launch environment as KEY=value.
 	environ  func() []string
@@ -57,8 +60,13 @@ type telemetry struct {
 }
 
 // inEnvironment returns the value of key in the launch environment. Like
-// the OpenTelemetry SDKs, an empty value is no value.
+// the OpenTelemetry SDKs, an empty value is no value. On Windows the name
+// matches whatever its case, as Claude Code reads it.
 func (t telemetry) inEnvironment(key string) (string, bool) {
+	if t.goos == "windows" && t.environ != nil {
+		value, ok := t.environmentVars()[strings.ToUpper(key)]
+		return value, ok
+	}
 	value, ok := t.environment(key)
 	return value, ok && value != ""
 }
@@ -76,21 +84,37 @@ func (t telemetry) inSettings(key string) (any, bool) {
 // helperKey is the settings key of a script that makes OTLP headers.
 const helperKey = "otelHeadersHelper"
 
+// environmentVars are the variables of the launch environment with a
+// value, their names in upper case on Windows, where names are
+// case-insensitive.
+func (t telemetry) environmentVars() map[string]string {
+	vars := map[string]string{}
+	if t.environ == nil {
+		return vars
+	}
+	for _, pair := range t.environ() {
+		key, value, _ := strings.Cut(pair, "=")
+		if t.goos == "windows" {
+			key = strings.ToUpper(key)
+		}
+		if value != "" {
+			vars[key] = value
+		}
+	}
+	return vars
+}
+
 // environmentKeys are the telemetry variables of the launch environment
 // with a value, in order.
 func (t telemetry) environmentKeys() []string {
 	var keys []string
-	if t.environ == nil {
-		return nil
-	}
-	for _, pair := range t.environ() {
-		key, value, _ := strings.Cut(pair, "=")
-		if isTelemetry(key) && value != "" {
+	for key := range t.environmentVars() {
+		if isTelemetry(key) {
 			keys = append(keys, key)
 		}
 	}
 	slices.Sort(keys)
-	return slices.Compact(keys)
+	return keys
 }
 
 // foreign says which telemetry settings that are not memry's stand next

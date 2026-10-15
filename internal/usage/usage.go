@@ -92,7 +92,7 @@ func (env Env) enable() int {
 		return failure
 	}
 	current := snapshot.Env()
-	model := telemetry{environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
+	model := telemetry{goos: env.GOOS, environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
 	blockers := model.blockers(st.url + metricsPath)
 	blockers = append(blockers, managedBlockers(env.ManagedDir, st.url+metricsPath)...)
 	if len(blockers) > 0 {
@@ -625,7 +625,7 @@ func (env Env) status() int {
 	if endpoint == "" {
 		endpoint = st.record.ServerURL + metricsPath
 	}
-	model := telemetry{environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
+	model := telemetry{goos: env.GOOS, environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
 	reasons := append(model.inactive(endpoint), model.foreign(endpoint)...)
 	if reasons = append(reasons, managedBlockers(env.ManagedDir, endpoint)...); len(reasons) > 0 {
 		env.line("Usage metrics are not active:")

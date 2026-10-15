@@ -18,7 +18,7 @@ Dudas y solicitudes: **mrtheroi@gmail.com**
 | Códigos de acceso, guardados solo como hash | Para iniciar sesión. Vencen a los 5 minutos y se eliminan un día después. |
 | Tokens de acceso, guardados solo como hash | Para que tu equipo use el servicio sin volver a iniciar sesión. |
 | Tu dirección IP | Para limitar los intentos de inicio de sesión, y en los registros operativos del servidor, que el proveedor de hosting conserva por un tiempo limitado. |
-| **Solo si ejecutas `memry usage enable`:** los datos de tokens y de costo de Claude Code: el número de tokens o el costo, el modelo, el tipo de token, el origen de la consulta y la ventana de tiempo de cada uno, y un hash de todos sus atributos | Para graficar tu uso de Claude Code en el panel de memry. |
+| **Solo si ejecutas `memry usage enable`:** los datos de tokens y de costo de Claude Code: el número de tokens o el costo, el modelo, el tipo de token, el origen de la consulta y la ventana de tiempo de cada uno, y un hash con clave de sus atributos. Todo lo demás que envía Claude Code se descarta al recibirlo | Para graficar tu uso de Claude Code en el panel de memry. |
 
 Lo que guardan tus agentes depende de ti y de ellos. **No permitas que guarden contraseñas, llaves de
 API ni otros secretos** en memry.
@@ -34,36 +34,38 @@ En tu equipo, `memry setup` guarda la URL del servidor y tu token de acceso en
 - No usamos tus memorias para entrenar modelos de IA.
 - No leemos tus memorias, salvo que nos pidas ayuda con un problema o que la ley lo exija.
 - memry no usa rastreo web, analítica ni cookies.
-- La CLI de memry no envía telemetría. Las métricas de uso están desactivadas por defecto: Claude
-  Code las envía solo después de que ejecutas `memry usage enable`, y solo al servidor de memry en
-  el que iniciaste sesión, nunca a nadie más.
+- La CLI de memry no envía telemetría. Las métricas de uso están desactivadas por defecto: memry
+  configura Claude Code para enviarlas solo después de que ejecutas `memry usage enable`, y solo al
+  servidor de memry en el que iniciaste sesión (más abajo se indica lo que memry puede revisar y lo
+  que no).
 
 ## Métricas de uso, en detalle
 
-Claude Code no permite filtrar métricas. Al activar las métricas de uso, envía sus 8 métricas de
-OpenTelemetry al servidor de memry: número de sesiones, líneas de código, pull requests, commits,
-costo, uso de tokens, decisiones de la herramienta de edición de código y tiempo activo. Cada una
-lleva tu correo electrónico, el identificador de tu organización, un identificador de usuario
-anónimo y el tipo de terminal, que Claude Code no permite omitir. El bloque de recurso de OTLP también indica el servicio y su versión, el tipo y la versión
-del sistema operativo y la arquitectura del equipo. memry desactiva todos los atributos opcionales
-que documenta Claude Code (identificador de sesión, UUID de la cuenta, repositorio, versión, punto
-de entrada y atributos de recurso personalizados), y no activa las métricas de uso mientras exista
-cualquier otra configuración de telemetría, en tu entorno, en tu configuración o en la
-configuración administrada de Claude Code. Esto es lo que Claude Code envía hoy; una versión
-posterior podría agregar campos. Las políticas que memry no puede ver, como la configuración
-administrada desde el servidor o un perfil de MDM, pueden cambiar a dónde se envían las métricas. No se envían prompts ni código: memry
-no activa los registros (logs) ni las trazas de Claude Code. Antes de activar las métricas de uso,
-memry revisa la configuración de OpenTelemetry de la terminal donde se ejecuta
-`memry usage enable`; si Claude Code se inicia desde otro entorno que define variables de
-OpenTelemetry, estas tienen prioridad sobre lo que memry configuró.
+Las métricas de uso están desactivadas salvo que ejecutes `memry usage enable`. Entonces es Claude
+Code, no memry, quien decide qué envía, como se documenta en su
+[guía de monitoreo](https://code.claude.com/docs/en/monitoring-usage): sus métricas de
+OpenTelemetry, como el uso de tokens, el costo, las sesiones y las líneas de código, con atributos
+de identidad como tu correo electrónico y el identificador de tu organización, y atributos propios
+de cada métrica. Esa lista no es exhaustiva y puede crecer con nuevas versiones de Claude Code.
+memry desactiva los atributos opcionales que puede y no activa los registros (logs) ni las trazas
+de Claude Code, así que por esta vía no se envían prompts ni código.
 
-El servidor de memry conserva solo los datos de tokens y de costo, asociados a tu cuenta de memry:
-el número de tokens o el costo, el modelo, el tipo de token (entrada, salida, lectura de caché o
-creación de caché), el origen de la consulta, la ventana de tiempo y la hora en que se recibió.
-Descarta las otras 6 métricas al recibirlas. No guarda tu correo electrónico, el identificador de
-tu organización, el identificador de usuario, el tipo de terminal ni ningún otro atributo: solo
-calcula un hash SHA-256 del nombre de la métrica y de todos los atributos de cada dato, y guarda
-ese hash para distinguir las series e ignorar los envíos repetidos.
+**Lo que conserva el servidor de memry es la garantía.** Conserva solo los datos de tokens y de
+costo, asociados a tu cuenta de memry: el número de tokens o el costo, el modelo, el tipo de token
+(entrada, salida, lectura de caché o creación de caché), el origen de la consulta, la ventana de
+tiempo y la hora en que se recibió. Descarta todo lo demás al recibirlo. No guarda tu correo
+electrónico, el identificador de tu organización ni ningún otro atributo: solo calcula un hash con
+clave (HMAC) del nombre de la métrica y de los atributos de cada dato, para distinguir las series e
+ignorar los envíos repetidos. El punto de recepción no registra las solicitudes ni sus encabezados.
+
+**Lo que memry puede revisar.** Antes de activar las métricas de uso, memry revisa el entorno de la
+terminal donde se ejecuta `memry usage enable`, tu `settings.json` de Claude Code y los archivos de
+configuración administrada de Claude Code, y se niega si allí hay otra telemetría configurada. No
+puede ver archivos `--settings` de una sesión, programas auxiliares de políticas administradas,
+perfiles de MDM, el registro de Windows, la configuración administrada desde el servidor ni el
+entorno desde el que se inicia Claude Code; cualquiera de ellos puede cambiar qué envía Claude Code
+o a dónde. Si usas mTLS, Claude Code también puede presentar su certificado de cliente a tu
+servidor de memry.
 
 ## Quién más trata tus datos
 

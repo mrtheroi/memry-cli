@@ -18,7 +18,7 @@ Questions and requests: **mrtheroi@gmail.com**
 | Login codes, stored only as a hash | To log you in. They expire after 5 minutes and are deleted a day later. |
 | Access tokens, stored only as a hash | To let your machine use the service without logging in again. |
 | Your IP address | To rate-limit login attempts, and in the server's operational logs, which the hosting provider keeps for a limited time. |
-| **Only if you run `memry usage enable`:** the token and cost data points of Claude Code: the token count or cost, the model, the token type, the query source and the time window of each one, and a hash of all its attributes | To chart your Claude Code usage in the memry dashboard. |
+| **Only if you run `memry usage enable`:** Claude Code's token and cost data points: the token count or cost, the model, the token type, the query source and the time window of each one, and a keyed hash of its attributes. Everything else Claude Code sends is discarded on receipt | To chart your Claude Code usage in the memry dashboard. |
 
 What your agents save is up to you and them. **Do not let them save passwords, API keys or other
 secrets** in memry.
@@ -35,34 +35,35 @@ On your machine, `memry setup` keeps the server URL and your access token in
 - We do not read your memories, except when you ask us to help with a problem or when the law
   requires it.
 - memry has no website tracking, analytics or cookies.
-- The memry CLI sends no telemetry. Usage metrics are off by default: Claude Code sends them only
-  after you run `memry usage enable`, and only to the memry server you logged in to, never to
-  anyone else.
+- The memry CLI sends no telemetry. Usage metrics are off by default: memry configures Claude Code
+  to send them only after you run `memry usage enable`, and only to the memry server you logged in
+  to (see the limits of what memry can check below).
 
 ## Usage metrics, in detail
 
-Claude Code has no per-metric filter. Once you turn usage metrics on, it sends all 8 of its
-OpenTelemetry metrics to the memry server: session count, lines of code, pull requests, commits,
-cost, token usage, code edit tool decisions and active time. Each one carries your email, your
-organization id, an anonymous user id and the terminal type, which Claude Code cannot leave out.
-The OTLP resource block also names the service and its version, the operating system type and
-version, and the host architecture. memry turns off every optional attribute Claude Code documents
-(session id, account uuid, repository, version, entrypoint and custom resource attributes), and it
-does not turn usage metrics on while any other telemetry setting is present, in your environment,
-your settings or Claude Code's managed settings files. This is what Claude Code sends today; a later
-version may add fields. Policies memry cannot see, like server-managed settings or an MDM profile,
-may still change where metrics go. No prompts or code
-are sent: memry does not turn on Claude Code's logs or traces. Before turning usage metrics on,
-memry checks the OpenTelemetry settings of the shell `memry usage enable` runs in; if Claude Code
-is launched from a different environment that exports OpenTelemetry variables, those take
-precedence over what memry set.
+Usage metrics are off unless you run `memry usage enable`. Then Claude Code, not memry, decides
+what it sends, as documented in its
+[monitoring guide](https://code.claude.com/docs/en/monitoring-usage): its OpenTelemetry metrics,
+such as token usage, cost, sessions and lines of code, with identity attributes such as your email
+and organization id, and metric-specific attributes. That list is not exhaustive and may grow with
+new Claude Code versions. memry turns off the optional attribute gates it can, and does not turn
+on Claude Code's logs or traces, so no prompts or code are sent through it.
 
-The memry server keeps only the token and cost data points, tied to your memry account: the token
-count or cost, the model, the token type (input, output, cache read or cache creation), the query
-source, the time window and the time it was received. It discards the other 6 metrics on receipt.
-It does not store your email, organization id, user id, terminal type or any other attribute: it
-only computes a SHA-256 hash of the metric name and all the attributes of a data point, and keeps
-that hash to tell series apart and to ignore retried exports.
+**What the memry server keeps is the guarantee.** It keeps only the token and cost data points,
+tied to your memry account: the token count or cost, the model, the token type (input, output,
+cache read or cache creation), the query source, the time window and the time it was received. It
+discards everything else on receipt. It does not store your email, organization id or any other
+attribute: it only computes a keyed hash (HMAC) of the metric name and the attributes of a data
+point, to tell series apart and to ignore retried exports. The ingest endpoint does not log
+requests or their headers.
+
+**What memry can check.** Before turning usage metrics on, memry checks the environment of the
+shell `memry usage enable` runs in, your Claude Code `settings.json` and Claude Code's managed
+settings files, and refuses if other telemetry is configured there. It cannot see per-session
+`--settings` files, managed policy helpers, MDM profiles, the Windows registry, server-managed
+settings or the environment Claude Code is launched from; any of them can change what Claude Code
+sends or where. If you use mTLS, Claude Code may also present its client certificate to your memry
+server.
 
 ## Who else handles your data
 

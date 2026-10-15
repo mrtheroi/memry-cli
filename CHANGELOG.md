@@ -10,12 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Opt-in usage metrics: `memry usage enable` lets Claude Code send its OpenTelemetry metrics (OTLP/HTTP
-  JSON, never prompts or code) to the memry server you are logged in to, and nowhere else, so the
-  dashboard can chart token usage and cost. Before asking for a token it discloses the payload:
-  Claude Code has no per-metric filter, so all 8 of its metrics are sent, each with the user's
-  email, organization id, an anonymous user id and the terminal type; memry turns off every
-  documented optional attribute (`OTEL_METRICS_INCLUDE_*=false`), and the server keeps
-  only the token and cost data points. It is off by default and
+  JSON) to the memry server you are logged in to, so the dashboard can chart token usage and cost.
+  Before asking for a token it says where the metrics go, that Claude Code decides what it sends
+  (as documented in its monitoring guide; identity and metric-specific attributes included), that
+  the memry server keeps only the token and cost data points and discards everything else, and
+  what memry can and cannot check: it reads this shell's environment, the user settings and the
+  managed settings files, but not per-session `--settings`, managed policy helpers, MDM, the
+  registry, server-managed settings or Claude Code's own launch environment. memry turns off every
+  documented optional attribute (`OTEL_METRICS_INCLUDE_*=false`). It is off by default and
   never turned on by `memry setup`. It requests a new usage token (`POST /api/auth/usage-token`, which
   can only send usage metrics), saves its record, then merges eleven `env` variables into
   Claude Code's `settings.json`, keeping every other setting. It stops, without asking for a token,

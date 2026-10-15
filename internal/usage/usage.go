@@ -201,21 +201,18 @@ func (env Env) restore(st state, id int64) {
 	}
 }
 
-// disclosure tells what Claude Code sends to endpoint once usage metrics
-// are on, and what the memry server keeps of it, before memry asks for a
-// usage token. Keep it in step with PRIVACY.md and the server.
+// disclosure tells, before memry asks for a usage token, where Claude Code
+// sends its metrics once usage metrics are on, what the memry server keeps
+// of them, and the scope of what memry checked. Claude Code decides what
+// it sends; the guarantee is what the server keeps. Keep it in step with
+// PRIVACY.md and the server.
 func disclosure(endpoint string) []string {
 	return []string{
-		"Claude Code will send its OpenTelemetry metrics to " + endpoint + ", your memry server, and nowhere else.",
-		"It sends all 8 of its metrics: session count, lines of code, pull requests, commits, cost, token usage, code edit tool decisions and active time.",
-		"Each one carries your email, your organization id, an anonymous user id and the terminal type; Claude Code cannot leave these out.",
-		"The OTLP resource block also names the service and its version, the operating system type and version, and the host architecture.",
-		"memry turns off every optional attribute Claude Code documents: the session id, the account uuid, the repository, the version, the entrypoint and custom resource attributes.",
-		"It does not turn usage metrics on while any other telemetry setting is present, in the environment, the settings or the managed settings.",
-		"This is what Claude Code sends today; a later version may add fields.",
-		"The memry server keeps only the token and cost data points, tied to your memry account: the count or cost, the model, the token type, the query source and the time window.",
-		"It discards the other metrics on receipt and does not store your email or the other attributes; it only hashes them, with the metric, into a series identity.",
-		"No prompts or code are sent. If you later turn on a logs or traces exporter, the telemetry switch memry sets starts it too.",
+		"Claude Code will send its OpenTelemetry metrics to " + endpoint + ", your memry server.",
+		"What it sends is up to Claude Code, as documented at https://code.claude.com/docs/en/monitoring-usage: metrics such as token usage, cost, sessions and lines of code (not an exhaustive list).",
+		"They include identity attributes, such as your email and organization id, and metric-specific attributes. memry turns off the optional attribute gates it can (OTEL_METRICS_INCLUDE_*).",
+		"The memry server keeps only the token and cost data points (the count or cost, the model, the token type, the query source and the time window) and discards everything else on receipt.",
+		"memry checked this shell's environment, your settings.json and the managed settings files. It cannot see per-session --settings, managed policy helpers, MDM, the registry, server-managed settings or the environment Claude Code is launched from; those can change what Claude Code sends, or where.",
 	}
 }
 

@@ -179,97 +179,71 @@ cost, turn it on explicitly:
 
 ```bash
 memry usage enable    # off by default
-memry usage status    # on or off, and where the metrics go (never prints the token)
+memry usage status    # on or off as far as memry can see, and where to (never prints the token)
 memry usage disable   # turn it off again
 ```
 
-`memry usage enable` first tells you what is sent, then asks your memry server for a usage token
-(it can only send usage metrics) and sets Claude Code's OpenTelemetry metrics export in the `env`
-of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, with a relative
-`CLAUDE_CONFIG_DIR` resolved against the current directory): `CLAUDE_CODE_ENABLE_TELEMETRY`,
-`OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`,
-`OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and every `OTEL_METRICS_INCLUDE_*` gate (`SESSION_ID`,
-`ACCOUNT_UUID`, `RESOURCE_ATTRIBUTES`, `REPOSITORY`, `VERSION`, `ENTRYPOINT`) set to `false`.
+`memry usage enable` tells you what is sent, asks your memry server for a usage token (it can only
+send usage metrics) and sets Claude Code's OpenTelemetry metrics export in the `env` of
+`~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, a relative `CLAUDE_CONFIG_DIR`
+resolved against the current directory): `CLAUDE_CODE_ENABLE_TELEMETRY`, `OTEL_METRICS_EXPORTER`,
+`OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and every `OTEL_METRICS_INCLUDE_*` gate set to `false`.
 Restart Claude Code to apply it. The settings file holds the usage token, so memry leaves it
 readable by your user only.
 
-Every write memry makes to the settings (`enable`, `disable`, uninstall) happens only if the file
-is still, byte for byte, the one it checked; if anything changed meanwhile, it writes nothing and
-you can try again. Usage commands and uninstall also take a lock, a file in `memry/` under
-your user cache directory (`~/Library/Caches` on macOS, `~/.cache` on Linux, `%LocalAppData%` on
-Windows) named after the memry config, so two of them never run at once. memry refuses a lock
-directory other users can write to, never follows or removes anything at the lock path that is not
-a regular file, and takes over a lock older than two minutes. `enable` saves its record (see below) in two phases: before it writes the settings, the new setup
-is saved as pending next to the current one, and it becomes current once the settings hold it. If
-`enable` is interrupted in between, the next `memry usage` command (or `memry uninstall`) checks
-which token the settings hold and settles it, revoking the token that was not used. If the record cannot be
-saved, or the settings cannot be written (it then puts the previous record back), it revokes the
-new token, so a failed `enable` changes nothing and the token already in use keeps working. Only
-once the new token is in the settings does it revoke the one this machine used before. `disable`
-revokes the token this machine recorded after removing memry's variables. memry only revokes the
-exact tokens it recorded, so the usage tokens of your other machines keep working. Revocation is
-best effort: a usage token that is not used stops working after 30 days.
+### What is sent and what is kept
 
-What is sent, only to the server you logged in to:
+- **Claude Code decides what it sends**, as documented in its
+  [monitoring guide](https://code.claude.com/docs/en/monitoring-usage): metrics such as token
+  usage, cost, sessions and lines of code, with identity attributes such as your email and
+  organization id and metric-specific attributes. That list is not exhaustive and may grow with
+  new Claude Code versions. memry turns off the optional attribute gates it can.
+- **The memry server is the guarantee.** It keeps only the token and cost data points (the count
+  or cost, the model, the token type, the query source and the time window), tied to your memry
+  account, and discards everything else on receipt. It stores no raw attributes: only a keyed
+  hash of them, to tell series apart.
+- memry does not turn on Claude Code's logs or traces, so no prompts or code are sent through it.
 
-- Claude Code has no per-metric filter, so it sends all 8 of its metrics: session count, lines of
-  code, pull requests, commits, cost, token usage, code edit tool decisions and active time.
-- Each metric carries your email, your organization id, an anonymous user id and the terminal type.
-  Claude Code cannot leave these out. The OTLP resource block also names the service and its
-  version, the operating system type and version, and the host architecture. memry sets every
-  documented `OTEL_METRICS_INCLUDE_*` gate to `false`: session id, account uuid, repository,
-  version, entrypoint and custom resource attributes stay off. This is what Claude Code sends today;
-  a later version may add fields.
-- No prompts or code are sent: memry does not turn on Claude Code's logs or traces.
-- The memry server keeps only the token and cost data points, tied to your memry account: the
-  count or cost, the model, the token type, the query source and the time window. It discards the
-  other metrics on receipt and does not store your email or the other attributes; it only hashes
-  them, with the metric, into a series identity.
+### What memry checks, and what it cannot see
 
-- `enable` works as an allowlist: it stops, before asking for a token and whatever `--force` says,
-  on any telemetry setting that is not memry's own variable with memry's value. Telemetry settings
-  are recognized by namespace, so ones a later Claude Code adds are covered too: every `OTEL_*`
-  variable, `CLAUDE_CODE_ENABLE_TELEMETRY*`, `CLAUDE_CODE_ENHANCED_TELEMETRY*`,
-  `ENABLE_ENHANCED_TELEMETRY*`, `CLAUDE_CODE_OTEL_*` and `*BETA_TRACING*` variables, and the
-  top-level `otelHeadersHelper` setting. The only exceptions are `OTEL_LOGS_EXPORTER=none` and
-  `OTEL_TRACES_EXPORTER=none`, which only turn something off, and variables you had already set
-  to memry's value. This covers your own telemetry pipelines, logs, traces and beta tracing (which
-  can carry prompts and code), custom resource attributes, generic OTLP endpoints and headers, and
-  headers helpers (whose headers would be sent to memry). It checks:
-  - the environment you run `memry usage enable` from, which Claude Code's launch environment
-    usually is and which wins over the settings. If Claude Code is launched from another
-    environment that exports OpenTelemetry variables, those take precedence;
-  - `settings.json`;
-  - Claude Code's managed settings files, `managed-settings.json` and `managed-settings.d/*.json`
-    in `/Library/Application Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux and WSL and
-    `C:\Program Files\ClaudeCode` on Windows. One that cannot be read or parsed stops `enable`
-    too, as where metrics go cannot be determined. Policies memry cannot see, like server-managed
-    settings from the claude.ai console, an MDM profile or the Windows registry, may still
-    override what it sets.
-- When one of memry's variables is set in `settings.json` to a value memry did not write, `enable`
-  stops and names it; `--force` replaces it. A plain `http://` server that is not this machine
-  needs `--insecure`, like `memry setup`.
+Before asking for a token, `enable` checks the environment of the shell it runs in, your
+`settings.json` and Claude Code's file-based managed settings (`managed-settings.json` and
+`managed-settings.d/*.json` in `/Library/Application Support/ClaudeCode` on macOS,
+`/etc/claude-code` on Linux and WSL, `C:\Program Files\ClaudeCode` on Windows). It stops,
+whatever `--force` says, on any telemetry setting there that is not memry's own variable with
+memry's value: every `OTEL_*`, `CLAUDE_CODE_ENABLE_TELEMETRY*`, `CLAUDE_CODE_ENHANCED_TELEMETRY*`,
+`ENABLE_ENHANCED_TELEMETRY*`, `CLAUDE_CODE_OTEL_*` and `*BETA_TRACING*` variable and the
+`otelHeadersHelper` setting, except exporters set to `none` and variables you had already set to
+memry's value. A managed settings file it cannot read stops it too. One of memry's own variables
+set in `settings.json` to another value stops it unless you pass `--force`. A plain `http://`
+server that is not this machine needs `--insecure`, like `memry setup`.
+
+memry cannot see per-session `--settings` files, managed policy helpers, MDM profiles, the Windows
+registry, server-managed settings or the environment Claude Code is actually launched from. Any of
+them can change what Claude Code sends or where, so `status` reports what it finds "as far as
+memry can see". If you use mTLS, Claude Code may also present its client certificate
+(`CLAUDE_CODE_CLIENT_CERT`) to your memry server.
+
+### How memry keeps track
+
 - memry records what it wrote under `usage_metrics` in the memry config (readable only by your
-  user): the settings file, each variable with its exact value, and the variables that already had
-  memry's value before the first `enable`, which it never writes nor removes. A variable is
-  memry's only while it is in that file with exactly the recorded value. `disable` (and
-  `memry uninstall` or `memry delete-account`) removes just those, from the recorded file even if
-  `CLAUDE_CONFIG_DIR` changed since, drops the `env` object if that leaves it empty, and keeps the
-  record until that worked, so a retry can finish it. `enable` for another `CLAUDE_CONFIG_DIR`
-  stops until you `disable` the first one.
-- The record also names the server the usage token belongs to, the only truth for the token and
-  the endpoint: memry sends a token id only to that server, and `status` derives the endpoint from
-  it. `memry delete-account` on that server deletes the token with the account; on another one it
-  warns that the token on the recorded server stays valid until it goes 30 days without use. `memry setup` to another server keeps the record and the export to the old server;
-  `enable` then stops until you `disable`, and `disable` (or `memry uninstall`) removes memry's
-  variables but leaves the old token to expire after 30 days without use, with a warning.
+  user): the server, the settings file, each variable with its exact value, the usage token's id,
+  and the variables you had already set to memry's value, which it never writes nor removes. A
+  variable is memry's only while it has exactly the recorded value. `disable`, `memry uninstall`
+  and `memry delete-account` remove just those, from the recorded file, drop an `env` left empty,
+  and keep the record until that worked.
+- memry revokes only the exact usage token it recorded, on the server it recorded, so your other
+  machines' tokens keep working; revocation is best effort, and an unused token stops working
+  after 30 days. `enable` for another server or `CLAUDE_CONFIG_DIR` stops until you `disable` the
+  first one; `memry setup` to another server keeps the record.
+- `enable` saves the new setup as pending before writing the settings, so an interrupted `enable`
+  is settled by the next usage command. A failed `enable` changes nothing and the token in use
+  keeps working.
+- memry writes the settings only if the file is still, byte for byte, the one it checked. Usage
+  commands take a lock in `memry/` under your user cache directory, which must be private to you.
 - If the memry config exists but cannot be read as a JSON object, the usage commands, `memry
-  uninstall` and `memry delete-account` stop without changing anything: the config may hold the
-  record, so memry cannot tell whether usage metrics are on. Fix the file, then try again.
-- `status` says the metrics are on, as far as memry can see, only when what Claude Code runs with,
-  the launch environment first, has the switch on, the `otlp` exporter, the `http/json` protocol,
-  memry's endpoint and a bearer token, and nothing that would stop `enable` is set; otherwise it
-  lists what is missing, overridden or in the way. It never prints the token.
+  uninstall` and `memry delete-account` stop without changing anything.
 
 ## Update
 

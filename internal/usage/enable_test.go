@@ -263,3 +263,39 @@ func TestEnableStopsWhenTheSettingsChangeMeanwhile(t *testing.T) {
 	}
 	assertNotContains(t, readText(t, h.configPath), `"usage_metrics"`)
 }
+
+// Anything added to the settings while the token is issued, even outside
+// memry's variables, like a headers helper, stops the write: enable only
+// writes the file it validated.
+func TestEnableStopsWhenABlockerIsAddedMeanwhile(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	writeRaw(t, h.settingsPath(), `{"env":{"FOO":"bar"}}`)
+	edited := `{"env":{"FOO":"bar"},"otelHeadersHelper":"/bin/headers.sh"}`
+	s.onIssue = func() { writeRaw(t, h.settingsPath(), edited) }
+
+	output, code := h.run(usage.Enable)
+
+	assertExit(t, code, 1, output)
+	assertContains(t, output, "changed while memry was turning on usage metrics, so nothing was written. Try again.")
+	if got := readText(t, h.settingsPath()); got != edited {
+		t.Errorf("settings = %s, want the edit kept", got)
+	}
+}
+
+// --force replaces a memry variable holding any JSON value, an array
+// included, without a panic.
+func TestEnableWithForceReplacesACompositeValue(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	writeRaw(t, h.settingsPath(), `{"env":{"OTEL_METRICS_EXPORTER":[]}}`)
+
+	output, code := h.run(usage.Enable, "--force")
+
+	assertExit(t, code, 0, output)
+	if got := h.settingsEnv()["OTEL_METRICS_EXPORTER"]; got != "otlp" {
+		t.Errorf("OTEL_METRICS_EXPORTER = %v, want otlp", got)
+	}
+}

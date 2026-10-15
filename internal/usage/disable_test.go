@@ -150,3 +150,28 @@ func TestDisableTakesATokenAlreadyGoneAsRevoked(t *testing.T) {
 	assertExit(t, code, 0, output)
 	assertNotContains(t, output, "Could not revoke")
 }
+
+// An edit between disable's read and its write is never erased: disable
+// writes nothing, keeps the record and asks to try again.
+func TestDisableStopsWhenTheSettingsChangeMeanwhile(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	h.run(usage.Enable)
+	var edited string
+	t.Cleanup(usage.SetBeforeSettingsWrite(func() {
+		env := h.settingsEnv()
+		env["OTEL_METRICS_EXPORTER"] = "prometheus"
+		h.writeSettingsEnv(env)
+		edited = readText(t, h.settingsPath())
+	}))
+
+	output, code := h.run(usage.Disable)
+
+	assertExit(t, code, 1, output)
+	assertContains(t, output, "changed while memry was turning off usage metrics, so nothing was written. Try again.")
+	if got := readText(t, h.settingsPath()); got != edited {
+		t.Errorf("settings = %s, want the edit kept", got)
+	}
+	assertContains(t, readText(t, h.configPath), `"usage_metrics"`)
+}

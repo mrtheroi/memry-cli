@@ -193,8 +193,11 @@ of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, with a rela
 Restart Claude Code to apply it. The settings file holds the usage token, so memry leaves it
 readable by your user only.
 
-`enable` writes the settings only if memry's variables still have the values it checked before
-asking for the token; if anything changed meanwhile, it writes nothing and you can try again. It
+Every write memry makes to the settings (`enable`, `disable`, uninstall) happens only if the file
+is still, byte for byte, the one it checked; if anything changed meanwhile, it writes nothing and
+you can try again. Usage commands and uninstall also take a lock, a file in the temporary
+directory named after the memry config, so two of them never run at once; a lock older than two
+minutes is taken over. It
 saves its record (see below) in two phases: before it writes the settings, the new setup
 is saved as pending next to the current one, and it becomes current once the settings hold it. If
 `enable` is interrupted in between, the next `memry usage` command (or `memry uninstall`) checks

@@ -57,6 +57,14 @@ func newServer(t *testing.T) *server {
 
 func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
+	onIssue := s.onIssue
+	s.mu.Unlock()
+	// Run without the lock: it may start another command against this
+	// server.
+	if onIssue != nil && r.Method == http.MethodPost && r.URL.Path == "/api/auth/usage-token" && s.issueStatus == 0 {
+		onIssue()
+	}
+	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requests = append(s.requests, request{r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Get("Authorization")})
 	switch {
@@ -64,9 +72,6 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(s.issueStatus)
 		_, _ = io.WriteString(w, s.issueBody)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/auth/usage-token":
-		if s.onIssue != nil {
-			s.onIssue()
-		}
 		id := s.nextID
 		s.nextID++
 		s.active[id] = true

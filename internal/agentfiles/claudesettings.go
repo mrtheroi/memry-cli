@@ -1,6 +1,7 @@
 package agentfiles
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"os"
@@ -170,43 +171,133 @@ func withoutHooks(groups []any, marker string) ([]any, bool) {
 	return kept, removed
 }
 
-// SetEnv sets each of vars in the env object of the settings, creating it
-// when missing, and keeps every other setting and variable. It returns
-// false, leaving the file untouched, when it is not well formed or its env
-// is not an object.
-func (s *ClaudeSettings) SetEnv(vars *phpjson.Object) (bool, error) {
-	return s.SetEnvIf(nil, vars)
+// Snapshot is the settings file as read once: its bytes, which a write
+// from the snapshot compares the file with, and what they hold.
+type Snapshot struct {
+	raw      []byte
+	exists   bool
+	settings *phpjson.Object
+	env      *phpjson.Object
+	ok       bool
 }
 
-// ErrChanged is returned by SetEnvIf when a variable no longer has the
-// value expected.
-var ErrChanged = errors.New("a variable changed")
+// OK reports whether the settings are well formed with an env, if any,
+// that is an object: whether memry can edit them safely.
+func (snap Snapshot) OK() bool {
+	return snap.ok
+}
 
-// SetEnvIf is SetEnv when each variable of expected still has its value
-// (nil for a missing or null one), as read when the caller decided on the
-// change; otherwise it returns ErrChanged, leaving the file untouched.
-func (s *ClaudeSettings) SetEnvIf(expected map[string]any, vars *phpjson.Object) (bool, error) {
-	settings, env, ok, err := s.readEnv()
-	if !ok || err != nil {
+// Env is the env object of the settings, nil when there is none.
+func (snap Snapshot) Env() *phpjson.Object {
+	return snap.env
+}
+
+// Setting is the top-level setting key, nil when it is missing or null.
+func (snap Snapshot) Setting(key string) any {
+	if snap.settings == nil {
+		return nil
+	}
+	value, _ := snap.settings.Get(key)
+	return value
+}
+
+// Read reads the settings file, or empty settings when there is none.
+func (s *ClaudeSettings) Read() (Snapshot, error) {
+	data, err := os.ReadFile(s.path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Snapshot{settings: phpjson.NewObject(), ok: true}, nil
+	}
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return snapshotOf(data), nil
+}
+
+// snapshotOf decodes the bytes of an existing settings file.
+func snapshotOf(data []byte) Snapshot {
+	snap := Snapshot{raw: data, exists: true}
+	decoded, _ := phpjson.Decode(data)
+	settings, ok := decoded.(*phpjson.Object)
+	if !ok || !wellFormed(settings) || !encodable(settings) {
+		return snap
+	}
+	snap.settings = settings
+	value, _ := settings.Get("env")
+	if value == nil {
+		snap.ok = true
+		return snap
+	}
+	snap.env, snap.ok = value.(*phpjson.Object)
+	return snap
+}
+
+// ErrChanged is returned by a write from a snapshot when the file is no
+// longer the one the snapshot read.
+var ErrChanged = errors.New("the file changed")
+
+// reread reads the file again, returning ErrChanged unless it is exactly
+// the one snapshot read, byte for byte. Its objects are new, so changing
+// them leaves snapshot as it is.
+func (s *ClaudeSettings) reread(snapshot Snapshot) (Snapshot, error) {
+	fresh, err := s.Read()
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if fresh.exists != snapshot.exists || !bytes.Equal(fresh.raw, snapshot.raw) {
+		return Snapshot{}, ErrChanged
+	}
+	return fresh, nil
+}
+
+// SetEnvFrom sets each of vars in the env object of the settings, creating
+// it when missing, and keeps every other setting and variable, but only
+// when the file is still exactly snapshot (else ErrChanged). It returns
+// false, leaving the file untouched, when it is not well formed or its env
+// is not an object.
+func (s *ClaudeSettings) SetEnvFrom(snapshot Snapshot, vars *phpjson.Object) (bool, error) {
+	fresh, err := s.reread(snapshot)
+	if err != nil || !fresh.ok {
 		return false, err
 	}
-	for key, want := range expected {
-		var value any
-		if env != nil {
-			value, _ = env.Get(key)
-		}
-		if value != want {
-			return false, ErrChanged
-		}
-	}
-	if env == nil {
-		env = phpjson.NewObject()
-		settings.Set("env", env)
+	if fresh.env == nil {
+		fresh.env = phpjson.NewObject()
+		fresh.settings.Set("env", fresh.env)
 	}
 	for key, value := range vars.All() {
-		env.Set(key, value)
+		fresh.env.Set(key, value)
 	}
-	return true, s.writeOwnerOnly(settings)
+	return true, s.writeOwnerOnly(fresh.settings)
+}
+
+// RemoveEnvFrom removes keys from the env object of the settings, keeping
+// every other setting and variable, and drops an env left empty (SetEnvFrom
+// creates it when missing; an empty one means none), but only when the
+// file is still exactly snapshot (else ErrChanged).
+func (s *ClaudeSettings) RemoveEnvFrom(snapshot Snapshot, keys []string) (Removal, error) {
+	fresh, err := s.reread(snapshot)
+	if err != nil {
+		return NotFound, err
+	}
+	if !fresh.ok {
+		return Unsafe, nil
+	}
+	if fresh.env == nil {
+		return NotFound, nil
+	}
+	removed := false
+	for _, key := range keys {
+		if _, found := fresh.env.Get(key); found {
+			fresh.env.Delete(key)
+			removed = true
+		}
+	}
+	if !removed {
+		return NotFound, nil
+	}
+	if fresh.env.Len() == 0 {
+		fresh.settings.Delete("env")
+	}
+	return Removed, s.writeOwnerOnly(fresh.settings)
 }
 
 // writeOwnerOnly is write for settings that hold a secret: a new file is
@@ -225,69 +316,4 @@ func (s *ClaudeSettings) writeOwnerOnly(settings *phpjson.Object) error {
 		}
 	}
 	return fsx.WriteAtomic(s.path, append(encoded, '\n'), 0o600)
-}
-
-// readEnv reads the settings and their env object, nil when it is missing
-// or null. It returns false when the file is not well formed or its env is
-// something else.
-func (s *ClaudeSettings) readEnv() (*phpjson.Object, *phpjson.Object, bool, error) {
-	settings, ok, err := s.read()
-	if !ok || err != nil {
-		return nil, nil, false, err
-	}
-	value, _ := settings.Get("env")
-	if value == nil {
-		return settings, nil, true, nil
-	}
-	env, ok := value.(*phpjson.Object)
-	return settings, env, ok, nil
-}
-
-// RemoveEnv removes keys from the env object of the settings, keeping
-// every other setting and variable, and drops an env left empty.
-func (s *ClaudeSettings) RemoveEnv(keys []string) (Removal, error) {
-	settings, env, ok, err := s.readEnv()
-	if err != nil {
-		return NotFound, err
-	}
-	if !ok {
-		return Unsafe, nil
-	}
-	if env == nil {
-		return NotFound, nil
-	}
-	removed := false
-	for _, key := range keys {
-		if _, found := env.Get(key); found {
-			env.Delete(key)
-			removed = true
-		}
-	}
-	if !removed {
-		return NotFound, nil
-	}
-	// SetEnv creates the env when missing; an empty one means none.
-	if env.Len() == 0 {
-		settings.Delete("env")
-	}
-	return Removed, s.writeOwnerOnly(settings)
-}
-
-// Env returns the env object of the settings, nil when there is none. It
-// returns false when the file is not well formed or its env is not an
-// object.
-func (s *ClaudeSettings) Env() (*phpjson.Object, bool, error) {
-	_, env, ok, err := s.readEnv()
-	return env, ok, err
-}
-
-// Setting returns the top-level setting key, nil when it is missing or
-// null. It returns false when the file is not well formed.
-func (s *ClaudeSettings) Setting(key string) (any, bool, error) {
-	settings, ok, err := s.read()
-	if !ok || err != nil {
-		return nil, ok, err
-	}
-	value, _ := settings.Get(key)
-	return value, true, nil
 }

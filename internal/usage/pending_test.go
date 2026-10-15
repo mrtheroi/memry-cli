@@ -128,3 +128,32 @@ func TestEnableSavesThePendingSetupBeforeWritingTheSettings(t *testing.T) {
 	}
 	assertNotContains(t, readText(t, h.configPath), `"pending"`)
 }
+
+// A failed enable restores the record only while the pending setup is
+// still its own: one another invocation saved meanwhile is left alone.
+func TestAFailedEnableLeavesAnotherInvocationsPendingSetup(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	h.run(usage.Enable)
+	var theirs string
+	t.Cleanup(usage.SetBeforeSettingsWrite(func() {
+		var cfg map[string]any
+		_ = json.Unmarshal([]byte(readText(t, h.configPath)), &cfg)
+		record := cfg["usage_metrics"].(map[string]any)
+		pending := record["pending"].(map[string]any)
+		pending["token_id"] = 99
+		h.writeConfig(cfg)
+		theirs = readText(t, h.configPath)
+		env := h.settingsEnv()
+		env["EDITOR"] = "vim"
+		h.writeSettingsEnv(env)
+	}))
+
+	output, code := h.run(usage.Enable)
+
+	assertExit(t, code, 1, output)
+	if got := readText(t, h.configPath); got != theirs {
+		t.Errorf("config =\n%s\nwant the other invocation's record kept:\n%s", got, theirs)
+	}
+}

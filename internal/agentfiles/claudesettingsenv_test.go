@@ -10,9 +10,14 @@ import (
 
 func setEnv(t *testing.T, path string, pairs ...any) bool {
 	t.Helper()
-	ok, err := agentfiles.NewClaudeSettings(path).SetEnv(phpjson.NewObject(pairs...))
+	settings := agentfiles.NewClaudeSettings(path)
+	snapshot, err := settings.Read()
 	if err != nil {
-		t.Fatalf("SetEnv: %v", err)
+		t.Fatalf("Read: %v", err)
+	}
+	ok, err := settings.SetEnvFrom(snapshot, phpjson.NewObject(pairs...))
+	if err != nil {
+		t.Fatalf("SetEnvFrom: %v", err)
 	}
 	return ok
 }
@@ -49,9 +54,14 @@ func TestClaudeSettingsSetEnvLeavesAnEnvThatIsNotAnObjectUntouched(t *testing.T)
 
 func removeEnv(t *testing.T, path string, keys ...string) agentfiles.Removal {
 	t.Helper()
-	removed, err := agentfiles.NewClaudeSettings(path).RemoveEnv(keys)
+	settings := agentfiles.NewClaudeSettings(path)
+	snapshot, err := settings.Read()
 	if err != nil {
-		t.Fatalf("RemoveEnv: %v", err)
+		t.Fatalf("Read: %v", err)
+	}
+	removed, err := settings.RemoveEnvFrom(snapshot, keys)
+	if err != nil {
+		t.Fatalf("RemoveEnvFrom: %v", err)
 	}
 	return removed
 }
@@ -100,30 +110,56 @@ func TestClaudeSettingsRemoveEnvWithoutAnEnvLeavesTheFileUntouched(t *testing.T)
 	}
 }
 
-func TestClaudeSettingsEnvReadsTheVariables(t *testing.T) {
+func TestClaudeSettingsReadReadsTheVariables(t *testing.T) {
 	path := settingsPath(t)
 	writeFile(t, path, `{"env":{"FOO":"bar"}}`)
 
-	env, ok, err := agentfiles.NewClaudeSettings(path).Env()
+	snapshot, err := agentfiles.NewClaudeSettings(path).Read()
 
-	if err != nil || !ok {
-		t.Fatalf("Env = %v, %v; want ok", ok, err)
+	if err != nil || !snapshot.OK() {
+		t.Fatalf("Read = %v, %v; want ok", snapshot.OK(), err)
 	}
-	if value, _ := env.Get("FOO"); value != "bar" {
+	if value, _ := snapshot.Env().Get("FOO"); value != "bar" {
 		t.Errorf("FOO = %v, want bar", value)
 	}
 }
 
-// SetEnvIf writes only when the variables still have the values the
-// caller decided on: a change since then makes it stop, untouched.
-func TestClaudeSettingsSetEnvIfStopsWhenAVariableChanged(t *testing.T) {
+// A write from a snapshot happens only when the whole file is still the
+// one read: any change since, even outside the env, makes it stop.
+func TestClaudeSettingsSetEnvFromStopsWhenTheFileChanged(t *testing.T) {
 	path := settingsPath(t)
-	writeFile(t, path, `{"env":{"A":"2"}}`)
+	writeFile(t, path, `{"env":{"A":"1"}}`)
+	settings := agentfiles.NewClaudeSettings(path)
+	snapshot, err := settings.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := `{"env":{"A":"1"},"otelHeadersHelper":"/bin/headers.sh"}`
+	writeFile(t, path, changed)
 
-	ok, err := agentfiles.NewClaudeSettings(path).SetEnvIf(map[string]any{"A": "1", "B": nil}, phpjson.NewObject("A", "x", "B", "y"))
+	ok, err := settings.SetEnvFrom(snapshot, phpjson.NewObject("B", "2"))
 
 	if !errors.Is(err, agentfiles.ErrChanged) || ok {
-		t.Errorf("SetEnvIf = %v, %v; want false, ErrChanged", ok, err)
+		t.Errorf("SetEnvFrom = %v, %v; want false, ErrChanged", ok, err)
 	}
-	assertContents(t, path, `{"env":{"A":"2"}}`)
+	assertContents(t, path, changed)
+}
+
+func TestClaudeSettingsRemoveEnvFromStopsWhenTheFileChanged(t *testing.T) {
+	path := settingsPath(t)
+	writeFile(t, path, `{"env":{"A":"1"}}`)
+	settings := agentfiles.NewClaudeSettings(path)
+	snapshot, err := settings.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := `{"env":{"A":"2"}}`
+	writeFile(t, path, changed)
+
+	removed, err := settings.RemoveEnvFrom(snapshot, []string{"A"})
+
+	if !errors.Is(err, agentfiles.ErrChanged) || removed != agentfiles.NotFound {
+		t.Errorf("RemoveEnvFrom = %v, %v; want NotFound, ErrChanged", removed, err)
+	}
+	assertContents(t, path, changed)
 }

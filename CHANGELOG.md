@@ -48,9 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launch environment first, exports them to memry with a bearer token, and otherwise lists what is
   missing or overridden, never printing the token. `memry uninstall` and `memry delete-account`
   turn usage metrics off too; a delete-account retry keeps the record.
-- `memry usage enable` writes the settings as a compare-and-swap: only if memry's variables still
-  have the values it validated before asking for the token. An edit in between stops it with
-  nothing written, the previous record restored and the new token revoked.
+- Every write to Claude Code's settings (enable, disable, uninstall, delete-account) is a
+  compare-and-swap of the whole file: memry keeps the bytes it validated and writes only if the file
+  is still exactly those; any change meanwhile, inside or outside the env, stops it with nothing
+  written. A failed enable restores the previous record and revokes the new token, but only while
+  the pending setup is still its own. Usage commands and uninstall run under an exclusive lock, a
+  file created with `O_EXCL` in the temporary directory and named after the memry config, holding
+  the pid and time, taken over after two minutes; a command waits up to 15 seconds for another one.
 - The usage metrics record survives an interrupted enable: the new setup is saved as `pending`
   next to the `current` one before the settings are written, and becomes current once they are.
   Every later usage command, and uninstall, settles a leftover pending setup first: current when

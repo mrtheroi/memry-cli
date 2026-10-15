@@ -4,10 +4,14 @@
 package usage
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
 	neturl "net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -50,6 +54,11 @@ func Enable(env Env) int {
 	if !ok {
 		return failure
 	}
+	return env.locked(env.enable)
+}
+
+// enable is Enable once the usage lock is held.
+func (env Env) enable() int {
 	st := env.reconcile(env.load())
 	if !st.loggedIn {
 		env.line("You are not logged in to memry. Run `memry setup` first.")
@@ -69,13 +78,15 @@ func Enable(env Env) int {
 		env.line("Usage metrics are on in " + st.settings.Path() + ". Run `memry usage disable` first to move them to " + st.activePath + ".")
 		return failure
 	}
-	current, ok, err := st.settings.Env()
-	if failed := settingsFailure(st.settings, ok, err); failed != "" {
+	// Everything below is decided on this read of the settings, which the
+	// write later compares the file with, byte for byte.
+	snapshot, err := st.settings.Read()
+	if failed := settingsFailure(st.settings, snapshot.OK(), err, "turning on"); failed != "" {
 		env.line("Could not turn on usage metrics: " + failed)
 		return failure
 	}
-	helper, _, _ := st.settings.Setting(helperKey)
-	model := telemetry{environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: helper}
+	current := snapshot.Env()
+	model := telemetry{environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
 	blockers := model.blockers(st.url + metricsPath)
 	blockers = append(blockers, managedBlockers(env.ManagedDir, st.url+metricsPath)...)
 	if len(blockers) > 0 {
@@ -127,19 +138,12 @@ func Enable(env Env) int {
 		return failure
 	}
 	beforeSettingsWrite()
-	// Written only if memry's variables still have the values enable
-	// decided on above, before the token was issued.
-	expected := map[string]any{}
-	for _, v := range append(wanted(endpoint), variable{headersKey, ""}) {
-		expected[v.key] = nil
-		if current != nil {
-			expected[v.key], _ = current.Get(v.key)
-		}
-	}
-	ok, err = st.settings.SetEnvIf(expected, vars)
-	if failed := settingsFailure(st.settings, ok, err); failed != "" {
+	// Written only if the file is still the one enable decided on above,
+	// before the token was issued.
+	ok, err := st.settings.SetEnvFrom(snapshot, vars)
+	if failed := settingsFailure(st.settings, ok, err, "turning on"); failed != "" {
 		env.line("Could not turn on usage metrics: " + failed)
-		env.restore(st)
+		env.restore(st, issued.ID)
 		env.revokeNew(st, issued.ID)
 		return failure
 	}
@@ -168,14 +172,25 @@ func (env Env) revokeNew(st state, id int64) {
 }
 
 // restore puts back the usage metrics record st was loaded with, after the
-// settings could not be written: the settings still hold what it says.
-func (env Env) restore(st state) {
-	if st.hasRecord {
-		st.cfg.SetUsageMetrics(config.UsageMetrics{Current: &st.record})
-	} else {
-		st.cfg.DeleteUsageMetrics()
+// settings could not be written: the settings still hold what it says. It
+// reads the record again first and restores only while the pending setup
+// is still this enable's, the one with token id, so it never undoes what
+// another invocation saved.
+func (env Env) restore(st state, id int64) {
+	cfg, err := config.Load(st.cfgPath)
+	if err != nil {
+		env.line("Could not restore the usage metrics record in " + st.cfgPath + ": " + err.Error() + ".")
+		return
 	}
-	if err := st.cfg.Save(); err != nil {
+	if usage, _ := cfg.UsageMetrics(); usage.Pending == nil || usage.Pending.TokenID != id {
+		return
+	}
+	if st.hasRecord {
+		cfg.SetUsageMetrics(config.UsageMetrics{Current: &st.record})
+	} else {
+		cfg.DeleteUsageMetrics()
+	}
+	if err := cfg.Save(); err != nil {
 		env.line("Could not restore the usage metrics record in " + st.cfgPath + ": " + err.Error() + ".")
 	}
 }
@@ -272,11 +287,14 @@ func (env Env) reconcile(st state) state {
 		return st
 	}
 	pending := *st.pending
-	current, ok, err := agentfiles.NewClaudeSettings(pending.SettingsPath).Env()
-	if !ok || err != nil {
+	snapshot, err := agentfiles.NewClaudeSettings(pending.SettingsPath).Read()
+	if err != nil || !snapshot.OK() {
 		return st
 	}
-	headers, _ := current.Get(headersKey)
+	var headers any
+	if current := snapshot.Env(); current != nil {
+		headers, _ = current.Get(headersKey)
+	}
 	usage, revoke := config.UsageMetrics{Current: &pending}, st.record
 	if headers != pending.Values[headersKey] {
 		usage, revoke = config.UsageMetrics{}, pending
@@ -372,10 +390,10 @@ func (st state) kept(current *phpjson.Object, endpoint string) []string {
 
 // settingsFailure says why the settings could not be read or written, or
 // nothing when they could.
-func settingsFailure(settings *agentfiles.ClaudeSettings, ok bool, err error) string {
+func settingsFailure(settings *agentfiles.ClaudeSettings, ok bool, err error, doing string) string {
 	switch {
 	case errors.Is(err, agentfiles.ErrChanged):
-		return settings.Path() + " changed while memry was turning on usage metrics, so nothing was written. Try again."
+		return settings.Path() + " changed while memry was " + doing + " usage metrics, so nothing was written. Try again."
 	case err != nil:
 		return err.Error() + "."
 	case !ok:
@@ -454,6 +472,11 @@ func Disable(env Env) int {
 	if !ok {
 		return failure
 	}
+	return env.locked(env.disable)
+}
+
+// disable is Disable once the usage lock is held.
+func (env Env) disable() int {
 	removed, ok := env.turnOff(true)
 	switch {
 	case !ok:
@@ -470,8 +493,12 @@ func Disable(env Env) int {
 // telling why, when they could not be removed; the record then stays for
 // a retry.
 func TurnOff(env Env, revoke bool) bool {
-	_, ok := env.turnOff(revoke)
-	return ok
+	return env.locked(func() int {
+		if _, ok := env.turnOff(revoke); !ok {
+			return failure
+		}
+		return success
+	}) == success
 }
 
 // turnOff removes what the record says enable wrote, from the settings it
@@ -484,15 +511,16 @@ func (env Env) turnOff(revoke bool) (removed, ok bool) {
 	if len(st.setups()) == 0 {
 		return false, true
 	}
-	current, ok, err := st.settings.Env()
-	if failed := settingsFailure(st.settings, ok, err); failed != "" {
+	snapshot, err := st.settings.Read()
+	if failed := settingsFailure(st.settings, snapshot.OK(), err, "turning off"); failed != "" {
 		env.line("Could not turn off usage metrics: " + failed)
 		return false, false
 	}
-	keys := st.written(current)
+	keys := st.written(snapshot.Env())
 	if len(keys) > 0 {
-		removal, err := st.settings.RemoveEnv(keys)
-		if failed := settingsFailure(st.settings, removal != agentfiles.Unsafe, err); failed != "" {
+		beforeSettingsWrite()
+		removal, err := st.settings.RemoveEnvFrom(snapshot, keys)
+		if failed := settingsFailure(st.settings, removal != agentfiles.Unsafe, err, "turning off"); failed != "" {
 			env.line("Could not turn off usage metrics: " + failed)
 			return false, false
 		}
@@ -540,22 +568,27 @@ func Status(env Env) int {
 	if !ok {
 		return failure
 	}
+	return env.locked(env.status)
+}
+
+// status is Status once the usage lock is held.
+func (env Env) status() int {
 	st := env.reconcile(env.load())
 	if !st.hasRecord {
 		env.line("Usage metrics are off.")
 		return success
 	}
-	current, ok, err := st.settings.Env()
-	if failed := settingsFailure(st.settings, ok, err); failed != "" {
+	snapshot, err := st.settings.Read()
+	if failed := settingsFailure(st.settings, snapshot.OK(), err, "reading"); failed != "" {
 		env.line("Could not read the usage metrics setting: " + failed)
 		return failure
 	}
+	current := snapshot.Env()
 	endpoint := st.record.Values[endpointKey]
 	if endpoint == "" {
 		endpoint = st.url + metricsPath
 	}
-	helper, _, _ := st.settings.Setting(helperKey)
-	model := telemetry{environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: helper}
+	model := telemetry{environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
 	reasons := append(model.inactive(endpoint), model.foreign(endpoint)...)
 	if reasons = append(reasons, managedBlockers(env.ManagedDir, endpoint)...); len(reasons) > 0 {
 		env.line("Usage metrics are not active:")
@@ -572,3 +605,16 @@ func Status(env Env) int {
 // beforeSettingsWrite runs right before enable writes the settings; a
 // seam for the tests.
 var beforeSettingsWrite = func() {}
+
+// lockPath is the usage lock of the memry config: in the temporary
+// directory, named after the config's absolute path, so the lock works
+// even where the config's own directory is read-only, and two configs
+// never share one.
+func (env Env) lockPath() string {
+	path, _ := config.Path(env.GOOS, env.getenv)
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	sum := sha256.Sum256([]byte(path))
+	return filepath.Join(os.TempDir(), "memry-usage-"+hex.EncodeToString(sum[:8])+".lock")
+}

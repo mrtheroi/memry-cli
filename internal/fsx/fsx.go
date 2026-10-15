@@ -92,12 +92,7 @@ func write(path string, data []byte, mode *os.FileMode, restrict bool, check fun
 	if err := os.Chmod(temp.Name(), *mode); err != nil {
 		return err
 	}
-	if check != nil {
-		if err := check(); err != nil {
-			return err
-		}
-	}
-	return renameRetry(temp.Name(), path)
+	return renameRetry(temp.Name(), path, check)
 }
 
 // renameAttempts is how many times a rename is tried: with the pauses of
@@ -105,9 +100,16 @@ func write(path string, data []byte, mode *os.FileMode, restrict bool, check fun
 const renameAttempts = 10
 
 // renameRetry renames oldpath over newpath, trying again while the error
-// is transient, like a file another program holds open on Windows.
-func renameRetry(oldpath, newpath string) error {
+// is transient, like a file another program holds open on Windows. A
+// check, if any, runs right before every attempt and stops it on error:
+// the other program may have written newpath while it held it.
+func renameRetry(oldpath, newpath string, check func() error) error {
 	for attempt := 1; ; attempt++ {
+		if check != nil {
+			if err := check(); err != nil {
+				return err
+			}
+		}
 		err := rename(oldpath, newpath)
 		if err == nil || !retryable(err) {
 			return err

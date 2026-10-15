@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mrtheroi/memry-cli/internal/fsx"
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
@@ -167,4 +168,95 @@ func withoutHooks(groups []any, marker string) ([]any, bool) {
 		removed = removed || len(others) != len(hooks)
 	}
 	return kept, removed
+}
+
+// SetEnv sets each of vars in the env object of the settings, creating it
+// when missing, and keeps every other setting and variable. It returns
+// false, leaving the file untouched, when it is not well formed or its env
+// is not an object.
+func (s *ClaudeSettings) SetEnv(vars *phpjson.Object) (bool, error) {
+	settings, env, ok, err := s.readEnv()
+	if !ok || err != nil {
+		return false, err
+	}
+	if env == nil {
+		env = phpjson.NewObject()
+		settings.Set("env", env)
+	}
+	for key, value := range vars.All() {
+		env.Set(key, value)
+	}
+	return true, s.writeOwnerOnly(settings)
+}
+
+// writeOwnerOnly is write for settings that hold a secret: a new file is
+// readable by its owner only, and an existing one loses the permissions
+// of everyone else, never gaining any.
+func (s *ClaudeSettings) writeOwnerOnly(settings *phpjson.Object) error {
+	encoded, err := encode(settings)
+	if err != nil {
+		return err
+	}
+	// The write keeps the mode of an existing file, so it is tightened
+	// first.
+	if info, err := os.Stat(s.path); err == nil {
+		if err := os.Chmod(s.path, info.Mode().Perm()&0o700); err != nil {
+			return err
+		}
+	}
+	return fsx.WriteAtomic(s.path, append(encoded, '\n'), 0o600)
+}
+
+// readEnv reads the settings and their env object, nil when it is missing
+// or null. It returns false when the file is not well formed or its env is
+// something else.
+func (s *ClaudeSettings) readEnv() (*phpjson.Object, *phpjson.Object, bool, error) {
+	settings, ok, err := s.read()
+	if !ok || err != nil {
+		return nil, nil, false, err
+	}
+	value, _ := settings.Get("env")
+	if value == nil {
+		return settings, nil, true, nil
+	}
+	env, ok := value.(*phpjson.Object)
+	return settings, env, ok, nil
+}
+
+// RemoveEnv removes keys from the env object of the settings, keeping
+// every other setting and variable, and drops an env left empty.
+func (s *ClaudeSettings) RemoveEnv(keys []string) (Removal, error) {
+	settings, env, ok, err := s.readEnv()
+	if err != nil {
+		return NotFound, err
+	}
+	if !ok {
+		return Unsafe, nil
+	}
+	if env == nil {
+		return NotFound, nil
+	}
+	removed := false
+	for _, key := range keys {
+		if _, found := env.Get(key); found {
+			env.Delete(key)
+			removed = true
+		}
+	}
+	if !removed {
+		return NotFound, nil
+	}
+	// SetEnv creates the env when missing; an empty one means none.
+	if env.Len() == 0 {
+		settings.Delete("env")
+	}
+	return Removed, s.writeOwnerOnly(settings)
+}
+
+// Env returns the env object of the settings, nil when there is none. It
+// returns false when the file is not well formed or its env is not an
+// object.
+func (s *ClaudeSettings) Env() (*phpjson.Object, bool, error) {
+	_, env, ok, err := s.readEnv()
+	return env, ok, err
 }

@@ -185,7 +185,8 @@ memry usage disable   # turn it off again
 
 `memry usage enable` first tells you what is sent, then asks your memry server for a usage token
 (it can only send usage metrics) and sets Claude Code's OpenTelemetry metrics export in the `env`
-of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): `CLAUDE_CODE_ENABLE_TELEMETRY`,
+of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, with a relative
+`CLAUDE_CONFIG_DIR` resolved against the current directory): `CLAUDE_CODE_ENABLE_TELEMETRY`,
 `OTEL_METRICS_EXPORTER`, `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`,
 `OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and `OTEL_METRICS_INCLUDE_SESSION_ID`,
 `OTEL_METRICS_INCLUDE_ACCOUNT_UUID` and `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES` set to `false`.

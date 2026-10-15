@@ -1,0 +1,16 @@
+{
+    "hooks": {
+        "SessionStart": [
+            {
+                "matcher": "startup|resume|clear|compact",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "memry --config \"/var/folders/06/_mm7y8195qq6lybfxxc4j61r0000gn/T/TestClaudeCodeOnWindowsNeverPutsTheTokenInAnyCommand3876928587/001/memry/config.json\" hook:session-start",
+                        "timeout": 10
+                    }
+                ]
+            }
+        ]
+    }
+}

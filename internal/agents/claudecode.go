@@ -1,6 +1,8 @@
 package agents
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -50,12 +52,18 @@ func (a *claudeCode) settings() *agentfiles.ClaudeSettings {
 }
 
 // ClaudeSettingsPath is Claude Code's settings.json for goos (the zero
-// value means Unix): $CLAUDE_CONFIG_DIR/settings.json, or
+// value means Unix): $CLAUDE_CONFIG_DIR/settings.json, made absolute, or
 // ~/.claude/settings.json by default.
 func ClaudeSettingsPath(goos string, getenv func(string) string) string {
 	dir := getenv("CLAUDE_CONFIG_DIR")
 	if dir == "" {
 		dir = Env{GOOS: goos, Getenv: getenv}.homePath(".claude")
+	} else if !isAbs(goos, dir) {
+		// Resolved like Claude Code does, against the working directory,
+		// so the path means the same file from any other one.
+		if cwd, err := getwd(); err == nil {
+			dir = filepath.Join(cwd, dir)
+		}
 	}
 	return home.Join(dir, "settings.json")
 }
@@ -314,3 +322,17 @@ func (a *claudeCode) removeSessionStartHook(lines *lines) bool {
 	}
 	return true
 }
+
+// isAbs reports whether dir is an absolute path: for this OS, or with a
+// drive or a UNC share on Windows (goos), whatever OS reads it.
+func isAbs(goos, dir string) bool {
+	if filepath.IsAbs(dir) || goos != "windows" {
+		return filepath.IsAbs(dir)
+	}
+	drive := len(dir) >= 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
+	return drive || strings.HasPrefix(dir, `\\`)
+}
+
+// getwd is the working directory a relative CLAUDE_CONFIG_DIR is in; a
+// seam for the tests.
+var getwd = os.Getwd

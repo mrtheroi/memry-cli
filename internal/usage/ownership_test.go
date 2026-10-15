@@ -117,3 +117,24 @@ func TestDisableForgetsARecordWhoseValuesAreGone(t *testing.T) {
 	assertContains(t, output, "Usage metrics are not on; nothing to remove.")
 	assertNotContains(t, readText(t, h.configPath), `"usage_metrics"`)
 }
+
+// A relative CLAUDE_CONFIG_DIR is recorded as an absolute path, so disable
+// from another directory cleans up the same file.
+func TestARelativeConfigDirIsRecordedAbsolute(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	first := t.TempDir()
+	t.Chdir(first)
+	h.env["CLAUDE_CONFIG_DIR"] = "profile"
+	h.run(usage.Enable)
+	t.Chdir(t.TempDir())
+	delete(h.env, "CLAUDE_CONFIG_DIR")
+
+	output, code := h.run(usage.Disable)
+
+	assertExit(t, code, 0, output)
+	if got := readText(t, filepath.Join(first, "profile", "settings.json")); got != "{}\n" {
+		t.Errorf("settings = %s, want memry's variables removed", got)
+	}
+}

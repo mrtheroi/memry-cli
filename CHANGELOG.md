@@ -34,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `memry usage disable` removes only what memry wrote: it records under `usage_metrics` in the
   memry config the settings path, every variable with its exact value and the variables that
   already had memry's value before the first enable, and a variable is memry's only while it is
-  in that file with exactly the recorded value. It cleans up the recorded file even if
+  in that file with exactly the recorded value. A relative `CLAUDE_CONFIG_DIR` is resolved against
+  the current directory, so the recorded path is absolute. It cleans up the recorded file even if
   `CLAUDE_CONFIG_DIR` changed, drops an `env` left empty and keeps the record until the cleanup
   worked. `memry usage status` reports the metrics on only when the effective configuration, the
   launch environment first, exports them to memry with a bearer token, and otherwise lists what is

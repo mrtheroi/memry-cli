@@ -29,3 +29,18 @@ func TestClaudeSettingsPath(t *testing.T) {
 		})
 	}
 }
+
+// A relative CLAUDE_CONFIG_DIR is resolved against the working directory,
+// so the path memry records means the same file from any other one.
+func TestClaudeSettingsPathResolvesARelativeConfigDir(t *testing.T) {
+	work := filepath.Join(t.TempDir(), "work")
+	t.Cleanup(agents.SetGetwd(func() (string, error) { return work, nil }))
+
+	got := agents.ClaudeSettingsPath("linux", func(key string) string {
+		return map[string]string{"CLAUDE_CONFIG_DIR": "profile"}[key]
+	})
+
+	if want := filepath.Join(work, "profile") + string(filepath.Separator) + "settings.json"; got != want {
+		t.Errorf("ClaudeSettingsPath = %q, want %q", got, want)
+	}
+}

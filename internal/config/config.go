@@ -249,14 +249,19 @@ func (f *File) Delete(key string) {
 	f.keys = slices.DeleteFunc(f.keys, func(k string) bool { return k == key })
 }
 
-// UsageMetrics is what `memry usage enable` set up in Claude Code, saved
-// under usage_metrics so `memry usage disable` removes only that. The PHP
-// CLI does not know this key and keeps it as it is.
+// UsageMetrics is what `memry usage enable` wrote in Claude Code's
+// settings, saved under usage_metrics: the record `memry usage disable`
+// and `memry uninstall` remove exactly that by. It holds the usage token
+// (in the metrics headers), as this file, readable by its owner only,
+// holds the login token. The PHP CLI does not know this key and keeps it
+// as it is.
 type UsageMetrics struct {
-	// Endpoint is the metrics endpoint memry wrote.
-	Endpoint string `json:"endpoint"`
-	// Kept are the variables that already had memry's value, which
-	// memry did not write and so never removes.
+	// SettingsPath is the settings file memry wrote.
+	SettingsPath string `json:"settings_path"`
+	// Values are the variables memry wrote there, with their values.
+	Values map[string]string `json:"values"`
+	// Kept are the variables that already had memry's value before the
+	// first enable, which memry did not write and so never removes.
 	Kept []string `json:"kept"`
 }
 
@@ -264,7 +269,7 @@ type UsageMetrics struct {
 func (f *File) UsageMetrics() (UsageMetrics, bool) {
 	var usage UsageMetrics
 	ok := f.decodeValue("usage_metrics", &usage)
-	return usage, ok && usage.Endpoint != ""
+	return usage, ok && usage.SettingsPath != ""
 }
 
 // SetUsageMetrics saves the usage metrics setup.

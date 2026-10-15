@@ -2,6 +2,7 @@ package usage
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
@@ -90,4 +91,38 @@ func (t telemetry) blockers(endpoint string, userOn bool) []string {
 		}
 	}
 	return lines
+}
+
+// inactive says why Claude Code does not export metrics to endpoint with
+// a usage token, or nothing when it does: the switch, the exporter, the
+// protocol, the endpoint and the headers, each as Claude Code reads it.
+func (t telemetry) inactive(endpoint string) []string {
+	var reasons []string
+	for _, v := range []variable{{switchKey, "1"}, {"OTEL_METRICS_EXPORTER", "otlp"}, {"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json"}, {endpointKey, endpoint}, {headersKey, ""}} {
+		if value, ok := t.inEnvironment(v.key); ok {
+			if !v.matches(value) {
+				reasons = append(reasons, v.key+" is overridden in the environment.")
+			}
+			continue
+		}
+		value, ok := t.inSettings(v.key)
+		text, _ := value.(string)
+		switch {
+		case !ok:
+			reasons = append(reasons, v.key+" is missing from "+t.path+".")
+		case !v.matches(text):
+			reasons = append(reasons, v.key+" is not memry's value in "+t.path+".")
+		}
+	}
+	return reasons
+}
+
+// matches reports whether value is the variable's: for the headers, which
+// hold a token, any bearer token.
+func (v variable) matches(value string) bool {
+	if v.key == headersKey {
+		token, ok := strings.CutPrefix(value, bearerPrefix)
+		return ok && token != ""
+	}
+	return value == v.value
 }

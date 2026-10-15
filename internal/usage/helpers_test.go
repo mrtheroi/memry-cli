@@ -188,3 +188,13 @@ func (h *harness) client() *http.Client {
 type roundTripper func(*http.Request) (*http.Response, error)
 
 func (f roundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// writeSettingsEnv replaces the settings with just env.
+func (h *harness) writeSettingsEnv(env map[string]any) {
+	h.t.Helper()
+	data, err := json.Marshal(map[string]any{"env": env})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	writeRaw(h.t, h.settingsPath(), string(data))
+}

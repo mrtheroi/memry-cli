@@ -13,8 +13,20 @@ import (
 func TestUninstallTurnsOffUsageMetrics(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
-	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"claude-code"}})
-	writeRaw(t, h.settingsPath, `{"env":{"FOO":"bar","CLAUDE_CODE_ENABLE_TELEMETRY":"1","OTEL_METRICS_EXPORTER":"otlp","OTEL_EXPORTER_OTLP_METRICS_PROTOCOL":"http/json","OTEL_EXPORTER_OTLP_METRICS_ENDPOINT":"`+s.URL+`/api/otlp/v1/metrics","OTEL_EXPORTER_OTLP_METRICS_HEADERS":"Authorization=Bearer 7|usage"}}`)
+	values := map[string]string{
+		"CLAUDE_CODE_ENABLE_TELEMETRY":        "1",
+		"OTEL_METRICS_EXPORTER":               "otlp",
+		"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": s.URL + "/api/otlp/v1/metrics",
+		"OTEL_EXPORTER_OTLP_METRICS_HEADERS":  "Authorization=Bearer 7|usage",
+	}
+	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"claude-code"},
+		"usage_metrics": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}}})
+	env := map[string]string{"FOO": "bar"}
+	for key, value := range values {
+		env[key] = value
+	}
+	data, _ := json.Marshal(map[string]any{"env": env})
+	writeRaw(t, h.settingsPath, string(data))
 
 	output, code := h.run(uninstall.Uninstall, force)
 
@@ -53,7 +65,7 @@ func TestUninstallKeepsTheLoginWhenUsageMetricsCannotBeTurnedOff(t *testing.T) {
 	codex := &fakeAgent{key: "codex", name: "Codex"}
 	h.useAgents(codex)
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"},
-		"usage_metrics": map[string]any{"endpoint": s.URL + "/api/otlp/v1/metrics", "kept": []string{}}})
+		"usage_metrics": map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}}})
 	writeRaw(t, h.settingsPath, `{"env":`)
 
 	output, code := h.run(uninstall.Uninstall, force)
@@ -62,5 +74,25 @@ func TestUninstallKeepsTheLoginWhenUsageMetricsCannotBeTurnedOff(t *testing.T) {
 	assertContains(t, output, "Could not turn off usage metrics: "+h.settingsPath+" is not valid JSON")
 	if cfg := h.config(); cfg["token"] != "1|abc" {
 		t.Errorf("config = %v, want the login kept", cfg)
+	}
+}
+
+// A delete-account retry keeps nothing but the agents to clean up, and the
+// usage metrics record: without it, the retry could not recognize what
+// memry wrote.
+func TestDeleteAccountKeepsTheUsageMetricsRecordForARetry(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
+	record := map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}}
+	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"}, "usage_metrics": record})
+	writeRaw(t, h.settingsPath, `{"env":`)
+
+	output, code := h.run(uninstall.DeleteAccount, nil, answer{label: typeYourEmail, value: "ana@example.com"})
+
+	assertExit(t, code, 1, output)
+	cfg := h.config()
+	if _, ok := cfg["usage_metrics"]; !ok || cfg["token"] != nil {
+		t.Errorf("config = %v, want the usage_metrics record without the login", cfg)
 	}
 }

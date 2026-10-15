@@ -58,13 +58,17 @@ func Enable(env Env) int {
 			". Use an https:// server, or pass --insecure to allow it (for example on a trusted LAN).")
 		return failure
 	}
+	if st.settings.Path() != st.activePath {
+		env.line("Usage metrics are on in " + st.settings.Path() + ". Run `memry usage disable` first to move them to " + st.activePath + ".")
+		return failure
+	}
 	current, ok, err := st.settings.Env()
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
 		env.line("Could not turn on usage metrics: " + failed)
 		return failure
 	}
 	model := telemetry{environment: env.LookupEnv, settings: current, path: st.settings.Path()}
-	if blockers := model.blockers(st.url+metricsPath, model.value(switchKey) == "1" && (model.where(switchKey) == "the environment" || slices.Contains(st.kept(current), switchKey))); len(blockers) > 0 {
+	if blockers := model.blockers(st.url+metricsPath, model.value(switchKey) == "1" && (model.where(switchKey) == "the environment" || slices.Contains(st.kept(current, st.url+metricsPath), switchKey))); len(blockers) > 0 {
 		for _, line := range blockers {
 			env.line(line)
 		}
@@ -72,7 +76,7 @@ func Enable(env Env) int {
 		return failure
 	}
 	force := flags.HasParameterOption(env.Args, "--force")
-	if inTheWay := conflicts(current, st.ours); len(inTheWay) > 0 && !force {
+	if inTheWay := st.conflicts(current, st.url+metricsPath); len(inTheWay) > 0 && !force {
 		for _, key := range inTheWay {
 			env.line(key + " is already set to another value in " + st.settings.Path() + ".")
 		}
@@ -88,19 +92,21 @@ func Enable(env Env) int {
 		return failure
 	}
 	endpoint := st.url + metricsPath
-	kept := st.kept(current)
+	kept := st.kept(current, endpoint)
 	vars := phpjson.NewObject()
-	for _, c := range constants {
-		vars.Set(c.key, c.value)
+	values := map[string]string{}
+	for _, v := range append(wanted(endpoint), variable{headersKey, bearerPrefix + usageToken}) {
+		if !slices.Contains(kept, v.key) {
+			vars.Set(v.key, v.value)
+			values[v.key] = v.value
+		}
 	}
-	vars.Set(endpointKey, endpoint)
-	vars.Set(headersKey, "Authorization=Bearer "+usageToken)
 	ok, err = st.settings.SetEnv(vars)
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
 		env.line("Could not turn on usage metrics: " + failed)
 		return failure
 	}
-	st.cfg.SetUsageMetrics(config.UsageMetrics{Endpoint: endpoint, Kept: kept})
+	st.cfg.SetUsageMetrics(config.UsageMetrics{SettingsPath: st.settings.Path(), Values: values, Kept: kept})
 	if err := st.cfg.Save(); err != nil {
 		env.line("Could not save what memry wrote to " + st.cfgPath + ": " + err.Error() + ".")
 		return failure
@@ -151,16 +157,20 @@ type state struct {
 	// url and token are the login, when loggedIn.
 	url, token string
 	loggedIn   bool
-	// record is what enable saved, when hasRecord.
+	// record is what enable wrote, when hasRecord: the single source of
+	// what is memry's.
 	record    config.UsageMetrics
 	hasRecord bool
-	settings  *agentfiles.ClaudeSettings
+	// settings are the ones enable wrote, when there is a record, else
+	// the ones Claude Code reads now (activePath).
+	settings   *agentfiles.ClaudeSettings
+	activePath string
 }
 
 // load reads the config file, which like the other commands is empty when
 // it is missing or cannot be read as a JSON object.
 func (env Env) load() state {
-	st := state{settings: agentfiles.NewClaudeSettings(agents.ClaudeSettingsPath(env.GOOS, env.getenv))}
+	st := state{activePath: agents.ClaudeSettingsPath(env.GOOS, env.getenv)}
 	st.cfgPath, _ = config.Path(env.GOOS, env.getenv)
 	cfg, err := config.LoadOrEmpty(st.cfgPath)
 	if err != nil {
@@ -171,29 +181,47 @@ func (env Env) load() state {
 	token, hasToken := cfg.Token()
 	st.url, st.token, st.loggedIn = url, token, hasURL && url != "" && hasToken && token != ""
 	st.record, st.hasRecord = cfg.UsageMetrics()
+	path := st.activePath
+	if st.hasRecord {
+		path = st.record.SettingsPath
+	}
+	st.settings = agentfiles.NewClaudeSettings(path)
 	return st
 }
 
-// ours reports whether endpoint is memry's: the one enable saved, or the
-// one of the server memry is logged in to.
-func (st state) ours(endpoint any) bool {
-	return (st.hasRecord && endpoint == st.record.Endpoint) || (st.url != "" && endpoint == st.url+metricsPath)
+// owned reports whether key of current is memry's: it is there with
+// exactly the value memry recorded writing.
+func (st state) owned(current *phpjson.Object, key string) bool {
+	recorded, ok := st.record.Values[key]
+	if !st.hasRecord || !ok || current == nil {
+		return false
+	}
+	value, _ := current.Get(key)
+	return value == recorded
 }
 
-// kept returns the constants of current that memry did not write: the
-// ones enable kept before, when memry's export is already there, else the
-// ones that already have memry's value.
-func (st state) kept(current *phpjson.Object) []string {
-	if current == nil {
-		return nil
-	}
-	if endpoint, _ := current.Get(endpointKey); st.ours(endpoint) {
-		return st.record.Kept
-	}
+// wanted are the variables memry sets for its export to endpoint, but for
+// the headers, which hold a usage token not issued yet.
+func wanted(endpoint string) []variable {
+	return append(slices.Clone(constants), variable{endpointKey, endpoint})
+}
+
+// kept returns the variables of current that memry does not write because
+// they already have memry's value and are not memry's: the ones the record
+// kept since the first enable, while they still have it, else, on the
+// first enable, the ones that have it now.
+func (st state) kept(current *phpjson.Object, endpoint string) []string {
 	kept := []string{}
-	for _, c := range constants {
-		if value, _ := current.Get(c.key); value == c.value {
-			kept = append(kept, c.key)
+	if current == nil {
+		return kept
+	}
+	for _, v := range wanted(endpoint) {
+		value, _ := current.Get(v.key)
+		if value != v.value {
+			continue
+		}
+		if !st.hasRecord || slices.Contains(st.record.Kept, v.key) {
+			kept = append(kept, v.key)
 		}
 	}
 	return kept
@@ -231,35 +259,23 @@ const (
 	switchKey   = "CLAUDE_CODE_ENABLE_TELEMETRY"
 	endpointKey = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
 	headersKey  = "OTEL_EXPORTER_OTLP_METRICS_HEADERS"
+	// bearerPrefix starts the headers, before the usage token.
+	bearerPrefix = "Authorization=Bearer "
 )
 
-// conflicts returns the variables of current in the way of memry's export
-// to endpoint: the ones memry would replace that hold another value it did
-// not write, and the generic OTLP endpoint and headers, which would send
-// the user's other telemetry elsewhere or their headers to memry. memry's
-// own export is recognized by its endpoint (see ours); the headers next to
-// it are memry's too, with the token of an earlier enable.
-func conflicts(current *phpjson.Object, ours func(any) bool) []string {
+// conflicts returns memry's variables in the settings that hold a value
+// memry did not write (see owned) and is not memry's either, so enable
+// would replace it: the user's.
+func (st state) conflicts(current *phpjson.Object, endpoint string) []string {
 	if current == nil {
 		return nil
 	}
 	var inTheWay []string
-	has := func(key string) (any, bool) {
-		value, ok := current.Get(key)
-		return value, ok && value != nil
-	}
-	for _, c := range constants {
-		if value, ok := has(c.key); ok && value != c.value {
-			inTheWay = append(inTheWay, c.key)
+	for _, v := range append(wanted(endpoint), variable{headersKey, ""}) {
+		value, _ := current.Get(v.key)
+		if value != nil && value != v.value && !st.owned(current, v.key) {
+			inTheWay = append(inTheWay, v.key)
 		}
-	}
-	value, hasEndpoint := has(endpointKey)
-	isOurs := hasEndpoint && ours(value)
-	if hasEndpoint && !isOurs {
-		inTheWay = append(inTheWay, endpointKey)
-	}
-	if _, ok := has(headersKey); ok && !isOurs {
-		inTheWay = append(inTheWay, headersKey)
 	}
 	return inTheWay
 }
@@ -331,7 +347,7 @@ func Disable(env Env) int {
 	if !ok {
 		return failure
 	}
-	removed, ok := env.turnOff(false)
+	removed, ok := env.turnOff()
 	switch {
 	case !ok:
 		return failure
@@ -343,85 +359,89 @@ func Disable(env Env) int {
 
 // TurnOff turns off the usage metrics memry set up, saying so, and says
 // nothing when they are not on. It reports false, after telling why, when
-// they could not be removed. Settings it cannot read are no failure when
-// memry has no record of turning them on, so they never stop the removal
-// of memry from other agents.
+// they could not be removed; the record then stays for a retry.
 func TurnOff(env Env) bool {
-	_, ok := env.turnOff(true)
+	_, ok := env.turnOff()
 	return ok
 }
 
-// turnOff removes what enable wrote, reporting whether there was anything
-// to remove and whether that worked. When lenient, settings it cannot read
-// are nothing to remove unless memry has a record of turning them on.
-func (env Env) turnOff(lenient bool) (removed, ok bool) {
+// turnOff removes what the record says enable wrote, from the settings it
+// wrote, then forgets the record. It reports whether there was anything to
+// remove and whether that worked.
+func (env Env) turnOff() (removed, ok bool) {
 	st := env.load()
+	if !st.hasRecord {
+		return false, true
+	}
 	current, ok, err := st.settings.Env()
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
-		if lenient && !st.hasRecord {
-			return false, true
-		}
 		env.line("Could not turn off usage metrics: " + failed)
 		return false, false
 	}
 	keys := st.written(current)
-	if len(keys) == 0 {
-		return false, true
-	}
-	removal, err := st.settings.RemoveEnv(keys)
-	if failed := settingsFailure(st.settings, removal != agentfiles.Unsafe, err); failed != "" {
-		env.line("Could not turn off usage metrics: " + failed)
-		return true, false
-	}
-	if st.hasRecord {
-		st.cfg.DeleteUsageMetrics()
-		if err := st.cfg.Save(); err != nil {
-			env.line("Could not update " + st.cfgPath + ": " + err.Error() + ".")
-			return true, false
+	if len(keys) > 0 {
+		removal, err := st.settings.RemoveEnv(keys)
+		if failed := settingsFailure(st.settings, removal != agentfiles.Unsafe, err); failed != "" {
+			env.line("Could not turn off usage metrics: " + failed)
+			return false, false
 		}
 	}
-	env.line("Usage metrics are off. Removed them from " + st.settings.Path() + "; restart Claude Code to apply it.")
-	return true, true
+	st.cfg.DeleteUsageMetrics()
+	if err := st.cfg.Save(); err != nil {
+		env.line("Could not update " + st.cfgPath + ": " + err.Error() + ".")
+		return len(keys) > 0, false
+	}
+	if len(keys) > 0 {
+		env.line("Usage metrics are off. Removed them from " + st.settings.Path() + "; restart Claude Code to apply it.")
+	}
+	return len(keys) > 0, true
 }
 
-// written returns the variables of current that memry wrote: none unless
-// its endpoint is there, else the endpoint, the headers next to it and
-// the constants that still have memry's value, except the ones it kept.
+// written returns the variables of current that are memry's (see owned),
+// in a stable order.
 func (st state) written(current *phpjson.Object) []string {
-	if current == nil {
-		return nil
-	}
-	if endpoint, _ := current.Get(endpointKey); !st.ours(endpoint) {
-		return nil
-	}
-	keys := []string{endpointKey, headersKey}
-	for _, c := range constants {
-		if value, _ := current.Get(c.key); value == c.value && !slices.Contains(st.record.Kept, c.key) {
-			keys = append(keys, c.key)
+	var keys []string
+	for key := range st.record.Values {
+		if st.owned(current, key) {
+			keys = append(keys, key)
 		}
 	}
+	slices.Sort(keys)
 	return keys
 }
 
-// Status runs `memry usage status` and returns its exit code. It never
-// prints the usage token.
+// Status runs `memry usage status` and returns its exit code. Usage
+// metrics are on only when what Claude Code runs with, its launch
+// environment first, exports them to memry. It never prints the usage
+// token, nor any value but memry's endpoint.
 func Status(env Env) int {
 	env, ok := env.start("usage status")
 	if !ok {
 		return failure
 	}
 	st := env.load()
+	if !st.hasRecord {
+		env.line("Usage metrics are off.")
+		return success
+	}
 	current, ok, err := st.settings.Env()
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
 		env.line("Could not read the usage metrics setting: " + failed)
 		return failure
 	}
-	if len(st.written(current)) == 0 {
-		env.line("Usage metrics are off.")
+	endpoint := st.record.Values[endpointKey]
+	if endpoint == "" {
+		endpoint = st.url + metricsPath
+	}
+	model := telemetry{environment: env.LookupEnv, settings: current, path: st.settings.Path()}
+	if reasons := model.inactive(endpoint); len(reasons) > 0 {
+		env.line("Usage metrics are not active:")
+		for _, reason := range reasons {
+			env.line("- " + reason)
+		}
 		return success
 	}
-	endpoint, _ := current.Get(endpointKey)
-	env.line(fmt.Sprintf("Usage metrics are on: Claude Code sends its metrics to %s.", endpoint))
+	env.line("Usage metrics are on: Claude Code sends its metrics to " + endpoint + ".")
 	env.line("Set in " + st.settings.Path() + ".")
 	return success
 }

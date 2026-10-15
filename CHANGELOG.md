@@ -27,10 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   generic one. It refuses a non-loopback `http://` server unless `--insecure`. The settings
   file, which now holds the usage token, is created readable only by its owner, and an existing one
   loses any permission for other users.
-- `memry usage disable` removes only the variables memry wrote and that still have memry's values,
-  keeps the ones that already had them before `enable`, and drops an `env` left empty.
-  `memry usage status` says whether the metrics are on and where they go, never printing the token.
-  `memry uninstall` and `memry delete-account` turn usage metrics off too.
+- `memry usage disable` removes only what memry wrote: it records under `usage_metrics` in the
+  memry config the settings path, every variable with its exact value and the variables that
+  already had memry's value before the first enable, and a variable is memry's only while it is
+  in that file with exactly the recorded value. It cleans up the recorded file even if
+  `CLAUDE_CONFIG_DIR` changed, drops an `env` left empty and keeps the record until the cleanup
+  worked. `memry usage status` reports the metrics on only when the effective configuration, the
+  launch environment first, exports them to memry with a bearer token, and otherwise lists what is
+  missing or overridden, never printing the token. `memry uninstall` and `memry delete-account`
+  turn usage metrics off too; a delete-account retry keeps the record.
 
 ### Changed
 

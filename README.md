@@ -217,11 +217,17 @@ What is sent, only to the server you logged in to:
 - When one of memry's variables is set in `settings.json` to a value memry did not write, `enable`
   stops and names it; `--force` replaces it. A plain `http://` server that is not this machine
   needs `--insecure`, like `memry setup`.
-- memry recognizes its own export by the metrics endpoint: the one of the server you are logged in
-  to, or the one it saved under `usage_metrics` in the memry config. `disable` removes only the
-  variables memry wrote and that still have memry's values, keeps the ones you had already set to
-  the same value, and drops the `env` object if that leaves it empty. `memry uninstall` turns usage
-  metrics off too.
+- memry records what it wrote under `usage_metrics` in the memry config (readable only by your
+  user): the settings file, each variable with its exact value, and the variables that already had
+  memry's value before the first `enable`, which it never writes nor removes. A variable is
+  memry's only while it is in that file with exactly the recorded value. `disable` (and
+  `memry uninstall` or `memry delete-account`) removes just those, from the recorded file even if
+  `CLAUDE_CONFIG_DIR` changed since, drops the `env` object if that leaves it empty, and keeps the
+  record until that worked, so a retry can finish it. `enable` for another `CLAUDE_CONFIG_DIR`
+  stops until you `disable` the first one.
+- `status` says the metrics are on only when what Claude Code runs with, the launch environment
+  first, has the switch on, the `otlp` exporter, the `http/json` protocol, memry's endpoint and a
+  bearer token; otherwise it lists what is missing or overridden. It never prints the token.
 
 ## Update
 

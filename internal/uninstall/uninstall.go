@@ -150,7 +150,7 @@ func (env Env) removeFromAgents() []string {
 
 // keepForRetry saves the agents still to clean up in agents_to_remove,
 // with an empty agent selection, keeping the login or, without
-// keepLogin, nothing else, so `memry uninstall` can retry them. Without a config file there is
+// keepLogin, only the usage metrics record, so `memry uninstall` can retry them. Without a config file there is
 // nothing to keep: a retry cleans up Claude Code again. It always fails.
 func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
 	path, _ := config.Path(env.GOOS, env.getenv)
@@ -160,9 +160,14 @@ func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
 	}
 	cfg, err := config.LoadOrEmpty(path)
 	if err == nil && !keepLogin {
-		// Start from an empty config at the same path.
+		// Start from an empty config at the same path, but for the record
+		// of the usage metrics still to turn off.
+		usage, hasUsage := cfg.UsageMetrics()
 		if err = os.Remove(path); err == nil || errors.Is(err, fs.ErrNotExist) {
 			cfg, err = config.LoadOrEmpty(path)
+		}
+		if err == nil && hasUsage {
+			cfg.SetUsageMetrics(usage)
 		}
 	}
 	if err == nil {

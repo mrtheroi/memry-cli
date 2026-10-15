@@ -82,3 +82,19 @@ func TestFirstEnableLeavesNoRecordWhenTheSettingsCannotBeWritten(t *testing.T) {
 	assertExit(t, code, 1, output)
 	assertNotContains(t, readText(t, h.configPath), `"usage_metrics"`)
 }
+
+// When the pending setup cannot be settled, disable still removes the
+// values of either setup from the settings.
+func TestDisableRemovesThePendingSetupsValuesToo(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	interruptedEnable(t, h, s, true)
+	readOnly(t, filepath.Dir(h.configPath))
+
+	output, _ := h.run(usage.Disable)
+
+	if got := h.settingsEnv(); len(got) != 0 {
+		t.Errorf("env = %v, want the values of both setups removed; output:\n%s", got, output)
+	}
+}

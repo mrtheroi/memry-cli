@@ -11,11 +11,13 @@ import (
 func TestUsageMetricsIsSavedAndLoadedBack(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	cfg, _ := config.Load(path)
-	want := config.UsageMetrics{
+	want := config.UsageMetrics{Current: &config.UsageSetup{
+		ServerURL:    "https://memry.test",
 		SettingsPath: "/home/ana/.claude/settings.json",
 		Values:       map[string]string{"OTEL_METRICS_EXPORTER": "otlp"},
 		Kept:         []string{"CLAUDE_CODE_ENABLE_TELEMETRY"},
-	}
+		TokenID:      7,
+	}}
 	cfg.SetUsageMetrics(want)
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)

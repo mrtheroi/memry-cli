@@ -249,13 +249,11 @@ func (f *File) Delete(key string) {
 	f.keys = slices.DeleteFunc(f.keys, func(k string) bool { return k == key })
 }
 
-// UsageMetrics is what `memry usage enable` wrote in Claude Code's
-// settings, saved under usage_metrics: the record `memry usage disable`
-// and `memry uninstall` remove exactly that by. It holds the usage token
-// (in the metrics headers), as this file, readable by its owner only,
-// holds the login token. The PHP CLI does not know this key and keeps it
-// as it is.
-type UsageMetrics struct {
+// UsageSetup is a usage metrics setup `memry usage enable` wrote in
+// Claude Code's settings: what `memry usage disable` and `memry uninstall`
+// remove exactly. It holds the usage token (in the metrics headers), as
+// this file, readable by its owner only, holds the login token.
+type UsageSetup struct {
 	// ServerURL is the memry server the usage token belongs to.
 	ServerURL string `json:"server_url"`
 	// SettingsPath is the settings file memry wrote.
@@ -269,11 +267,21 @@ type UsageMetrics struct {
 	TokenID int64 `json:"token_id,omitempty"`
 }
 
-// UsageMetrics is the saved usage metrics setup, when there is one.
+// UsageMetrics is the record of the usage metrics setups, saved under
+// usage_metrics. The PHP CLI does not know this key and keeps it as it is.
+type UsageMetrics struct {
+	// Current is the setup in the settings.
+	Current *UsageSetup `json:"current,omitempty"`
+	// Pending is a setup enable saved before writing the settings, until
+	// it knows whether the write happened.
+	Pending *UsageSetup `json:"pending,omitempty"`
+}
+
+// UsageMetrics is the saved usage metrics record, when there is one.
 func (f *File) UsageMetrics() (UsageMetrics, bool) {
 	var usage UsageMetrics
 	ok := f.decodeValue("usage_metrics", &usage)
-	return usage, ok && usage.SettingsPath != ""
+	return usage, ok && (usage.Current != nil || usage.Pending != nil)
 }
 
 // SetUsageMetrics saves the usage metrics setup.

@@ -47,7 +47,7 @@ func Enable(env Env) int {
 	if !ok {
 		return failure
 	}
-	st := env.load()
+	st := env.reconcile(env.load())
 	if !st.loggedIn {
 		env.line("You are not logged in to memry. Run `memry setup` first.")
 		return failure
@@ -109,14 +109,21 @@ func Enable(env Env) int {
 			values[v.key] = v.value
 		}
 	}
-	// The record goes first: settings memry has no record of could never
-	// be turned off.
-	st.cfg.SetUsageMetrics(config.UsageMetrics{ServerURL: normalizeServer(st.url), SettingsPath: st.settings.Path(), Values: values, Kept: kept, TokenID: issued.ID})
+	// The record goes first, in two phases: the new setup is pending, next
+	// to the current one, until the settings hold it. Whatever stops
+	// enable, the next usage command can tell which one the settings got.
+	setup := config.UsageSetup{ServerURL: normalizeServer(st.url), SettingsPath: st.settings.Path(), Values: values, Kept: kept, TokenID: issued.ID}
+	staged := config.UsageMetrics{Pending: &setup}
+	if st.hasRecord {
+		staged.Current = &st.record
+	}
+	st.cfg.SetUsageMetrics(staged)
 	if err := st.cfg.Save(); err != nil {
 		env.revokeNew(st, issued.ID)
 		env.line("Could not save the usage metrics record to " + st.cfgPath + ": " + err.Error() + ". Nothing was changed.")
 		return failure
 	}
+	beforeSettingsWrite()
 	ok, err = st.settings.SetEnv(vars)
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
 		env.line("Could not turn on usage metrics: " + failed)
@@ -124,9 +131,15 @@ func Enable(env Env) int {
 		env.revokeNew(st, issued.ID)
 		return failure
 	}
-	// Only now that the new token is in use is the one this machine used
-	// before revoked; other machines' tokens are never touched.
-	if st.record.TokenID != 0 && !env.revokeToken(st.url, st.token, st.record.TokenID) {
+	st.cfg.SetUsageMetrics(config.UsageMetrics{Current: &setup})
+	switch err := st.cfg.Save(); {
+	case err != nil:
+		// The settings hold the new setup: the next usage command finds
+		// it pending and makes it current.
+		env.line("Could not update the usage metrics record in " + st.cfgPath + ": " + err.Error() + ". The next `memry usage` command finishes it.")
+	case st.record.TokenID != 0 && !env.revokeToken(st.url, st.token, st.record.TokenID):
+		// Only now that the new token is in use is the one this machine
+		// used before revoked; other machines' tokens are never touched.
 		env.line("Could not revoke your previous usage token; it stops working after 30 days without use.")
 	}
 	env.line("Usage metrics are on. Saved in " + st.settings.Path() + "; restart Claude Code to apply it.")
@@ -146,7 +159,7 @@ func (env Env) revokeNew(st state, id int64) {
 // settings could not be written: the settings still hold what it says.
 func (env Env) restore(st state) {
 	if st.hasRecord {
-		st.cfg.SetUsageMetrics(st.record)
+		st.cfg.SetUsageMetrics(config.UsageMetrics{Current: &st.record})
 	} else {
 		st.cfg.DeleteUsageMetrics()
 	}
@@ -199,8 +212,10 @@ type state struct {
 	loggedIn   bool
 	// record is what enable wrote, when hasRecord: the single source of
 	// what is memry's.
-	record    config.UsageMetrics
+	record    config.UsageSetup
 	hasRecord bool
+	// pending is a setup an interrupted enable may have written.
+	pending *config.UsageSetup
 	// settings are the ones enable wrote, when there is a record, else
 	// the ones Claude Code reads now (activePath).
 	settings   *agentfiles.ClaudeSettings
@@ -220,13 +235,53 @@ func (env Env) load() state {
 	url, hasURL := cfg.URL()
 	token, hasToken := cfg.Token()
 	st.url, st.token, st.loggedIn = url, token, hasURL && url != "" && hasToken && token != ""
-	st.record, st.hasRecord = cfg.UsageMetrics()
+	usage, _ := cfg.UsageMetrics()
+	if usage.Current != nil {
+		st.record, st.hasRecord = *usage.Current, true
+	}
+	st.pending = usage.Pending
 	path := st.activePath
-	if st.hasRecord {
-		path = st.record.SettingsPath
+	if setups := st.setups(); len(setups) > 0 {
+		path = setups[0].SettingsPath
 	}
 	st.settings = agentfiles.NewClaudeSettings(path)
 	return st
+}
+
+// reconcile settles a pending setup an interrupted enable left, then
+// loads the state again. The pending setup is current when the settings
+// it names hold its headers, so the write happened: the previous token is
+// revoked. Otherwise it never happened: the pending setup is dropped and
+// its token revoked. Settings it cannot read leave it for later.
+func (env Env) reconcile(st state) state {
+	if st.pending == nil {
+		return st
+	}
+	pending := *st.pending
+	current, ok, err := agentfiles.NewClaudeSettings(pending.SettingsPath).Env()
+	if !ok || err != nil {
+		return st
+	}
+	headers, _ := current.Get(headersKey)
+	usage, revoke := config.UsageMetrics{Current: &pending}, st.record
+	if headers != pending.Values[headersKey] {
+		usage, revoke = config.UsageMetrics{}, pending
+		if st.hasRecord {
+			usage.Current = &st.record
+		}
+	}
+	if usage.Current == nil {
+		st.cfg.DeleteUsageMetrics()
+	} else {
+		st.cfg.SetUsageMetrics(usage)
+	}
+	if err := st.cfg.Save(); err != nil {
+		return st
+	}
+	if revoke.TokenID != 0 && st.loggedIn && normalizeServer(st.url) == revoke.ServerURL {
+		_ = env.revokeToken(st.url, st.token, revoke.TokenID)
+	}
+	return env.load()
 }
 
 // sameServer reports whether memry is logged in to the server the
@@ -247,14 +302,31 @@ func normalizeServer(raw string) string {
 }
 
 // owned reports whether key of current is memry's: it is there with
-// exactly the value memry recorded writing.
+// exactly the value memry recorded writing, in the current setup or in a
+// pending one not settled yet.
 func (st state) owned(current *phpjson.Object, key string) bool {
-	recorded, ok := st.record.Values[key]
-	if !st.hasRecord || !ok || current == nil {
+	if current == nil {
 		return false
 	}
 	value, _ := current.Get(key)
-	return value == recorded
+	for _, setup := range st.setups() {
+		if recorded, ok := setup.Values[key]; ok && value == recorded {
+			return true
+		}
+	}
+	return false
+}
+
+// setups are the recorded setups: the current one and a pending one.
+func (st state) setups() []config.UsageSetup {
+	var setups []config.UsageSetup
+	if st.hasRecord {
+		setups = append(setups, st.record)
+	}
+	if st.pending != nil {
+		setups = append(setups, *st.pending)
+	}
+	return setups
 }
 
 // wanted are the variables memry sets for its export to endpoint, but for
@@ -387,8 +459,8 @@ func TurnOff(env Env, revoke bool) bool {
 // record. It
 // reports whether there was anything to remove and whether that worked.
 func (env Env) turnOff(revoke bool) (removed, ok bool) {
-	st := env.load()
-	if !st.hasRecord {
+	st := env.reconcile(env.load())
+	if len(st.setups()) == 0 {
 		return false, true
 	}
 	current, ok, err := st.settings.Env()
@@ -427,9 +499,11 @@ func (env Env) turnOff(revoke bool) (removed, ok bool) {
 // in a stable order.
 func (st state) written(current *phpjson.Object) []string {
 	var keys []string
-	for key := range st.record.Values {
-		if st.owned(current, key) {
-			keys = append(keys, key)
+	for _, setup := range st.setups() {
+		for key := range setup.Values {
+			if st.owned(current, key) && !slices.Contains(keys, key) {
+				keys = append(keys, key)
+			}
 		}
 	}
 	slices.Sort(keys)
@@ -445,7 +519,7 @@ func Status(env Env) int {
 	if !ok {
 		return failure
 	}
-	st := env.load()
+	st := env.reconcile(env.load())
 	if !st.hasRecord {
 		env.line("Usage metrics are off.")
 		return success
@@ -473,3 +547,7 @@ func Status(env Env) int {
 	env.line("Set in " + st.settings.Path() + ". Policies memry cannot read, like server-managed settings or an MDM profile, may still override it.")
 	return success
 }
+
+// beforeSettingsWrite runs right before enable writes the settings; a
+// seam for the tests.
+var beforeSettingsWrite = func() {}

@@ -76,7 +76,7 @@ func Uninstall(env Env) int {
 	// login stays for a retry. Their lines are shown after the revoke's,
 	// in the order of the PHP CLI.
 	var agentLines bytes.Buffer
-	pending := env.withOut(&agentLines).removeFromAgents()
+	pending := env.withOut(&agentLines).removeFromAgents(true)
 	if len(pending) > 0 {
 		_, _ = env.Out.Write(agentLines.Bytes())
 		return env.keepForRetry(pending, true, "Kept the login and the agents still to clean up in ")
@@ -126,7 +126,10 @@ func (env Env) aborted() int {
 // removeFromAgents removes memry from every agent setup wired, and from
 // the ones a failed removal left in agents_to_remove, even when an earlier
 // one fails. It returns the agents it could not be removed from.
-func (env Env) removeFromAgents() []string {
+//
+// With revokeUsage, the usage tokens are revoked too, which the deletion
+// of the account already did.
+func (env Env) removeFromAgents(revokeUsage bool) []string {
 	cfg := env.loadConfig()
 	saved, hasSaved := cfg.Agents()
 	toRemove, hasToRemove := cfg.AgentsToRemove()
@@ -142,7 +145,7 @@ func (env Env) removeFromAgents() []string {
 	}
 	// The usage metrics are recognized by the login, so they go before it.
 	// When they cannot be removed, Claude Code is kept for a retry.
-	if !usage.TurnOff(usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out}) && !slices.Contains(pending, "claude-code") {
+	if !usage.TurnOff(usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out, HTTP: env.HTTP}, revokeUsage) && !slices.Contains(pending, "claude-code") {
 		pending = append(pending, "claude-code")
 	}
 	return pending
@@ -375,7 +378,7 @@ func DeleteAccount(env Env) int {
 	env.line("Deleted your memry account and all its memories.")
 	// The token was deleted with the account, so there is nothing to
 	// revoke, nor a login to keep for a retry.
-	if pending := env.removeFromAgents(); len(pending) > 0 {
+	if pending := env.removeFromAgents(false); len(pending) > 0 {
 		return env.keepForRetry(pending, false, "Kept only the agents still to clean up in ")
 	}
 	deleted := env.deleteConfig()

@@ -192,6 +192,13 @@ of `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`): `CLAUDE_CO
 Restart Claude Code to apply it. The settings file holds the usage token, so memry leaves it
 readable by your user only.
 
+`enable` saves its record (see below) before it writes the settings, and if the settings cannot
+be written it puts the previous record back, so a failed `enable` changes nothing and the token
+already in use keeps working. Only once the new token is in the settings does it revoke your
+older usage tokens (those issued before it). `disable` revokes your usage tokens after removing
+memry's variables. Both revocations are best effort: a usage token that is not used stops working
+after 30 days.
+
 What is sent, only to the server you logged in to:
 
 - Claude Code has no per-metric filter, so it sends all 8 of its metrics: session count, lines of

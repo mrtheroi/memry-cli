@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   email, organization id, an anonymous user id and the terminal type; memry turns off the session
   id, account uuid and resource attributes (`OTEL_METRICS_INCLUDE_*=false`), and the server keeps
   only the token and cost data points. It is off by default and
-  never turned on by `memry setup`. It requests a usage token (`POST /api/auth/usage-token`, which
-  can only send usage metrics; enabling again rotates it) and merges eight `env` variables into
+  never turned on by `memry setup`. It requests a new usage token (`POST /api/auth/usage-token`, which
+  can only send usage metrics), saves its record, then merges eight `env` variables into
   Claude Code's `settings.json`, keeping every other setting. It stops, without asking for a token,
   when one of memry's variables is set in the settings to a value memry did not write (`--force`
   replaces it), and, whatever `--force` says, when one of them is exported in the launch
@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launch environment first, exports them to memry with a bearer token, and otherwise lists what is
   missing or overridden, never printing the token. `memry uninstall` and `memry delete-account`
   turn usage metrics off too; a delete-account retry keeps the record.
+- Usage tokens change transactionally: a failed record save changes nothing, a failed settings
+  write restores the previous record, so the token in use keeps working, and only after the new
+  token is in the settings are the older ones revoked (`DELETE /api/auth/usage-tokens?keep=<id>`,
+  which revokes the ones issued before it). `memry usage disable` and `memry uninstall` revoke the
+  usage tokens (`DELETE /api/auth/usage-tokens`). Revocation is best effort, with a warning:
+  unused usage tokens stop working after 30 days.
 
 ### Changed
 

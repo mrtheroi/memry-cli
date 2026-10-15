@@ -263,6 +263,8 @@ type UsageMetrics struct {
 	// Kept are the variables that already had memry's value before the
 	// first enable, which memry did not write and so never removes.
 	Kept []string `json:"kept"`
+	// TokenID is the id of the usage token in the headers.
+	TokenID int64 `json:"token_id,omitempty"`
 }
 
 // UsageMetrics is the saved usage metrics setup, when there is one.

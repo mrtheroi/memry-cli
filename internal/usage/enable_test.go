@@ -20,23 +20,29 @@ func TestEnableAddsTheMetricsExportKeepingEverythingElse(t *testing.T) {
 	output, code := h.run(usage.Enable)
 
 	assertExit(t, code, 0, output)
-	want := map[string]any{
+	wantEnv := map[string]any{
 		"FOO":                                      "bar",
 		"CLAUDE_CODE_ENABLE_TELEMETRY":             "1",
 		"OTEL_METRICS_EXPORTER":                    "otlp",
 		"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL":      "http/json",
 		"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT":      s.URL + "/api/otlp/v1/metrics",
-		"OTEL_EXPORTER_OTLP_METRICS_HEADERS":       "Authorization=Bearer 7|usage-secret",
+		"OTEL_EXPORTER_OTLP_METRICS_HEADERS":       "Authorization=Bearer " + usageToken(7),
 		"OTEL_METRICS_INCLUDE_SESSION_ID":          "false",
 		"OTEL_METRICS_INCLUDE_ACCOUNT_UUID":        "false",
 		"OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES": "false",
 	}
-	if got := h.settingsEnv(); !reflect.DeepEqual(got, want) {
-		t.Errorf("env = %v, want %v", got, want)
+	if got := h.settingsEnv(); !reflect.DeepEqual(got, wantEnv) {
+		t.Errorf("env = %v, want %v", got, wantEnv)
 	}
 	assertContains(t, readText(t, h.settingsPath()), `"model": "opus"`)
-	if got := s.received(); len(got) != 1 || got[0] != (request{"POST", "/api/auth/usage-token", "Bearer 1|login-token"}) {
-		t.Errorf("requests = %+v, want one POST /api/auth/usage-token with the login token", got)
+	// A new token first, then, once it is in the settings, the others
+	// revoked, both with the login token.
+	want := []request{
+		{"POST", "/api/auth/usage-token", "", "Bearer 1|login-token"},
+		{"DELETE", "/api/auth/usage-tokens", "keep=7", "Bearer 1|login-token"},
+	}
+	if got := s.received(); !reflect.DeepEqual(got, want) {
+		t.Errorf("requests = %+v, want %+v", got, want)
 	}
 }
 
@@ -86,6 +92,7 @@ func TestEnableLeavesTheSettingsUntouchedWhenTheServerRefuses(t *testing.T) {
 		"rate limited":  {429, `{}`, "Too many attempts, try again later."},
 		"server error":  {500, `oops`, "The memry server returned an unexpected error (HTTP 500)."},
 		"no token":      {201, `{}`, "The memry server did not return a usage token."},
+		"no id":         {201, `{"token":"x"}`, "The memry server did not return a usage token."},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -114,14 +121,16 @@ func TestEnableAgainOnlyRotatesTheToken(t *testing.T) {
 	writeRaw(t, h.settingsPath(), `{"env":{"FOO":"bar"}}`)
 	h.run(usage.Enable)
 	first := readText(t, h.settingsPath())
-	s.answer(201, `{"token":"8|rotated"}`)
 
 	output, code := h.run(usage.Enable)
 
 	assertExit(t, code, 0, output)
-	want := strings.Replace(first, "Bearer 7|usage-secret", "Bearer 8|rotated", 1)
+	want := strings.Replace(first, "Bearer "+usageToken(7), "Bearer "+usageToken(8), 1)
 	if got := readText(t, h.settingsPath()); got != want {
 		t.Errorf("settings =\n%s\nwant\n%s", got, want)
+	}
+	if got := s.activeTokens(); !reflect.DeepEqual(got, []int{8}) {
+		t.Errorf("active tokens = %v, want only the new one", got)
 	}
 }
 
@@ -187,4 +196,19 @@ func TestEnableLeavesSettingsThatAreNotValidJSONUntouched(t *testing.T) {
 			t.Errorf("requests = %+v, want none", got)
 		}
 	}
+}
+
+// Revoking the older usage tokens is best effort: they stop working after
+// 30 days without use anyway.
+func TestEnableSucceedsWithAWarningWhenTheOlderTokensCannotBeRevoked(t *testing.T) {
+	s := newServer(t)
+	s.answerRevoke(500)
+	h := newHarness(t)
+	h.login(s.URL)
+
+	output, code := h.run(usage.Enable)
+
+	assertExit(t, code, 0, output)
+	assertContains(t, output, "Could not revoke your older usage tokens; they stop working after 30 days without use.")
+	assertContains(t, output, "Usage metrics are on.")
 }

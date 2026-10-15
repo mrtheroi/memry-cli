@@ -4,17 +4,13 @@
 package usage
 
 import (
-	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	neturl "net/url"
 	"slices"
-	"unicode/utf8"
 
 	"github.com/mrtheroi/memry-cli/internal/agentfiles"
 	"github.com/mrtheroi/memry-cli/internal/agents"
-	"github.com/mrtheroi/memry-cli/internal/client"
 	"github.com/mrtheroi/memry-cli/internal/config"
 	"github.com/mrtheroi/memry-cli/internal/console"
 	"github.com/mrtheroi/memry-cli/internal/flags"
@@ -86,11 +82,12 @@ func Enable(env Env) int {
 	for _, line := range disclosure(st.url + metricsPath) {
 		env.line(line)
 	}
-	usageToken, failed := env.usageToken(st.url, st.token)
+	issued, failed := env.issueToken(st.url, st.token)
 	if failed != "" {
 		env.line(failed)
 		return failure
 	}
+	usageToken := issued.Token
 	endpoint := st.url + metricsPath
 	kept := st.kept(current, endpoint)
 	vars := phpjson.NewObject()
@@ -101,19 +98,39 @@ func Enable(env Env) int {
 			values[v.key] = v.value
 		}
 	}
+	// The record goes first: settings memry has no record of could never
+	// be turned off.
+	st.cfg.SetUsageMetrics(config.UsageMetrics{SettingsPath: st.settings.Path(), Values: values, Kept: kept, TokenID: issued.ID})
+	if err := st.cfg.Save(); err != nil {
+		env.line("Could not save the usage metrics record to " + st.cfgPath + ": " + err.Error() + ". Nothing was changed.")
+		return failure
+	}
 	ok, err = st.settings.SetEnv(vars)
 	if failed := settingsFailure(st.settings, ok, err); failed != "" {
 		env.line("Could not turn on usage metrics: " + failed)
+		env.restore(st)
 		return failure
 	}
-	st.cfg.SetUsageMetrics(config.UsageMetrics{SettingsPath: st.settings.Path(), Values: values, Kept: kept})
-	if err := st.cfg.Save(); err != nil {
-		env.line("Could not save what memry wrote to " + st.cfgPath + ": " + err.Error() + ".")
-		return failure
+	// Only now that the new token is in use are the older ones revoked.
+	if !env.revokeTokens(st.url, st.token, issued.ID) {
+		env.line("Could not revoke your older usage tokens; they stop working after 30 days without use.")
 	}
 	env.line("Usage metrics are on. Saved in " + st.settings.Path() + "; restart Claude Code to apply it.")
 	env.line("Run `memry usage disable` to turn it off.")
 	return success
+}
+
+// restore puts back the usage metrics record st was loaded with, after the
+// settings could not be written: the settings still hold what it says.
+func (env Env) restore(st state) {
+	if st.hasRecord {
+		st.cfg.SetUsageMetrics(st.record)
+	} else {
+		st.cfg.DeleteUsageMetrics()
+	}
+	if err := st.cfg.Save(); err != nil {
+		env.line("Could not restore the usage metrics record in " + st.cfgPath + ": " + err.Error() + ".")
+	}
 }
 
 // disclosure tells what Claude Code sends to endpoint once usage metrics
@@ -288,49 +305,6 @@ func pronoun(count int, one, many string) string {
 	return many
 }
 
-// usageToken asks the memry server at url for the user's usage token,
-// which replaces any previous one. It returns it, or why it failed.
-func (env Env) usageToken(url, token string) (usageToken, failed string) {
-	unreachable := "Could not reach the memry server at " + url + "."
-	req, err := http.NewRequest(http.MethodPost, url+"/api/auth/usage-token", nil)
-	if err != nil {
-		return "", unreachable
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := env.HTTP.Do(req)
-	if err != nil {
-		return "", unreachable
-	}
-	defer func() { _ = resp.Body.Close() }()
-	payload, err := client.ReadBody(resp.Body, maxResponseBytes)
-	if err != nil {
-		return "", unreachable
-	}
-	var body struct {
-		Token   string `json:"token"`
-		Message string `json:"message"`
-	}
-	decoded := utf8.Valid(payload) && json.Unmarshal(payload, &body) == nil
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
-		return "", "Your memry login is no longer valid. Run `memry setup` and try again."
-	case resp.StatusCode == http.StatusTooManyRequests:
-		return "", "Too many attempts, try again later."
-	case !client.Succeeded(resp) && decoded && body.Message != "":
-		return "", body.Message
-	case !client.Succeeded(resp):
-		return "", fmt.Sprintf("The memry server returned an unexpected error (HTTP %d).", resp.StatusCode)
-	case !decoded || body.Token == "":
-		return "", "The memry server did not return a usage token."
-	}
-	return body.Token, ""
-}
-
-// maxResponseBytes bounds the response read, so a misbehaving server
-// cannot make memry buffer an unbounded body. The real one is tiny.
-const maxResponseBytes = 1 << 20
-
 // line prints one line of output.
 func (env Env) line(text string) {
 	_, _ = io.WriteString(env.Out, text+"\n")
@@ -347,7 +321,7 @@ func Disable(env Env) int {
 	if !ok {
 		return failure
 	}
-	removed, ok := env.turnOff()
+	removed, ok := env.turnOff(true)
 	switch {
 	case !ok:
 		return failure
@@ -358,17 +332,20 @@ func Disable(env Env) int {
 }
 
 // TurnOff turns off the usage metrics memry set up, saying so, and says
-// nothing when they are not on. It reports false, after telling why, when
-// they could not be removed; the record then stays for a retry.
-func TurnOff(env Env) bool {
-	_, ok := env.turnOff()
+// nothing when they are not on. With revoke it revokes the usage tokens
+// too (not needed once the account is deleted). It reports false, after
+// telling why, when they could not be removed; the record then stays for
+// a retry.
+func TurnOff(env Env, revoke bool) bool {
+	_, ok := env.turnOff(revoke)
 	return ok
 }
 
 // turnOff removes what the record says enable wrote, from the settings it
-// wrote, then forgets the record. It reports whether there was anything to
-// remove and whether that worked.
-func (env Env) turnOff() (removed, ok bool) {
+// wrote, then, with revoke, revokes the usage tokens (best effort: they
+// stop working after 30 days without use), and forgets the record. It
+// reports whether there was anything to remove and whether that worked.
+func (env Env) turnOff(revoke bool) (removed, ok bool) {
 	st := env.load()
 	if !st.hasRecord {
 		return false, true
@@ -385,6 +362,9 @@ func (env Env) turnOff() (removed, ok bool) {
 			env.line("Could not turn off usage metrics: " + failed)
 			return false, false
 		}
+	}
+	if revoke && !(st.loggedIn && env.revokeTokens(st.url, st.token, 0)) {
+		env.line("Could not revoke your usage tokens; they stop working after 30 days without use.")
 	}
 	st.cfg.DeleteUsageMetrics()
 	if err := st.cfg.Save(); err != nil {

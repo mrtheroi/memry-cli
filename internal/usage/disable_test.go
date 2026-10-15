@@ -98,3 +98,36 @@ func TestDisableRecognizesTheEndpointEnableWroteAfterTheServerChanged(t *testing
 		t.Errorf("env = %v, want memry's variables removed", got)
 	}
 }
+
+// Disable revokes the usage tokens once memry's variables are gone.
+func TestDisableRevokesTheUsageTokens(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	h.run(usage.Enable)
+
+	output, code := h.run(usage.Disable)
+
+	assertExit(t, code, 0, output)
+	if got := s.activeTokens(); len(got) != 0 {
+		t.Errorf("active tokens = %v, want none", got)
+	}
+	if got := s.received(); got[len(got)-1] != (request{"DELETE", "/api/auth/usage-tokens", "", "Bearer 1|login-token"}) {
+		t.Errorf("last request = %+v, want DELETE /api/auth/usage-tokens without keep", got[len(got)-1])
+	}
+}
+
+func TestDisableSucceedsWithAWarningWhenTheTokensCannotBeRevoked(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	h.run(usage.Enable)
+	s.answerRevoke(401)
+
+	output, code := h.run(usage.Disable)
+
+	assertExit(t, code, 0, output)
+	assertContains(t, output, "Could not revoke your usage tokens; they stop working after 30 days without use.")
+	assertContains(t, output, "Usage metrics are off.")
+	assertNotContains(t, readText(t, h.configPath), `"usage_metrics"`)
+}

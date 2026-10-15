@@ -39,6 +39,10 @@ func TestUninstallTurnsOffUsageMetrics(t *testing.T) {
 	if want := map[string]any{"FOO": "bar"}; !reflect.DeepEqual(settings.Env, want) {
 		t.Errorf("env = %v, want %v", settings.Env, want)
 	}
+	// With the login token, before it is revoked.
+	if got := s.received(); len(got) < 2 || got[0].Method != "DELETE" || got[0].Path != "/api/auth/usage-tokens" || got[1].Path != "/api/auth/token" {
+		t.Errorf("requests = %+v, want the usage tokens revoked, then the login token", got)
+	}
 }
 
 // Claude Code settings memry cannot read do not fail an uninstall that
@@ -94,5 +98,11 @@ func TestDeleteAccountKeepsTheUsageMetricsRecordForARetry(t *testing.T) {
 	cfg := h.config()
 	if _, ok := cfg["usage_metrics"]; !ok || cfg["token"] != nil {
 		t.Errorf("config = %v, want the usage_metrics record without the login", cfg)
+	}
+	// The account deletion revoked every token already.
+	for _, r := range s.received() {
+		if r.Path == "/api/auth/usage-tokens" {
+			t.Errorf("sent %s %s, want no usage token revocation", r.Method, r.Path)
+		}
 	}
 }

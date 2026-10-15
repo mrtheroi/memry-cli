@@ -44,3 +44,49 @@ func TestClaudeSettingsPathResolvesARelativeConfigDir(t *testing.T) {
 		t.Errorf("ClaudeSettingsPath = %q, want %q", got, want)
 	}
 }
+
+// CLAUDE_CONFIG_DIR is resolved the way goos does: on Windows a drive or
+// UNC path is absolute, a path rooted without a drive is on the working
+// directory's drive, and anything else is under the working directory; on
+// Unix only a path starting with / is absolute.
+func TestClaudeSettingsPathResolvesConfigDirsLikeTheOS(t *testing.T) {
+	sep := string(filepath.Separator)
+	cwds := map[string]string{"windows": `C:\work`, "linux": "/work"}
+	tests := []struct {
+		goos, dir, want string
+	}{
+		{"windows", `C:\x`, `C:\x`},
+		{"windows", `\\server\share\x`, `\\server\share\x`},
+		{"windows", `\x`, `C:\x`},
+		{"windows", "/c", "C:/c"},
+		{"windows", "x", filepath.Join(`C:\work`, "x")},
+		{"linux", "/c", "/c"},
+		{"linux", "x", filepath.Join("/work", "x")},
+		// Windows paths are relative on Unix, unless the OS running the
+		// test takes them as absolute (only when it is Windows).
+		{"linux", `C:\x`, unixAbsolute(`C:\x`)},
+		{"linux", `\\server\share\x`, unixAbsolute(`\\server\share\x`)},
+		{"linux", `\x`, unixAbsolute(`\x`)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.goos+" "+tt.dir, func(t *testing.T) {
+			t.Cleanup(agents.SetGetwd(func() (string, error) { return cwds[tt.goos], nil }))
+
+			got := agents.ClaudeSettingsPath(tt.goos, func(key string) string {
+				return map[string]string{"CLAUDE_CONFIG_DIR": tt.dir}[key]
+			})
+
+			if want := tt.want + sep + "settings.json"; got != want {
+				t.Errorf("ClaudeSettingsPath = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// unixAbsolute is what a Unix goos makes of dir under /work.
+func unixAbsolute(dir string) string {
+	if filepath.IsAbs(dir) {
+		return dir
+	}
+	return filepath.Join("/work", dir)
+}

@@ -58,12 +58,10 @@ func ClaudeSettingsPath(goos string, getenv func(string) string) string {
 	dir := getenv("CLAUDE_CONFIG_DIR")
 	if dir == "" {
 		dir = Env{GOOS: goos, Getenv: getenv}.homePath(".claude")
-	} else if !isAbs(goos, dir) {
-		// Resolved like Claude Code does, against the working directory,
-		// so the path means the same file from any other one.
-		if cwd, err := getwd(); err == nil {
-			dir = filepath.Join(cwd, dir)
-		}
+	} else if cwd, err := getwd(); err == nil {
+		// Made absolute the way the OS does, so the path memry records
+		// means the same file from any other working directory.
+		dir = absolute(goos, dir, cwd)
 	}
 	return home.Join(dir, "settings.json")
 }
@@ -323,14 +321,44 @@ func (a *claudeCode) removeSessionStartHook(lines *lines) bool {
 	return true
 }
 
-// isAbs reports whether dir is an absolute path: for this OS, or with a
-// drive or a UNC share on Windows (goos), whatever OS reads it.
-func isAbs(goos, dir string) bool {
-	if filepath.IsAbs(dir) || goos != "windows" {
-		return filepath.IsAbs(dir)
+// absolute is dir made absolute on goos against the working directory
+// cwd, the way the OS resolves it: on Windows a drive or UNC path is
+// absolute, a path rooted without a drive is on cwd's drive, and anything
+// else is under cwd; on Unix only a path starting with / is absolute.
+// (A drive-relative C:x is left as it is.) The Windows rules do not depend
+// on the OS it runs on, so they can be tested anywhere.
+func absolute(goos, dir, cwd string) string {
+	if goos != "windows" {
+		// filepath.IsAbs only matters when goos is not this OS's, as in
+		// the tests: a path this OS takes as absolute stays as it is.
+		if strings.HasPrefix(dir, "/") || filepath.IsAbs(dir) {
+			return dir
+		}
+		return filepath.Join(cwd, dir)
 	}
-	drive := len(dir) >= 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
-	return drive || strings.HasPrefix(dir, `\\`)
+	switch {
+	case windowsVolume(dir) != "":
+		return dir
+	case strings.HasPrefix(dir, `\`) || strings.HasPrefix(dir, "/"):
+		return windowsVolume(cwd) + dir
+	}
+	return filepath.Join(cwd, dir)
+}
+
+// windowsVolume is the volume a Windows path starts with: a drive (C:) or
+// a UNC share (\\server\share), or "" when it has none.
+func windowsVolume(path string) string {
+	if len(path) >= 2 && path[1] == ':' {
+		return path[:2]
+	}
+	if !strings.HasPrefix(path, `\\`) && !strings.HasPrefix(path, "//") {
+		return ""
+	}
+	parts := strings.FieldsFunc(path[2:], func(r rune) bool { return r == '\\' || r == '/' })
+	if len(parts) < 2 {
+		return ""
+	}
+	return path[:2] + parts[0] + `\` + parts[1]
 }
 
 // getwd is the working directory a relative CLAUDE_CONFIG_DIR is in; a

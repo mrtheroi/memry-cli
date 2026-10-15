@@ -107,3 +107,33 @@ func TestDeleteAccountKeepsTheUsageMetricsRecordForARetry(t *testing.T) {
 		}
 	}
 }
+
+// A malformed config may hold the usage metrics record: uninstall and
+// delete-account stop before changing anything, never deleting it or
+// writing over it.
+func TestRemovalLeavesAMalformedConfigUntouched(t *testing.T) {
+	for name, run := range map[string]func(*harness) (string, int){
+		"uninstall":      func(h *harness) (string, int) { return h.run(uninstall.Uninstall, force) },
+		"delete-account": func(h *harness) (string, int) { return h.run(uninstall.DeleteAccount, nil) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newServer(t)
+			h := newHarness(t)
+			codex := &fakeAgent{key: "codex", name: "Codex"}
+			h.useAgents(codex)
+			writeRaw(t, h.configPath, `{"url":"`+s.URL+`",`)
+
+			output, code := run(h)
+
+			assertExit(t, code, 1, output)
+			assertContains(t, output, "Could not read the memry config "+h.configPath+", so memry cannot tell whether usage metrics are on. Fix it, then try again.")
+			if got := readText(t, h.configPath); got != `{"url":"`+s.URL+`",` {
+				t.Errorf("config = %q, want it untouched", got)
+			}
+			assertCalls(t, codex)
+			if got := s.received(); len(got) != 0 {
+				t.Errorf("requests = %+v, want none", got)
+			}
+		})
+	}
+}

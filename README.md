@@ -260,6 +260,9 @@ What is sent, only to the server you logged in to:
   that server. `memry setup` to another server keeps the record and the export to the old server;
   `enable` then stops until you `disable`, and `disable` (or `memry uninstall`) removes memry's
   variables but leaves the old token to expire after 30 days without use, with a warning.
+- If the memry config exists but cannot be read as a JSON object, the usage commands, `memry
+  uninstall` and `memry delete-account` stop without changing anything: the config may hold the
+  record, so memry cannot tell whether usage metrics are on. Fix the file, then try again.
 - `status` says the metrics are on, as far as memry can see, only when what Claude Code runs with,
   the launch environment first, has the switch on, the `otlp` exporter, the `http/json` protocol,
   memry's endpoint and a bearer token, and nothing that would stop `enable` is set; otherwise it

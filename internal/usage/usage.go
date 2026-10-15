@@ -60,6 +60,9 @@ func Enable(env Env) int {
 // enable is Enable once the usage lock is held.
 func (env Env) enable() int {
 	st := env.reconcile(env.load())
+	if env.unknown(st) {
+		return failure
+	}
 	if !st.loggedIn {
 		env.line("You are not logged in to memry. Run `memry setup` first.")
 		return failure
@@ -249,6 +252,9 @@ type state struct {
 	// the ones Claude Code reads now (activePath).
 	settings   *agentfiles.ClaudeSettings
 	activePath string
+	// unreadable is why the config could not be read, if it could not:
+	// then nothing is known about the usage metrics.
+	unreadable error
 }
 
 // load reads the config file, which like the other commands is empty when
@@ -256,8 +262,15 @@ type state struct {
 func (env Env) load() state {
 	st := state{activePath: agents.ClaudeSettingsPath(env.GOOS, env.getenv)}
 	st.cfgPath, _ = config.Path(env.GOOS, env.getenv)
-	cfg, err := config.LoadOrEmpty(st.cfgPath)
+	// Unlike the other commands, a config that cannot be read as a JSON
+	// object is no empty config here: it may hold the usage record.
+	// Like the other commands, anything but a regular file is no config.
+	cfg, err := config.Load(st.cfgPath)
+	if info, statErr := os.Stat(st.cfgPath); statErr == nil && !info.Mode().IsRegular() {
+		cfg, err = &config.File{}, nil
+	}
 	if err != nil {
+		st.unreadable = err
 		cfg = &config.File{}
 	}
 	st.cfg = cfg
@@ -275,6 +288,16 @@ func (env Env) load() state {
 	}
 	st.settings = agentfiles.NewClaudeSettings(path)
 	return st
+}
+
+// unknown reports, after saying so, whether the config could not be read,
+// so the usage metrics state is unknown and nothing may be done.
+func (env Env) unknown(st state) bool {
+	if st.unreadable == nil {
+		return false
+	}
+	env.line("Could not read the memry config " + st.cfgPath + ", so memry cannot tell whether usage metrics are on. Fix it, then try again.")
+	return true
 }
 
 // reconcile settles a pending setup an interrupted enable left, then
@@ -508,6 +531,9 @@ func TurnOff(env Env, revoke bool) bool {
 // reports whether there was anything to remove and whether that worked.
 func (env Env) turnOff(revoke bool) (removed, ok bool) {
 	st := env.reconcile(env.load())
+	if env.unknown(st) {
+		return false, false
+	}
 	if len(st.setups()) == 0 {
 		return false, true
 	}
@@ -574,6 +600,9 @@ func Status(env Env) int {
 // status is Status once the usage lock is held.
 func (env Env) status() int {
 	st := env.reconcile(env.load())
+	if env.unknown(st) {
+		return failure
+	}
 	if !st.hasRecord {
 		env.line("Usage metrics are off.")
 		return success

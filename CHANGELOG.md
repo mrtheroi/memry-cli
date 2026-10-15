@@ -55,6 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the pending setup is still its own. Usage commands and uninstall run under an exclusive lock, a
   file created with `O_EXCL` in the temporary directory and named after the memry config, holding
   the pid and time, taken over after two minutes; a command waits up to 15 seconds for another one.
+- Unknown state fails closed: when the memry config exists but cannot be read, is not valid JSON or
+  is not an object, `memry usage enable`, `disable` and `status`, `memry uninstall` and `memry
+  delete-account` stop before changing anything, instead of taking it for a config without a usage
+  record. Uninstall used to delete such a config (or write over it when keeping agents for a
+  retry); it now leaves it untouched.
 - The usage metrics record survives an interrupted enable: the new setup is saved as `pending`
   next to the `current` one before the settings are written, and becomes current once they are.
   Every later usage command, and uninstall, settles a leftover pending setup first: current when

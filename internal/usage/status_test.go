@@ -100,3 +100,35 @@ func TestStatusReportsManagedSettingsAndHelpersInTheWay(t *testing.T) {
 	assertExit(t, code, 0, output)
 	assertContains(t, output, "Usage metrics are not active:\n- OTEL_EXPORTER_OTLP_ENDPOINT is set in the managed settings "+managed+".\n")
 }
+
+// Headers with another bearer token than the one memry recorded are not
+// memry's export, whether replaced in the settings or the environment.
+func TestStatusReportsAReplacedHeader(t *testing.T) {
+	t.Run("settings", func(t *testing.T) {
+		s := newServer(t)
+		h := newHarness(t)
+		h.login(s.URL)
+		h.run(usage.Enable)
+		env := h.settingsEnv()
+		env["OTEL_EXPORTER_OTLP_METRICS_HEADERS"] = "Authorization=Bearer bogus"
+		h.writeSettingsEnv(env)
+
+		output, _ := h.run(usage.Status)
+
+		assertContains(t, output, "- OTEL_EXPORTER_OTLP_METRICS_HEADERS is not memry's value in "+h.settingsPath()+".\n")
+		assertNotContains(t, output, "are on")
+	})
+	t.Run("environment", func(t *testing.T) {
+		s := newServer(t)
+		h := newHarness(t)
+		h.login(s.URL)
+		h.run(usage.Enable)
+		h.env["OTEL_EXPORTER_OTLP_METRICS_HEADERS"] = "Authorization=Bearer bogus"
+
+		output, _ := h.run(usage.Status)
+
+		assertContains(t, output, "- OTEL_EXPORTER_OTLP_METRICS_HEADERS is overridden in the environment.\n")
+		assertNotContains(t, output, "are on")
+		assertNotContains(t, output, "bogus")
+	})
+}

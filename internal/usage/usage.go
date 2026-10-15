@@ -636,7 +636,13 @@ func (env Env) status() int {
 		endpoint = st.record.ServerURL + metricsPath
 	}
 	model := telemetry{goos: env.GOOS, environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
-	reasons := append(model.inactive(endpoint), model.foreign(endpoint)...)
+	// The headers memry recorded: the current setup's, or a pending one's
+	// while it is not settled.
+	headers := st.record.Values[headersKey]
+	if st.pending != nil && headers == "" {
+		headers = st.pending.Values[headersKey]
+	}
+	reasons := append(model.inactive(endpoint, headers), model.foreign(endpoint)...)
 	if reasons = append(reasons, managedBlockers(env.ManagedDir, endpoint, env.GOOS)...); len(reasons) > 0 {
 		env.line("Usage metrics are not active:")
 		for _, reason := range reasons {

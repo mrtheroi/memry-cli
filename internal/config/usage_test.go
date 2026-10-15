@@ -27,9 +27,9 @@ func TestUsageMetricsIsSavedAndLoadedBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, ok := loaded.UsageMetrics()
+	got, ok, err := loaded.UsageMetrics()
 
-	if !ok || !reflect.DeepEqual(got, want) {
-		t.Errorf("UsageMetrics = %+v, %v; want %+v", got, ok, want)
+	if !ok || err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("UsageMetrics = %+v, %v, %v; want %+v", got, ok, err, want)
 	}
 }

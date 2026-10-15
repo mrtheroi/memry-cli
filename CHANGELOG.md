@@ -70,8 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the agents. They go on without it only when the cache directory cannot hold a lock (then
   no other command can hold one either); with a usage record to clean up, that fails clearly and
   keeps the login for a retry.
-- Unknown state fails closed: when the memry config exists but cannot be read, is not valid JSON or
-  is not an object, `memry usage enable`, `disable` and `status`, `memry uninstall` and `memry
+- Unknown state fails closed: when the memry config exists but cannot be read, is not valid JSON,
+  is not an object, or holds a `usage_metrics` that is not a valid record (null, empty, missing
+  the server, settings path, variables or token id, or with wrong types), `memry usage enable`, `disable` and `status`, `memry uninstall` and `memry
   delete-account` stop before changing anything, instead of taking it for a config without a usage
   record. Uninstall used to delete such a config (or write over it when keeping agents for a
   retry); it now leaves it untouched.

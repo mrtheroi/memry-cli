@@ -11,7 +11,7 @@ import (
 func TestSetupKeepsTheUsageMetricsRecord(t *testing.T) {
 	h, s, old := newHarness(t), newServer(t), newServer(t)
 	h.useAgents(newClaude())
-	record := map[string]any{"current": map[string]any{"server_url": old.URL, "settings_path": "/home/ana/.claude/settings.json", "token_id": float64(7)}}
+	record := map[string]any{"current": map[string]any{"server_url": old.URL, "settings_path": "/home/ana/.claude/settings.json", "values": map[string]any{"OTEL_METRICS_EXPORTER": "otlp"}, "token_id": float64(7)}}
 	h.writeConfig(map[string]any{"url": old.URL, "token": "old-token", "usage_metrics": record})
 
 	output, code := h.run(tokenArgs(s.URL, "admin-token"))

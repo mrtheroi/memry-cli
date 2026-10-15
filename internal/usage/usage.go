@@ -185,7 +185,7 @@ func (env Env) restore(st state, id int64) {
 		env.line("Could not restore the usage metrics record in " + st.cfgPath + ": " + err.Error() + ".")
 		return
 	}
-	if usage, _ := cfg.UsageMetrics(); usage.Pending == nil || usage.Pending.TokenID != id {
+	if usage, _, _ := cfg.UsageMetrics(); usage.Pending == nil || usage.Pending.TokenID != id {
 		return
 	}
 	if st.hasRecord {
@@ -274,7 +274,10 @@ func (env Env) load() state {
 	url, hasURL := cfg.URL()
 	token, hasToken := cfg.Token()
 	st.url, st.token, st.loggedIn = url, token, hasURL && url != "" && hasToken && token != ""
-	usage, _ := cfg.UsageMetrics()
+	usage, _, err := cfg.UsageMetrics()
+	if err != nil && st.unreadable == nil {
+		st.unreadable = err
+	}
 	if usage.Current != nil {
 		st.record, st.hasRecord = *usage.Current, true
 	}

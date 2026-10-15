@@ -71,7 +71,7 @@ func TestUninstallKeepsTheLoginWhenUsageMetricsCannotBeTurnedOff(t *testing.T) {
 	codex := &fakeAgent{key: "codex", name: "Codex"}
 	h.useAgents(codex)
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"},
-		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}}}})
+		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}, "token_id": 7, "server_url": s.URL}}})
 	writeRaw(t, h.settingsPath, `{"env":`)
 
 	output, code := h.run(uninstall.Uninstall, force)
@@ -209,5 +209,32 @@ func TestUninstallKeepsTheLoginWhenTheUsageCleanupCannotLock(t *testing.T) {
 	assertContains(t, output, "Could not lock ")
 	if cfg := h.config(); cfg["token"] != "1|abc" || cfg["usage_metrics"] == nil {
 		t.Errorf("config = %v, want the login and the record kept", cfg)
+	}
+}
+
+// A config whose usage_metrics is not a valid record is unknown usage
+// state: uninstall and delete-account leave it untouched.
+func TestRemovalLeavesAConfigWithAMalformedUsageRecordUntouched(t *testing.T) {
+	for name, run := range map[string]func(*harness) (string, int){
+		"uninstall":      func(h *harness) (string, int) { return h.run(uninstall.Uninstall, force) },
+		"delete-account": func(h *harness) (string, int) { return h.run(uninstall.DeleteAccount, nil) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newServer(t)
+			h := newHarness(t)
+			codex := &fakeAgent{key: "codex", name: "Codex"}
+			h.useAgents(codex)
+			contents := `{"url":"` + s.URL + `","token":"1|abc","agents":["codex"],"usage_metrics":{}}`
+			writeRaw(t, h.configPath, contents)
+
+			output, code := run(h)
+
+			assertExit(t, code, 1, output)
+			assertContains(t, output, "Could not read the memry config "+h.configPath+", so memry cannot tell whether usage metrics are on. Fix it, then try again.")
+			if got := readText(t, h.configPath); got != contents {
+				t.Errorf("config = %q, want it untouched", got)
+			}
+			assertCalls(t, codex)
+		})
 	}
 }

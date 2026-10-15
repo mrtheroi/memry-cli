@@ -209,7 +209,7 @@ func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
 	if err == nil && !keepLogin {
 		// Start from an empty config at the same path, but for the record
 		// of the usage metrics still to turn off.
-		usage, hasUsage := cfg.UsageMetrics()
+		usage, hasUsage, _ := cfg.UsageMetrics()
 		if err = os.Remove(path); err == nil || errors.Is(err, fs.ErrNotExist) {
 			cfg, err = config.LoadOrEmpty(path)
 		}
@@ -335,7 +335,8 @@ func (env Env) send(method, url, token string, data any) (int, error) {
 }
 
 // configReadable reports whether there is a config path and the file is
-// missing or can be read as a JSON object, saying why not. A file that cannot be read may hold the login and
+// missing or can be read as a JSON object with a valid usage metrics
+// record, if any, saying why not. A file that cannot be read may hold the login and
 // the agents: it is never taken for an empty config. Like the PHP CLI's
 // is_file, anything but a regular file is no config file.
 func (env Env) configReadable() bool {
@@ -355,7 +356,11 @@ func (env Env) configReadable() bool {
 		// A config that is not a JSON object may hold the record of the
 		// usage metrics: deleting or overwriting it would lose what
 		// memry wrote in Claude Code's settings.
-		if _, err := config.Load(path); err != nil {
+		cfg, err := config.Load(path)
+		if err == nil {
+			_, _, err = cfg.UsageMetrics()
+		}
+		if err != nil {
 			env.line("Could not read the memry config " + path + ", so memry cannot tell whether usage metrics are on. Fix it, then try again.")
 			return false
 		}

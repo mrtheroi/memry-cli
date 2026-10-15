@@ -132,7 +132,7 @@ func TestDisableSucceedsWithAWarningWhenTheTokenCannotBeRevoked(t *testing.T) {
 	output, code := h.run(usage.Disable)
 
 	assertExit(t, code, 0, output)
-	assertContains(t, output, "Could not revoke your usage token; it stops working after 30 days without use.")
+	assertContains(t, output, "Could not revoke usage token 7 on "+s.URL+"; it stops working after 30 days without use.")
 	assertContains(t, output, "Usage metrics are off.")
 	assertNotContains(t, readText(t, h.configPath), `"usage_metrics"`)
 }

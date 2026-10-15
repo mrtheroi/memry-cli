@@ -210,7 +210,7 @@ func TestEnableAgainSucceedsWithAWarningWhenThePreviousTokenCannotBeRevoked(t *t
 	output, code := h.run(usage.Enable)
 
 	assertExit(t, code, 0, output)
-	assertContains(t, output, "Could not revoke your previous usage token; it stops working after 30 days without use.")
+	assertContains(t, output, "Could not revoke usage token 7 on "+s.URL+"; it stops working after 30 days without use.")
 	assertContains(t, output, "Usage metrics are on.")
 }
 

@@ -170,10 +170,10 @@ func (env Env) enable() int {
 		// The settings hold the new setup: the next usage command finds
 		// it pending and makes it current.
 		env.line("Could not update the usage metrics record in " + st.cfgPath + ": " + err.Error() + ". The next `memry usage` command finishes it.")
-	case st.record.TokenID != 0 && !env.revokeToken(st.record.ServerURL, st.token, st.record.TokenID):
+	default:
 		// Only now that the new token is in use is the one this machine
 		// used before revoked; other machines' tokens are never touched.
-		env.line("Could not revoke your previous usage token; it stops working after 30 days without use.")
+		env.revokeSetup(st, st.record)
 	}
 	env.line("Usage metrics are on. Saved in " + st.settings.Path() + "; restart Claude Code to apply it.")
 	env.line("Run `memry usage disable` to turn it off.")
@@ -183,9 +183,21 @@ func (env Env) enable() int {
 // revokeNew revokes the usage token id enable was just issued and could
 // not put to use, best effort: unused, it stops working after 30 days.
 func (env Env) revokeNew(st state, id int64) {
-	if !env.revokeToken(st.url, st.token, id) {
-		env.line("Could not revoke the new usage token; it stops working after 30 days without use.")
+	env.revokeSetup(st, config.UsageSetup{ServerURL: normalizeServer(st.url), TokenID: id})
+}
+
+// revokeSetup revokes the usage token of setup on its server, with the
+// login when that is the server memry is logged in to, best effort: when
+// it could not (or could not even try), it says so before the token's id
+// is forgotten. Unused, the token stops working after 30 days.
+func (env Env) revokeSetup(st state, setup config.UsageSetup) {
+	if setup.TokenID == 0 {
+		return
 	}
+	if st.loggedIn && normalizeServer(st.url) == setup.ServerURL && env.revokeToken(setup.ServerURL, st.token, setup.TokenID) {
+		return
+	}
+	env.line(fmt.Sprintf("Could not revoke usage token %d on %s; it stops working after 30 days without use.", setup.TokenID, setup.ServerURL))
 }
 
 // restore puts back the usage metrics record st was loaded with, after the
@@ -395,9 +407,7 @@ func (env Env) reconcile(st state) state {
 		st.unreadable = fmt.Errorf("could not settle the pending usage setup: %w", err)
 		return st
 	}
-	if revoke.TokenID != 0 && st.loggedIn && normalizeServer(st.url) == revoke.ServerURL {
-		_ = env.revokeToken(revoke.ServerURL, st.token, revoke.TokenID)
-	}
+	env.revokeSetup(st, revoke)
 	return env.load()
 }
 
@@ -644,8 +654,8 @@ func (env Env) turnOff(accountDeleted bool) (removed, ok bool) {
 	case st.loggedIn && !st.sameServer():
 		// Its id means nothing to another server.
 		env.line("Did not revoke the usage token of " + st.record.ServerURL + ": you are logged in to another server now. It stops working after 30 days without use.")
-	case !st.loggedIn || !env.revokeToken(st.record.ServerURL, st.token, st.record.TokenID):
-		env.line("Could not revoke your usage token; it stops working after 30 days without use.")
+	default:
+		env.revokeSetup(st, st.record)
 	}
 	st.cfg.DeleteUsageMetrics()
 	if err := st.cfg.Save(); err != nil {

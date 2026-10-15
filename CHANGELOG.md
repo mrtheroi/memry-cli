@@ -100,7 +100,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   next to the `current` one before the settings are written, and becomes current once they are.
   Every later usage command, and uninstall, settles a leftover pending setup first: current when
   the settings hold its headers (the previous token is then revoked), dropped otherwise (its token
-  is revoked). When it cannot be settled (the settings cannot be read, or the config cannot be
+  is revoked). A displaced token that cannot be revoked (the request fails, or memry is logged in
+  to another server) gets the same warning as in enable and disable, "Could not revoke usage token
+  <id> on <server>; it stops working after 30 days without use.", before its id is forgotten; no
+  retry state is kept. When it cannot be settled (the settings cannot be read, or the config cannot be
   saved), the state is unknown and every command fails closed instead of reporting it off.
 - The recorded server is the only truth for the usage token and endpoint: revocations go to it,
   `memry usage status` derives a kept endpoint from it, and `memry delete-account` relies on the

@@ -162,3 +162,30 @@ func TestAFailedEnableLeavesAnotherInvocationsPendingSetup(t *testing.T) {
 		t.Errorf("config =\n%s\nwant the other invocation's record kept:\n%s", got, theirs)
 	}
 }
+
+// Settling a pending setup displaces a token; when it cannot be revoked,
+// memry says so, as enable and disable do, before its id is forgotten.
+func TestSettlingWarnsWhenTheDisplacedTokenCannotBeRevoked(t *testing.T) {
+	t.Run("revoke fails", func(t *testing.T) {
+		s := newServer(t)
+		h := newHarness(t)
+		h.login(s.URL)
+		id := interruptedEnable(t, h, s, false)
+		s.answerRevoke(500)
+
+		output, _ := h.run(usage.Status)
+
+		assertContains(t, output, "Could not revoke usage token "+strconv.Itoa(id)+" on "+s.URL+"; it stops working after 30 days without use.")
+	})
+	t.Run("another server", func(t *testing.T) {
+		s := newServer(t)
+		h := newHarness(t)
+		h.login(s.URL)
+		id := interruptedEnable(t, h, s, false)
+		h.switchServer("https://other.example.com")
+
+		output, _ := h.run(usage.Status)
+
+		assertContains(t, output, "Could not revoke usage token "+strconv.Itoa(id)+" on "+s.URL+"; it stops working after 30 days without use.")
+	})
+}

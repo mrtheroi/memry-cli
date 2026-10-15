@@ -7,6 +7,126 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in usage metrics: `memry usage enable` lets Claude Code send its OpenTelemetry metrics (OTLP/HTTP
+  JSON) to the memry server you are logged in to, so the dashboard can chart token usage and cost.
+  Before asking for a token it says where the metrics go, that Claude Code decides what it sends
+  (as documented in its monitoring guide; identity and metric-specific attributes included), that
+  the memry server keeps only the token and cost data points and discards everything else, and
+  what memry can and cannot check: it reads this shell's environment, the user settings and the
+  managed settings files, but not per-session `--settings`, managed policy helpers, MDM, the
+  registry, server-managed settings or Claude Code's own launch environment. memry turns off every
+  documented optional attribute (`OTEL_METRICS_INCLUDE_*=false`). On Windows, environment names are matched case-insensitively, as Claude Code
+  reads them. A managed settings file that sets a `policyHelper`
+  stops it, as the effective policy cannot be determined; memry never runs helpers. It is off by default and
+  never turned on by `memry setup`. It requests a new usage token (`POST /api/auth/usage-token`, which
+  can only send usage metrics), saves its record, then merges eleven `env` variables into
+  Claude Code's `settings.json`, keeping every other setting. It stops, without asking for a token,
+  when one of memry's variables is set in the settings to a value memry did not write (`--force`
+  replaces it), and, whatever `--force` says, when one of them is exported in the launch
+  environment with another value, when a generic `OTEL_EXPORTER_OTLP_ENDPOINT`, `_HEADERS` or
+  `_PROTOCOL` is set anywhere, or when turning telemetry on would start a logs or traces export the
+  user configured but did not turn on. Beyond that, it works as an allowlist: any telemetry setting
+  that is not memry's own variable with memry's value stops it, whatever `--force` says, in the
+  launch environment, the user settings or Claude Code's managed settings files
+  (`managed-settings.json` and `managed-settings.d/`, which also stop it when they cannot be read).
+  Telemetry settings are recognized by namespace (`OTEL_*`, `CLAUDE_CODE_ENABLE_TELEMETRY*`,
+  `CLAUDE_CODE_ENHANCED_TELEMETRY*`, `ENABLE_ENHANCED_TELEMETRY*`, `CLAUDE_CODE_OTEL_*`,
+  `*BETA_TRACING*` and the top-level `otelHeadersHelper`), so beta tracing, repository attributes
+  and variables a later Claude Code adds are covered; only `OTEL_LOGS_EXPORTER=none`,
+  `OTEL_TRACES_EXPORTER=none` and variables already at memry's value are allowed. Policies memry
+  cannot see, like server-managed settings or MDM, may still override it, so `memry usage status`
+  says "as far as memry can see". memry sets every documented `OTEL_METRICS_INCLUDE_*` gate to
+  `false` (session id, account uuid, resource attributes, repository, version and entrypoint). It writes the per-signal metrics protocol, never the
+  generic one. It refuses a non-loopback `http://` server unless `--insecure`. The settings
+  file, which now holds the usage token, is created readable only by its owner, and an existing one
+  loses any permission for other users.
+- `memry usage disable` removes only what memry wrote: it records under `usage_metrics` in the
+  memry config the settings path, every variable with its exact value and the variables that
+  already had memry's value before the first enable, and a variable is memry's only while it is
+  in that file with exactly the recorded value. A relative `CLAUDE_CONFIG_DIR` is resolved the way the
+  OS does, so the recorded path is absolute: against the current directory, or, on Windows, a
+  path rooted without a drive (`\x`) on the current directory's drive. A drive-relative Windows path such as
+  `C:profile` is refused with a request for an absolute path, as memry does not guess per-drive
+  current directories. It cleans up the recorded file even if
+  `CLAUDE_CONFIG_DIR` changed, drops an `env` left empty and keeps the record until the cleanup
+  worked. `memry usage status` reports the metrics on only when the effective configuration, the
+  launch environment first, exports them to memry with a bearer token, and otherwise lists what is
+  missing or overridden, never printing the token. `memry uninstall` and `memry delete-account`
+  turn usage metrics off too; a delete-account retry keeps the record.
+- Every write to Claude Code's settings, including setup's SessionStart hook install and its
+  removal, goes through one snapshot-checked write path. The hook writes read the file again and
+  reapply their change when another command changed it meanwhile (up to three times, then ask to
+  try again), so they never erase the telemetry variables a concurrent `memry usage enable` wrote.
+- Every write to Claude Code's settings (enable, disable, uninstall, delete-account) is a
+  best-effort compare-and-swap of the whole file, checked again right before every rename attempt
+  (including the retries while another program holds the file on Windows) (another
+  program writing at that same instant still wins; there is no file-system CAS): memry keeps the bytes it validated and writes only if the file
+  is still exactly those; any change meanwhile, inside or outside the env, stops it with nothing
+  written. A failed enable restores the previous record and revokes the new token, but only while
+  the pending setup is still its own. Usage commands and uninstall run under an exclusive lock, a
+  file created with `O_EXCL` and mode 0600 in `memry/` under the user's cache directory (never the
+  shared temporary directory), named after the memry config's canonical path (absolute,
+  symlinks resolved, lower case on Windows, so every alias of one config shares one lock) and
+  holding a random ownership
+  token, the pid and the time. The directory must be the user's own and not group- or
+  world-writable on Unix; anything at the lock path that is not a regular file is refused, never
+  followed or removed. A lock is never taken over, whatever its age, as its command may only be
+  paused: a command waits up to 15 seconds, then says another command is changing the config and
+  names the lock to delete if none is running (after a crash). Releasing removes the lock only
+  while it still holds its owner's token. `memry usage status` and `disable` read the config without the lock
+  first and take it only when there is a record to reconcile or clean up, so with no usage
+  metrics they answer even when the cache directory cannot hold a lock. `memry setup` takes the
+  same lock around its config writes, re-reading the config strictly before its second save (a
+  config that became unreadable or malformed meanwhile is left untouched and setup fails), so setup and
+  the usage commands never overwrite each other's changes. Uninstall and
+  delete-account take it too, from the usage cleanup to the config's deletion, after removing memry
+  from the agents. They go on without it only when the cache directory cannot hold a lock (then
+  no other command can hold one either); with a usage record to clean up, that fails clearly and
+  keeps the login for a retry.
+- The usage metrics record holds, for each setup, the exact expected value of every variable memry
+  configures (`expected`, written or kept, the endpoint spelled as it matched) next to the ones it
+  owns (`values`) and keeps (`kept`). A record is valid only when `expected` covers every
+  variable with a bearer header, `values` is a part of it with the same values (the headers
+  always), and `kept` is exactly the rest. `memry usage status` compares what Claude Code runs with
+  against `expected`, never against values rebuilt from the server URL.
+- Unknown state fails closed: when the memry config exists but cannot be read, is not valid JSON,
+  is not an object, or holds a `usage_metrics` that is not a valid record (null, empty, missing
+  the server, settings path, variables or token id, or with wrong types), `memry usage enable`, `disable` and `status`, `memry uninstall` and `memry
+  delete-account` stop before changing anything, instead of taking it for a config without a usage
+  record. Uninstall used to delete such a config (or write over it when keeping agents for a
+  retry); it now leaves it untouched.
+- The usage metrics record survives an interrupted enable: the new setup is saved as `pending`
+  next to the `current` one before the settings are written, and becomes current once they are.
+  Every later usage command, and uninstall, settles a leftover pending setup first: current when
+  the settings hold its headers (the previous token is then revoked), dropped otherwise (its token
+  is revoked). A displaced token that cannot be revoked (the request fails, or memry is logged in
+  to another server) gets the same warning as in enable and disable, "Could not revoke usage token
+  <id> on <server>; it stops working after 30 days without use.", before its id is forgotten; no
+  retry state is kept. When it cannot be settled (the settings cannot be read, or the config cannot be
+  saved), the state is unknown and every command fails closed instead of reporting it off.
+- The recorded server is the only truth for the usage token and endpoint: revocations go to it,
+  `memry usage status` derives a kept endpoint from it, and `memry delete-account` relies on the
+  account deletion only when the account is on that server, warning otherwise that the recorded
+  token stays valid until 30 days without use.
+- The usage metrics record names the server its token belongs to, and memry revokes a token id only
+  on that server. After `memry setup` to another server, which keeps the record, `memry usage
+  enable` stops until the old setup is disabled, and disable or uninstall removes memry's variables
+  without sending the old token's id to the new server.
+- Usage tokens change transactionally, and memry revokes only exact token ids it recorded
+  (`DELETE /api/auth/tokens/<id>`; a 404 counts as already revoked), so other machines' usage
+  tokens are never touched. If the record cannot be saved, or the settings cannot be written (the
+  previous record is then restored), the new token is revoked and nothing changes, so the token in
+  use keeps working. Only after the new token is in the settings is the one this machine used
+  before revoked. `memry usage disable` and `memry uninstall` revoke the recorded token.
+  Revocation is best effort, with a warning: unused usage tokens stop working after 30 days.
+
+### Changed
+
+- The privacy policy ([PRIVACY.md](PRIVACY.md), [PRIVACY.es.md](PRIVACY.es.md)) describes the
+  opt-in usage metrics: what is sent, where, how long it is kept and how to turn it off.
+
 ## [1.1.3] - 2026-10-14
 
 ### Security

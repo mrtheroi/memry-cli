@@ -172,6 +172,86 @@ removes just what setup added. Your login token is never written to an agent's f
   {"project": "my-product"}
   ```
 
+## Usage metrics (opt-in)
+
+memry sends no telemetry. If you want the memry dashboard to chart your Claude Code token usage and
+cost, turn it on explicitly:
+
+```bash
+memry usage enable    # off by default
+memry usage status    # on or off as far as memry can see, and where to (never prints the token)
+memry usage disable   # turn it off again
+```
+
+`memry usage enable` tells you what is sent, asks your memry server for a usage token (it can only
+send usage metrics) and sets Claude Code's OpenTelemetry metrics export in the `env` of
+`~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`, a relative `CLAUDE_CONFIG_DIR`
+resolved against the current directory): `CLAUDE_CODE_ENABLE_TELEMETRY`, `OTEL_METRICS_EXPORTER`,
+`OTEL_EXPORTER_OTLP_METRICS_PROTOCOL`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`,
+`OTEL_EXPORTER_OTLP_METRICS_HEADERS`, and every `OTEL_METRICS_INCLUDE_*` gate set to `false`.
+Restart Claude Code to apply it. The settings file holds the usage token, so memry leaves it
+readable by your user only.
+
+### What is sent and what is kept
+
+- **Claude Code decides what it sends**, as documented in its
+  [monitoring guide](https://code.claude.com/docs/en/monitoring-usage): metrics such as token
+  usage, cost, sessions and lines of code, with identity attributes such as your email and
+  organization id and metric-specific attributes. That list is not exhaustive and may grow with
+  new Claude Code versions. memry turns off the optional attribute gates it can.
+- **The memry server is the guarantee.** It keeps only the token and cost data points (the count
+  or cost, the model, the token type, the query source and the time window), tied to your memry
+  account, and discards everything else on receipt. It stores no raw attributes: only a keyed
+  hash of them, to tell series apart.
+- memry does not turn on Claude Code's logs or traces, so no prompts or code are sent through it.
+
+### What memry checks, and what it cannot see
+
+Before asking for a token, `enable` checks the environment of the shell it runs in, your
+`settings.json` and Claude Code's file-based managed settings (`managed-settings.json` and
+`managed-settings.d/*.json` in `/Library/Application Support/ClaudeCode` on macOS,
+`/etc/claude-code` on Linux and WSL, `C:\Program Files\ClaudeCode` on Windows). It stops,
+whatever `--force` says, on any telemetry setting there that is not memry's own variable with
+memry's value: every `OTEL_*`, `CLAUDE_CODE_ENABLE_TELEMETRY*`, `CLAUDE_CODE_ENHANCED_TELEMETRY*`,
+`ENABLE_ENHANCED_TELEMETRY*`, `CLAUDE_CODE_OTEL_*` and `*BETA_TRACING*` variable and the
+`otelHeadersHelper` setting, except exporters set to `none` and variables you had already set to
+memry's value. A managed settings file it cannot read, or one that sets a `policyHelper` (memry
+never runs it), stops it too, as the effective policy cannot be determined. One of memry's own variables
+set in `settings.json` to another value stops it unless you pass `--force`. A plain `http://`
+server that is not this machine needs `--insecure`, like `memry setup`.
+
+memry cannot see per-session `--settings` files, what managed policy helpers compute, MDM profiles, the Windows
+registry, server-managed settings or the environment Claude Code is actually launched from. Any of
+them can change what Claude Code sends or where, so `status` reports what it finds "as far as
+memry can see". If you use mTLS, Claude Code may also present its client certificate
+(`CLAUDE_CODE_CLIENT_CERT`) to your memry server.
+
+### How memry keeps track
+
+- memry records what it wrote under `usage_metrics` in the memry config (readable only by your
+  user): the server, the settings file, each variable with its exact value, the usage token's id,
+  and the variables you had already set to memry's value, which it never writes nor removes. A
+  variable is memry's only while it has exactly the recorded value. `disable`, `memry uninstall`
+  and `memry delete-account` remove just those, from the recorded file, drop an `env` left empty,
+  and keep the record until that worked.
+- memry revokes only the exact usage token it recorded, on the server it recorded, so your other
+  machines' tokens keep working; revocation is best effort, and an unused token stops working
+  after 30 days. `enable` for another server or `CLAUDE_CONFIG_DIR` stops until you `disable` the
+  first one; `memry setup` to another server keeps the record.
+- `enable` saves the new setup as pending before writing the settings, so an interrupted `enable`
+  is settled by the next usage command. A failed `enable` changes nothing and the token in use
+  keeps working.
+- memry writes the settings only if the file is still, byte for byte, the one it checked; it
+  compares again right before replacing it. A file system has no true compare-and-swap with other
+  programs, so if another program writes `settings.json` at that same instant, the last writer
+  wins. Usage
+  commands, `memry setup`, `memry uninstall` and `memry delete-account` share a lock in `memry/`
+  under your user cache directory, which must be private to you, so they never overwrite each
+  other's changes to the memry config. A lock is never taken over; after a crash, the error names
+  the lock file to delete.
+- If the memry config exists but cannot be read as a JSON object, the usage commands, `memry
+  uninstall` and `memry delete-account` stop without changing anything.
+
 ## Update
 
 ```bash
@@ -208,7 +288,8 @@ be undone, so it asks you to type your account email to confirm.
 
 Your memories are stored on the memry server and tied to your account. `memry uninstall` revokes
 the token on this machine, so it can no longer access them. `memry delete-account` deletes them.
-See the [privacy policy](PRIVACY.md) ([en español](PRIVACY.es.md)) for what memry stores and who handles it.
+Usage metrics are sent only if you turn them on (see
+[Usage metrics](#usage-metrics-opt-in)). See the [privacy policy](PRIVACY.md) ([en español](PRIVACY.es.md)) for what memry stores and who handles it.
 
 ## License
 

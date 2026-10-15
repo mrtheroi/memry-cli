@@ -1,6 +1,9 @@
 package agents
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -44,14 +47,33 @@ func (a *claudeCode) Install(url string) Result {
 // hookMarker identifies memry's SessionStart hook by its command.
 const hookMarker = "hook:session-start"
 
-// settings is Claude Code's settings.json: $CLAUDE_CONFIG_DIR/settings.json,
-// or ~/.claude/settings.json by default.
-func (a *claudeCode) settings() *agentfiles.ClaudeSettings {
-	dir := a.env.Getenv("CLAUDE_CONFIG_DIR")
-	if dir == "" {
-		dir = a.env.homePath(".claude")
+// settings is Claude Code's settings.json (see ClaudeSettingsPath).
+func (a *claudeCode) settings() (*agentfiles.ClaudeSettings, error) {
+	path, err := ClaudeSettingsPath(a.env.GOOS, a.env.Getenv)
+	if err != nil {
+		return nil, err
 	}
-	return agentfiles.NewClaudeSettings(home.Join(dir, "settings.json"))
+	return agentfiles.NewClaudeSettings(path), nil
+}
+
+// ClaudeSettingsPath is Claude Code's settings.json for goos (the zero
+// value means Unix): $CLAUDE_CONFIG_DIR/settings.json, made absolute, or
+// ~/.claude/settings.json by default.
+func ClaudeSettingsPath(goos string, getenv func(string) string) (string, error) {
+	dir := getenv("CLAUDE_CONFIG_DIR")
+	if goos == "windows" && len(dir) >= 2 && dir[1] == ':' && (len(dir) == 2 || dir[2] != '\\' && dir[2] != '/') {
+		// Relative to the current directory of that drive, which only
+		// cmd.exe keeps: memry does not guess it.
+		return "", fmt.Errorf(`CLAUDE_CONFIG_DIR %s is relative to a drive's current directory; set it to an absolute path, like %s\%s`, dir, dir[:2], dir[2:])
+	}
+	if dir == "" {
+		dir = Env{GOOS: goos, Getenv: getenv}.homePath(".claude")
+	} else if cwd, err := getwd(); err == nil {
+		// Made absolute the way the OS does, so the path memry records
+		// means the same file from any other working directory.
+		dir = absolute(goos, dir, cwd)
+	}
+	return home.Join(dir, "settings.json"), nil
 }
 
 // installSessionStartHook installs the Claude Code SessionStart hook that
@@ -66,7 +88,11 @@ func (a *claudeCode) installSessionStartHook(lines *lines) bool {
 		lines.say("error", "Could not install the memry SessionStart hook: MEMRY_EXECUTABLE "+exe+" can only hold letters, digits and : / \\ . _ - in a hook command. Set it to such a path, or unset it to use memry from the PATH, then run `memry setup` again.")
 		return false
 	}
-	settings := a.settings()
+	settings, err := a.settings()
+	if err != nil {
+		lines.say("error", "Could not install the memry SessionStart hook: "+err.Error()+".")
+		return false
+	}
 	group := phpjson.NewObject(
 		"matcher", "startup|resume|clear|compact",
 		"hooks", []any{phpjson.NewObject("type", "command", "command", a.env.Executable.Command(hookMarker), "timeout", 10)},
@@ -292,7 +318,11 @@ func excerpt(output string) string {
 // removeSessionStartHook removes the hook setup installed, identified
 // like setup does by the hook:session-start command.
 func (a *claudeCode) removeSessionStartHook(lines *lines) bool {
-	settings := a.settings()
+	settings, err := a.settings()
+	if err != nil {
+		lines.say("warn", "Could not remove the memry SessionStart hook: "+err.Error()+".")
+		return false
+	}
 	removed, err := settings.RemoveSessionStartHook(hookMarker)
 	switch {
 	case err != nil:
@@ -308,3 +338,47 @@ func (a *claudeCode) removeSessionStartHook(lines *lines) bool {
 	}
 	return true
 }
+
+// absolute is dir made absolute on goos against the working directory
+// cwd, the way the OS resolves it: on Windows a drive or UNC path is
+// absolute, a path rooted without a drive is on cwd's drive, and anything
+// else is under cwd; on Unix only a path starting with / is absolute.
+// (ClaudeSettingsPath refuses a drive-relative C:x.) The Windows rules do not depend
+// on the OS it runs on, so they can be tested anywhere.
+func absolute(goos, dir, cwd string) string {
+	if goos != "windows" {
+		// filepath.IsAbs only matters when goos is not this OS's, as in
+		// the tests: a path this OS takes as absolute stays as it is.
+		if strings.HasPrefix(dir, "/") || filepath.IsAbs(dir) {
+			return dir
+		}
+		return filepath.Join(cwd, dir)
+	}
+	switch {
+	case windowsVolume(dir) != "":
+		return dir
+	case strings.HasPrefix(dir, `\`) || strings.HasPrefix(dir, "/"):
+		return windowsVolume(cwd) + dir
+	}
+	return filepath.Join(cwd, dir)
+}
+
+// windowsVolume is the volume a Windows path starts with: a drive (C:) or
+// a UNC share (\\server\share), or "" when it has none.
+func windowsVolume(path string) string {
+	if len(path) >= 2 && path[1] == ':' {
+		return path[:2]
+	}
+	if !strings.HasPrefix(path, `\\`) && !strings.HasPrefix(path, "//") {
+		return ""
+	}
+	parts := strings.FieldsFunc(path[2:], func(r rune) bool { return r == '\\' || r == '/' })
+	if len(parts) < 2 {
+		return ""
+	}
+	return path[:2] + parts[0] + `\` + parts[1]
+}
+
+// getwd is the working directory a relative CLAUDE_CONFIG_DIR is in; a
+// seam for the tests.
+var getwd = os.Getwd

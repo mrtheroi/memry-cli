@@ -107,7 +107,7 @@ func Resolve(args Args, lookupEnv func(string) (string, bool), agentKeys []strin
 		return fail("Invalid server address given with --url. Use an http:// or https:// URL.")
 	}
 	serverURL := serverURL(args.URL, lookupEnv)
-	if !args.Insecure && isRemotePlainHTTP(serverURL) {
+	if !args.Insecure && IsRemotePlainHTTP(serverURL) {
 		return fail("Refusing to send credentials over plain HTTP to " + hostOf(serverURL) +
 			". Use an https:// URL, or pass --insecure to allow it (for example on a trusted LAN).")
 	}
@@ -187,10 +187,10 @@ func serverURL(option Option, lookupEnv func(string) (string, bool)) string {
 	return strings.TrimRight(value, "/")
 }
 
-// isRemotePlainHTTP reports whether raw is an http:// address whose host is
+// IsRemotePlainHTTP reports whether raw is an http:// address whose host is
 // not this machine. A value that does not parse is not one: setup has
 // always taken a MEMRY_URL as it is.
-func isRemotePlainHTTP(raw string) bool {
+func IsRemotePlainHTTP(raw string) bool {
 	parsed, err := url.Parse(raw)
 	return err == nil && parsed.Scheme == "http" && !isLoopbackHost(parsed.Hostname())
 }

@@ -28,20 +28,36 @@ var (
 // An existing file keeps its permissions; a new one gets mode. Missing
 // parent directories are created readable by the owner only.
 func WriteAtomic(path string, data []byte, mode os.FileMode) error {
-	return write(path, data, &mode, true)
+	return write(path, data, &mode, true, nil)
+}
+
+// WriteAtomicIf is WriteAtomic that calls check once the data is written
+// aside, right before the rename, and leaves path untouched when check
+// fails. It narrows the window in which another program's write to path
+// could be overwritten to the rename itself; a file system has no true
+// compare-and-swap, so a write at that same instant still loses.
+func WriteAtomicIf(path string, data []byte, mode os.FileMode, check func() error) error {
+	return write(path, data, &mode, true, check)
 }
 
 // Replace is WriteAtomic for the files of other programs, like PHP's
 // AtomicFile::write: an existing file keeps its permissions and a new one
 // gets the default ones, 0666 minus the umask.
 func Replace(path string, data []byte) error {
-	return write(path, data, nil, false)
+	return write(path, data, nil, false, nil)
+}
+
+// ReplaceIf is Replace that calls check right before every rename attempt
+// and leaves path untouched when check fails (see WriteAtomicIf).
+func ReplaceIf(path string, data []byte, check func() error) error {
+	return write(path, data, nil, false, check)
 }
 
 // write writes data atomically to path, with the mode of an existing file,
 // else mode, else (when mode is nil) the default mode. With restrict, the
 // file is left accessible to its owner only where restrictToOwner is set.
-func write(path string, data []byte, mode *os.FileMode, restrict bool) error {
+// A check, if any, runs right before the rename and stops it on error.
+func write(path string, data []byte, mode *os.FileMode, restrict bool, check func() error) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -82,7 +98,7 @@ func write(path string, data []byte, mode *os.FileMode, restrict bool) error {
 	if err := os.Chmod(temp.Name(), *mode); err != nil {
 		return err
 	}
-	return renameRetry(temp.Name(), path)
+	return renameRetry(temp.Name(), path, check)
 }
 
 // renameAttempts is how many times a rename is tried: with the pauses of
@@ -90,9 +106,16 @@ func write(path string, data []byte, mode *os.FileMode, restrict bool) error {
 const renameAttempts = 10
 
 // renameRetry renames oldpath over newpath, trying again while the error
-// is transient, like a file another program holds open on Windows.
-func renameRetry(oldpath, newpath string) error {
+// is transient, like a file another program holds open on Windows. A
+// check, if any, runs right before every attempt and stops it on error:
+// the other program may have written newpath while it held it.
+func renameRetry(oldpath, newpath string, check func() error) error {
 	for attempt := 1; ; attempt++ {
+		if check != nil {
+			if err := check(); err != nil {
+				return err
+			}
+		}
 		err := rename(oldpath, newpath)
 		if err == nil || !retryable(err) {
 			return err

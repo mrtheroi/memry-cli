@@ -53,6 +53,7 @@ func removal(name, short, version string, run func(uninstall.Env) int) *cobra.Co
 				Prompter:   prompt.New(cmd.InOrStdin(), out),
 				Agents:     agents.New(agentsEnv(lookupEnv)),
 				HTTP:       client.New(version, 10*time.Second),
+				CacheDir:   cacheDir(),
 			})
 			if code != 0 {
 				return errFailed

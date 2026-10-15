@@ -170,3 +170,67 @@ func TestWriteAtomicDoesNotRetryAnErrorThatIsNotTransient(t *testing.T) {
 		t.Errorf("attempts = %d, slept = %v, want 1 and 0", f.attempts, f.slept)
 	}
 }
+
+// WriteAtomicIf checks right before the rename and, when the check fails,
+// leaves the file as it was and no temporary file behind.
+func TestWriteAtomicIfLeavesTheFileWhenTheCheckFails(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(path, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stop := errors.New("changed")
+
+	err := fsx.WriteAtomicIf(path, []byte("after"), 0o600, func() error { return stop })
+
+	if !errors.Is(err, stop) {
+		t.Errorf("WriteAtomicIf = %v, want the check's error", err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "before" {
+		t.Errorf("file = %q, want it untouched", data)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("dir holds %v, want only the file", entries)
+	}
+}
+
+// The check runs right before every rename attempt: a file another
+// program changes while a retry waits is not overwritten.
+func TestWriteAtomicIfChecksBeforeEveryRenameAttempt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(path, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	busy := errors.New("in use")
+	attempts := 0
+	t.Cleanup(fsx.SetRetryable(func(err error) bool { return errors.Is(err, busy) }))
+	t.Cleanup(fsx.SetSleep(func(time.Duration) {}))
+	t.Cleanup(fsx.SetRename(func(oldpath, newpath string) error {
+		attempts++
+		if attempts == 1 {
+			// Another program writes the file while it is held.
+			if err := os.WriteFile(newpath, []byte("theirs"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return busy
+		}
+		return os.Rename(oldpath, newpath)
+	}))
+	changed := errors.New("changed")
+	check := func() error {
+		if data, _ := os.ReadFile(path); string(data) != "before" {
+			return changed
+		}
+		return nil
+	}
+
+	err := fsx.WriteAtomicIf(path, []byte("after"), 0o600, check)
+
+	if !errors.Is(err, changed) {
+		t.Errorf("WriteAtomicIf = %v, want the check's error", err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "theirs" {
+		t.Errorf("file = %q, want the other program's write kept", data)
+	}
+}

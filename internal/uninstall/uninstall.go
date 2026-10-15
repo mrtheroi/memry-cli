@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
@@ -19,6 +20,7 @@ import (
 	"github.com/mrtheroi/memry-cli/internal/email"
 	"github.com/mrtheroi/memry-cli/internal/flags"
 	"github.com/mrtheroi/memry-cli/internal/home"
+	"github.com/mrtheroi/memry-cli/internal/usage"
 )
 
 // Prompter asks the questions the commands need.
@@ -43,6 +45,8 @@ type Env struct {
 	Prompter  Prompter
 	Agents    agents.Registry
 	HTTP      *http.Client
+	// CacheDir is the user's cache directory, where the usage lock lives.
+	CacheDir string
 }
 
 // Exit codes, as in the PHP CLI.
@@ -75,6 +79,15 @@ func Uninstall(env Env) int {
 	// in the order of the PHP CLI.
 	var agentLines bytes.Buffer
 	pending := env.withOut(&agentLines).removeFromAgents()
+	// From the usage metrics cleanup to the config's deletion, under the
+	// config lock setup and the usage commands take.
+	unlock, held, ok := env.lockConfig()
+	if !ok {
+		_, _ = env.Out.Write(agentLines.Bytes())
+		return failure
+	}
+	defer unlock()
+	pending = env.withOut(&agentLines).turnOffUsage(pending, false, held)
 	if len(pending) > 0 {
 		_, _ = env.Out.Write(agentLines.Bytes())
 		return env.keepForRetry(pending, true, "Kept the login and the agents still to clean up in ")
@@ -141,9 +154,55 @@ func (env Env) removeFromAgents() []string {
 	return pending
 }
 
+// turnOffUsage turns off the usage metrics memry set up, returning pending
+// with Claude Code added when it could not, for a retry. The usage
+// metrics are recognized by the login, so they go before it. With
+// accountDeleted, a usage token on that server was deleted with the
+// account; see usage.TurnOff. With held, the config lock is already held.
+func (env Env) turnOffUsage(pending []string, accountDeleted, held bool) []string {
+	usageEnv := env.usageEnv()
+	turnOff := usage.TurnOff
+	if held {
+		turnOff = usage.TurnOffLocked
+	}
+	if !turnOff(usageEnv, accountDeleted) && !slices.Contains(pending, "claude-code") {
+		pending = append(pending, "claude-code")
+	}
+	return pending
+}
+
+// usageEnv is env for the usage commands.
+func (env Env) usageEnv() usage.Env {
+	return usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out, HTTP: env.HTTP, CacheDir: env.CacheDir}
+}
+
+// lockConfig takes the config lock setup and the usage commands take, for
+// uninstall's changes to the config, reporting whether it holds it. A
+// cache directory that cannot hold the lock (missing, or not private) is
+// one no other command can lock either, so uninstall goes on without it.
+// When another command holds the lock, or something that is not a lock is
+// in its place, it says why and reports false: nothing else is changed.
+func (env Env) lockConfig() (unlock func(), held, ok bool) {
+	none := func() {}
+	if env.CacheDir == "" {
+		return none, false, true
+	}
+	path, _ := config.Path(env.GOOS, env.getenv)
+	unlock, err := config.Lock(env.CacheDir, path, env.GOOS)
+	switch {
+	case err == nil:
+		return unlock, true, true
+	case errors.Is(err, config.ErrLocked), errors.Is(err, config.ErrNotRegular):
+		env.line(config.LockFailure(err, env.CacheDir, path, env.GOOS))
+		env.line("Nothing else was changed in the memry config; try again.")
+		return nil, false, false
+	}
+	return none, false, true
+}
+
 // keepForRetry saves the agents still to clean up in agents_to_remove,
 // with an empty agent selection, keeping the login or, without
-// keepLogin, nothing else, so `memry uninstall` can retry them. Without a config file there is
+// keepLogin, only the usage metrics record, so `memry uninstall` can retry them. Without a config file there is
 // nothing to keep: a retry cleans up Claude Code again. It always fails.
 func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
 	path, _ := config.Path(env.GOOS, env.getenv)
@@ -153,9 +212,14 @@ func (env Env) keepForRetry(pending []string, keepLogin bool, kept string) int {
 	}
 	cfg, err := config.LoadOrEmpty(path)
 	if err == nil && !keepLogin {
-		// Start from an empty config at the same path.
+		// Start from an empty config at the same path, but for the record
+		// of the usage metrics still to turn off.
+		usage, hasUsage, _ := cfg.UsageMetrics()
 		if err = os.Remove(path); err == nil || errors.Is(err, fs.ErrNotExist) {
 			cfg, err = config.LoadOrEmpty(path)
+		}
+		if err == nil && hasUsage {
+			cfg.SetUsageMetrics(usage)
 		}
 	}
 	if err == nil {
@@ -276,7 +340,8 @@ func (env Env) send(method, url, token string, data any) (int, error) {
 }
 
 // configReadable reports whether there is a config path and the file is
-// missing or can be read, saying why not. A file that cannot be read may hold the login and
+// missing or can be read as a JSON object with a valid usage metrics
+// record, if any, saying why not. A file that cannot be read may hold the login and
 // the agents: it is never taken for an empty config. Like the PHP CLI's
 // is_file, anything but a regular file is no config file.
 func (env Env) configReadable() bool {
@@ -289,7 +354,17 @@ func (env Env) configReadable() bool {
 		return true
 	}
 	_, err = os.ReadFile(path)
-	if err == nil || errors.Is(err, fs.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) {
+		return true
+	}
+	if err == nil {
+		// A config that is not a JSON object may hold the record of the
+		// usage metrics: deleting or overwriting it would lose what
+		// memry wrote in Claude Code's settings.
+		if usage.Preflight(env.usageEnv()) == usage.RecordInvalid {
+			env.line("Could not read the memry config " + path + ", so memry cannot tell whether usage metrics are on. Fix it, then try again.")
+			return false
+		}
 		return true
 	}
 	var pathErr *fs.PathError
@@ -363,7 +438,13 @@ func DeleteAccount(env Env) int {
 	env.line("Deleted your memry account and all its memories.")
 	// The token was deleted with the account, so there is nothing to
 	// revoke, nor a login to keep for a retry.
-	if pending := env.removeFromAgents(); len(pending) > 0 {
+	pending := env.removeFromAgents()
+	unlock, held, ok := env.lockConfig()
+	if !ok {
+		return failure
+	}
+	defer unlock()
+	if pending := env.turnOffUsage(pending, true, held); len(pending) > 0 {
 		return env.keepForRetry(pending, false, "Kept only the agents still to clean up in ")
 	}
 	deleted := env.deleteConfig()

@@ -195,6 +195,8 @@ type fakeAgent struct {
 	notInstalled bool
 	fails        bool
 	calls        []string
+	// onUninstall, when set, runs while memry is removed from the agent.
+	onUninstall func()
 }
 
 func (f *fakeAgent) Key() string       { return f.key }
@@ -211,6 +213,9 @@ func (f *fakeAgent) Install(url string) agents.Result {
 
 func (f *fakeAgent) Uninstall() agents.Result {
 	f.calls = append(f.calls, "uninstall")
+	if f.onUninstall != nil {
+		f.onUninstall()
+	}
 	return agents.Result{Successful: !f.fails, Lines: []agents.Line{{Style: "info", Text: "Unwired " + f.name + "."}}}
 }
 

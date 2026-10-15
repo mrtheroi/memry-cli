@@ -189,3 +189,25 @@ func TestUninstallWithoutUsageMetricsNeedsNoUsageLock(t *testing.T) {
 	assertExit(t, code, 0, output)
 	assertNotContains(t, output, "lock")
 }
+
+// With a usage record but a cache directory that cannot hold the lock,
+// the cleanup fails clearly and the login stays for a retry.
+func TestUninstallKeepsTheLoginWhenTheUsageCleanupCannotLock(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
+	values := map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}
+	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"},
+		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7, "server_url": s.URL}}})
+	writeRaw(t, h.settingsPath, `{"env":{"OTEL_METRICS_EXPORTER":"otlp"}}`)
+	h.cacheDir = filepath.Join(t.TempDir(), "not-a-directory")
+	writeRaw(t, h.cacheDir, "a file")
+
+	output, code := h.run(uninstall.Uninstall, force)
+
+	assertExit(t, code, 1, output)
+	assertContains(t, output, "Could not lock ")
+	if cfg := h.config(); cfg["token"] != "1|abc" || cfg["usage_metrics"] == nil {
+		t.Errorf("config = %v, want the login and the record kept", cfg)
+	}
+}

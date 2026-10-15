@@ -13,6 +13,7 @@ import (
 
 	"github.com/mrtheroi/memry-cli/internal/agents"
 	"github.com/mrtheroi/memry-cli/internal/setup"
+	"github.com/mrtheroi/memry-cli/internal/uninstall"
 	"github.com/mrtheroi/memry-cli/internal/usage"
 )
 
@@ -104,5 +105,43 @@ func TestSetupDuringEnableWaitsForTheLock(t *testing.T) {
 	assertContains(t, out.String(), "Another memry command is changing the memry config; try again when it is done.")
 	cfg := readText(t, h.configPath)
 	assertContains(t, cfg, `"url": "`+s.URL+`"`)
+	assertContains(t, cfg, `"token_id": 7`)
+}
+
+// Uninstall takes the same lock for its config writes: started while an
+// enable is in flight, it gives up with the shared lock message instead of
+// deleting the config the enable is about to record its setup in.
+func TestUninstallDuringEnableWaitsForTheLock(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	t.Cleanup(usage.SetLockTiming(50*time.Millisecond, time.Hour))
+	var out bytes.Buffer
+	uninstallCode := -1
+	var started atomic.Bool
+	s.onIssue = func() {
+		if started.Swap(true) {
+			return
+		}
+		uninstallCode = uninstall.Uninstall(uninstall.Env{
+			Args: []string{"--force"},
+			LookupEnv: func(key string) (string, bool) {
+				value, ok := h.env[key]
+				return value, ok
+			},
+			Out:      &out,
+			Agents:   agents.NewSupported(),
+			HTTP:     h.client(),
+			CacheDir: h.cacheDir,
+		})
+	}
+
+	output, code := h.run(usage.Enable)
+
+	assertExit(t, code, 0, output)
+	assertExit(t, uninstallCode, 1, out.String())
+	assertContains(t, out.String(), "Another memry command is changing the memry config; try again when it is done.")
+	cfg := readText(t, h.configPath)
+	assertContains(t, cfg, `"token": "1|login-token"`)
 	assertContains(t, cfg, `"token_id": 7`)
 }

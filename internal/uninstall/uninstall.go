@@ -78,7 +78,16 @@ func Uninstall(env Env) int {
 	// login stays for a retry. Their lines are shown after the revoke's,
 	// in the order of the PHP CLI.
 	var agentLines bytes.Buffer
-	pending := env.withOut(&agentLines).removeFromAgents(false)
+	pending := env.withOut(&agentLines).removeFromAgents()
+	// From the usage metrics cleanup to the config's deletion, under the
+	// config lock setup and the usage commands take.
+	unlock, held, ok := env.lockConfig()
+	if !ok {
+		_, _ = env.Out.Write(agentLines.Bytes())
+		return failure
+	}
+	defer unlock()
+	pending = env.withOut(&agentLines).turnOffUsage(pending, false, held)
 	if len(pending) > 0 {
 		_, _ = env.Out.Write(agentLines.Bytes())
 		return env.keepForRetry(pending, true, "Kept the login and the agents still to clean up in ")
@@ -128,10 +137,7 @@ func (env Env) aborted() int {
 // removeFromAgents removes memry from every agent setup wired, and from
 // the ones a failed removal left in agents_to_remove, even when an earlier
 // one fails. It returns the agents it could not be removed from.
-//
-// With accountDeleted, the usage token recorded on that server was deleted
-// with the account; see usage.TurnOff.
-func (env Env) removeFromAgents(accountDeleted bool) []string {
+func (env Env) removeFromAgents() []string {
 	cfg := env.loadConfig()
 	saved, hasSaved := cfg.Agents()
 	toRemove, hasToRemove := cfg.AgentsToRemove()
@@ -145,12 +151,48 @@ func (env Env) removeFromAgents(accountDeleted bool) []string {
 			pending = append(pending, agent.Key())
 		}
 	}
-	// The usage metrics are recognized by the login, so they go before it.
-	// When they cannot be removed, Claude Code is kept for a retry.
-	if !usage.TurnOff(usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out, HTTP: env.HTTP, CacheDir: env.CacheDir}, accountDeleted) && !slices.Contains(pending, "claude-code") {
+	return pending
+}
+
+// turnOffUsage turns off the usage metrics memry set up, returning pending
+// with Claude Code added when it could not, for a retry. The usage
+// metrics are recognized by the login, so they go before it. With
+// accountDeleted, a usage token on that server was deleted with the
+// account; see usage.TurnOff. With held, the config lock is already held.
+func (env Env) turnOffUsage(pending []string, accountDeleted, held bool) []string {
+	usageEnv := usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out, HTTP: env.HTTP, CacheDir: env.CacheDir}
+	turnOff := usage.TurnOff
+	if held {
+		turnOff = usage.TurnOffLocked
+	}
+	if !turnOff(usageEnv, accountDeleted) && !slices.Contains(pending, "claude-code") {
 		pending = append(pending, "claude-code")
 	}
 	return pending
+}
+
+// lockConfig takes the config lock setup and the usage commands take, for
+// uninstall's changes to the config, reporting whether it holds it. A
+// cache directory that cannot hold the lock (missing, or not private) is
+// one no other command can lock either, so uninstall goes on without it.
+// When another command holds the lock, or something that is not a lock is
+// in its place, it says why and reports false: nothing else is changed.
+func (env Env) lockConfig() (unlock func(), held, ok bool) {
+	none := func() {}
+	if env.CacheDir == "" {
+		return none, false, true
+	}
+	path, _ := config.Path(env.GOOS, env.getenv)
+	unlock, err := config.Lock(env.CacheDir, path)
+	switch {
+	case err == nil:
+		return unlock, true, true
+	case errors.Is(err, config.ErrLocked), errors.Is(err, config.ErrNotRegular):
+		env.line(config.LockFailure(err, env.CacheDir, path))
+		env.line("Nothing else was changed in the memry config; try again.")
+		return nil, false, false
+	}
+	return none, false, true
 }
 
 // keepForRetry saves the agents still to clean up in agents_to_remove,
@@ -390,7 +432,13 @@ func DeleteAccount(env Env) int {
 	env.line("Deleted your memry account and all its memories.")
 	// The token was deleted with the account, so there is nothing to
 	// revoke, nor a login to keep for a retry.
-	if pending := env.removeFromAgents(true); len(pending) > 0 {
+	pending := env.removeFromAgents()
+	unlock, held, ok := env.lockConfig()
+	if !ok {
+		return failure
+	}
+	defer unlock()
+	if pending := env.turnOffUsage(pending, true, held); len(pending) > 0 {
 		return env.keepForRetry(pending, false, "Kept only the agents still to clean up in ")
 	}
 	deleted := env.deleteConfig()

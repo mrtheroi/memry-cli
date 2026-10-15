@@ -511,7 +511,8 @@ func (env Env) disable() int {
 // nothing when they are not on. It revokes the usage token it recorded
 // too, unless accountDeleted on the recorded server, which revoked it with
 // the account. It reports false, after telling why, when they could not be
-// removed; the record then stays for a retry.
+// removed; the record then stays for a retry. It takes the config lock
+// itself, unless there is no record to clean up.
 func TurnOff(env Env, accountDeleted bool) bool {
 	// Without a record there is nothing to clean up, and no need for the
 	// lock, which may not be available (a cache directory that cannot be
@@ -520,11 +521,17 @@ func TurnOff(env Env, accountDeleted bool) bool {
 		return true
 	}
 	return env.locked(func() int {
-		if _, ok := env.turnOff(accountDeleted); !ok {
+		if !TurnOffLocked(env, accountDeleted) {
 			return failure
 		}
 		return success
 	}) == success
+}
+
+// TurnOffLocked is TurnOff for a caller that holds the config lock.
+func TurnOffLocked(env Env, accountDeleted bool) bool {
+	_, ok := env.turnOff(accountDeleted)
+	return ok
 }
 
 // turnOff removes what the record says enable wrote, from the settings it

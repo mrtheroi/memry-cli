@@ -65,8 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two minutes is taken over, and a command waits up to 15 seconds for another one. `memry setup` takes the
   same lock around its config writes, re-reading the config before its second save, so setup and
   the usage commands never overwrite each other's changes. Uninstall and
-  delete-account take it only when the config has a usage record, so an unusable cache directory
-  never fails an uninstall that has no usage metrics to clean up.
+  delete-account take it too, from the usage cleanup to the config's deletion, after removing memry
+  from the agents. They go on without it only when the cache directory cannot hold a lock (then
+  no other command can hold one either); with a usage record to clean up, that fails clearly and
+  keeps the login for a retry.
 - Unknown state fails closed: when the memry config exists but cannot be read, is not valid JSON or
   is not an object, `memry usage enable`, `disable` and `status`, `memry uninstall` and `memry
   delete-account` stop before changing anything, instead of taking it for a config without a usage

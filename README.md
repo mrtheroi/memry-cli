@@ -245,8 +245,9 @@ memry can see". If you use mTLS, Claude Code may also present its client certifi
   compares again right before replacing it. A file system has no true compare-and-swap with other
   programs, so if another program writes `settings.json` at that same instant, the last writer
   wins. Usage
-  commands and `memry setup` share a lock in `memry/` under your user cache directory, which must
-  be private to you, so they never overwrite each other's changes to the memry config.
+  commands, `memry setup`, `memry uninstall` and `memry delete-account` share a lock in `memry/`
+  under your user cache directory, which must be private to you, so they never overwrite each
+  other's changes to the memry config.
 - If the memry config exists but cannot be read as a JSON object, the usage commands, `memry
   uninstall` and `memry delete-account` stop without changing anything.
 

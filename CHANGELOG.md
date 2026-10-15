@@ -78,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while it still holds its owner's token. `memry usage status` and `disable` read the config without the lock
   first and take it only when there is a record to reconcile or clean up, so with no usage
   metrics they answer even when the cache directory cannot hold a lock. `memry setup` takes the
-  same lock around its config writes, re-reading the config before its second save, so setup and
+  same lock around its config writes, re-reading the config strictly before its second save (a
+  config that became unreadable or malformed meanwhile is left untouched and setup fails), so setup and
   the usage commands never overwrite each other's changes. Uninstall and
   delete-account take it too, from the usage cleanup to the config's deletion, after removing memry
   from the agents. They go on without it only when the cache directory cannot hold a lock (then

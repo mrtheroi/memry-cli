@@ -132,3 +132,28 @@ func TestUnwiresNothingOnAFirstSetup(t *testing.T) {
 	assertExit(t, code, 0, output)
 	assertCalls(t, claude)
 }
+
+// The second save, of the agents still to clean up, reads the config with
+// the strict loader: a config that became unreadable or malformed since
+// the first save may hold a usage record, so setup fails closed and leaves
+// it untouched.
+func TestTheSecondSaveLeavesAConfigCorruptedMeanwhileUntouched(t *testing.T) {
+	h, s := newHarness(t), newServer(t)
+	windsurf := &fakeAgent{key: "windsurf", name: "Windsurf", fails: true}
+	corrupted := `{"url":`
+	windsurf.onUninstall = func() {
+		if err := os.WriteFile(h.configPath, []byte(corrupted), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.useAgents(newCodex(), windsurf)
+	h.writeConfig(map[string]any{"url": s.URL, "token": "old-token", "agents": []string{"windsurf"}})
+
+	output, code := h.run(selectionArgs(s.URL, "--agents", "codex"), code123456)
+
+	assertExit(t, code, 1, output)
+	assertContains(t, output, "Could not read "+h.configPath+" as a memry config")
+	if data, _ := os.ReadFile(h.configPath); string(data) != corrupted {
+		t.Errorf("config = %q, want it untouched", data)
+	}
+}

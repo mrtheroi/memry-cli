@@ -265,12 +265,15 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 			return failure
 		}
 		defer unlock()
-		cfg, err := config.LoadOrEmpty(path)
-		if err == nil {
-			setAgentsToRemove(cfg, pending)
-			err = cfg.Save()
-		}
+		// The login is saved by now: a config that cannot be read as one
+		// (it may also hold the usage metrics record) is left as it is.
+		cfg, err := config.Load(path)
 		if err != nil {
+			env.line("Could not read " + path + " as a memry config: " + err.Error() + ". Fix it, then run `memry setup` again.")
+			return failure
+		}
+		setAgentsToRemove(cfg, pending)
+		if err := cfg.Save(); err != nil {
 			return env.notSaved(path, err)
 		}
 	}

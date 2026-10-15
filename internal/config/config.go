@@ -354,15 +354,21 @@ func (s *UsageSetup) valid() bool {
 			return false
 		}
 	}
-	if len(s.Kept) != len(s.Expected)-len(s.Values) {
-		return false
-	}
+	// Kept is exactly the set Expected \ Values: no duplicate, nothing
+	// missing, nothing more.
+	kept := map[string]bool{}
 	for _, key := range s.Kept {
-		if _, owned := s.Values[key]; owned || s.Expected[key] == "" {
+		if kept[key] {
+			return false
+		}
+		kept[key] = true
+	}
+	for key := range s.Expected {
+		if _, owned := s.Values[key]; owned == kept[key] {
 			return false
 		}
 	}
-	return true
+	return len(kept) == len(s.Expected)-len(s.Values)
 }
 
 // SetUsageMetrics saves the usage metrics setup.

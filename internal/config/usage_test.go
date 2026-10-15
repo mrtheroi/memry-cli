@@ -76,6 +76,14 @@ func TestUsageMetricsValidRequiresTheWholeExpectedConfiguration(t *testing.T) {
 		"kept is not the rest":        func(s *config.UsageSetup) { s.Kept = nil },
 		"kept also owned":             func(s *config.UsageSetup) { s.Kept = append(s.Kept, "OTEL_METRICS_EXPORTER") },
 		"expected has an unknown key": func(s *config.UsageSetup) { s.Expected["OTHER"] = "1" },
+		"kept has a duplicate": func(s *config.UsageSetup) {
+			s.Kept = append(s.Kept, s.Kept[0])
+			s.Expected["OTEL_METRICS_EXPORTER"], s.Values["OTEL_METRICS_EXPORTER"] = "x", "x"
+		},
+		"a duplicate hides a missing kept key": func(s *config.UsageSetup) {
+			delete(s.Values, "OTEL_METRICS_EXPORTER")
+			s.Kept = append(s.Kept, s.Kept[0])
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			setup := validSetup()

@@ -25,3 +25,12 @@ func LockPath(env Env) string {
 	path, _ := config.Path(env.GOOS, env.getenv)
 	return config.LockPath(env.CacheDir, path)
 }
+
+// WrittenKeys are the variables enable writes, in order.
+func WrittenKeys() []string {
+	var keys []string
+	for _, v := range append(wanted("https://memry.test/api/otlp/v1/metrics"), variable{headersKey, ""}) {
+		keys = append(keys, v.key)
+	}
+	return keys
+}

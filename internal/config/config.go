@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/mrtheroi/memry-cli/internal/fsx"
 	"github.com/mrtheroi/memry-cli/internal/home"
@@ -258,7 +259,11 @@ type UsageSetup struct {
 	ServerURL string `json:"server_url"`
 	// SettingsPath is the settings file memry wrote.
 	SettingsPath string `json:"settings_path"`
-	// Values are the variables memry wrote there, with their values.
+	// Expected is the exact value of every variable memry configures
+	// (UsageKeys), written or kept: what Claude Code must run with.
+	Expected map[string]string `json:"expected"`
+	// Values are the variables memry wrote there, with their values: the
+	// ones it owns and removes.
 	Values map[string]string `json:"values"`
 	// Kept are the variables that already had memry's value before the
 	// first enable, which memry did not write and so never removes.
@@ -266,6 +271,27 @@ type UsageSetup struct {
 	// TokenID is the id of the usage token in the headers.
 	TokenID int64 `json:"token_id,omitempty"`
 }
+
+// UsageKeys are the variables memry configures in Claude Code's settings
+// for its usage metrics export: the telemetry switch, the metrics
+// exporter, protocol, endpoint and headers, and the attribute gates.
+var UsageKeys = []string{
+	"CLAUDE_CODE_ENABLE_TELEMETRY",
+	"OTEL_METRICS_EXPORTER",
+	"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL",
+	"OTEL_METRICS_INCLUDE_SESSION_ID",
+	"OTEL_METRICS_INCLUDE_ACCOUNT_UUID",
+	"OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES",
+	"OTEL_METRICS_INCLUDE_REPOSITORY",
+	"OTEL_METRICS_INCLUDE_VERSION",
+	"OTEL_METRICS_INCLUDE_ENTRYPOINT",
+	"OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+	UsageHeadersKey,
+}
+
+// UsageHeadersKey is the variable of the headers, which hold the usage
+// token as "Authorization=Bearer <token>".
+const UsageHeadersKey = "OTEL_EXPORTER_OTLP_METRICS_HEADERS"
 
 // UsageMetrics is the record of the usage metrics setups, saved under
 // usage_metrics. The PHP CLI does not know this key and keeps it as it is.
@@ -292,15 +318,47 @@ func (f *File) UsageMetrics() (UsageMetrics, bool, error) {
 }
 
 // Valid reports whether the record has a setup, and each of its setups
-// has every field memry writes: the server, the settings path, at least
-// one variable (with a string value, which decoding checks) and the usage
-// token's id.
+// is complete (see UsageSetup.valid).
 func (u UsageMetrics) Valid() bool {
 	if u.Current == nil && u.Pending == nil {
 		return false
 	}
 	for _, setup := range []*UsageSetup{u.Current, u.Pending} {
-		if setup != nil && (setup.ServerURL == "" || setup.SettingsPath == "" || len(setup.Values) == 0 || setup.TokenID <= 0) {
+		if setup != nil && !setup.valid() {
+			return false
+		}
+	}
+	return true
+}
+
+// valid reports whether the setup has the server, the settings path and
+// the usage token's id, the exact expected value of every variable memry
+// configures (UsageKeys, the headers with a bearer token), owned variables
+// that are among them with the same values (the headers always), and as
+// kept exactly the others.
+func (s *UsageSetup) valid() bool {
+	if s.ServerURL == "" || s.SettingsPath == "" || s.TokenID <= 0 || len(s.Expected) != len(UsageKeys) {
+		return false
+	}
+	for _, key := range UsageKeys {
+		if s.Expected[key] == "" {
+			return false
+		}
+	}
+	token, bearer := strings.CutPrefix(s.Expected[UsageHeadersKey], "Authorization=Bearer ")
+	if !bearer || token == "" || s.Values[UsageHeadersKey] == "" {
+		return false
+	}
+	for key, value := range s.Values {
+		if expected, ok := s.Expected[key]; !ok || expected != value {
+			return false
+		}
+	}
+	if len(s.Kept) != len(s.Expected)-len(s.Values) {
+		return false
+	}
+	for _, key := range s.Kept {
+		if _, owned := s.Values[key]; owned || s.Expected[key] == "" {
 			return false
 		}
 	}

@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mrtheroi/memry-cli/internal/config"
+
 	"github.com/mrtheroi/memry-cli/internal/phpjson"
 )
 
@@ -23,9 +25,9 @@ func isTelemetry(key string) bool {
 	return strings.Contains(key, "BETA_TRACING")
 }
 
-// isMemrys reports whether key is one of the variables memry writes.
+// isMemrys reports whether key is one of the variables memry configures.
 func isMemrys(key string) bool {
-	return key == endpointKey || key == headersKey || slices.ContainsFunc(constants, func(v variable) bool { return v.key == key })
+	return slices.Contains(config.UsageKeys, key)
 }
 
 // allowed reports whether a telemetry variable may be set to value next to
@@ -177,25 +179,26 @@ func (t telemetry) blockers(endpoint string) []string {
 	return append(lines, t.foreign(endpoint)...)
 }
 
-// inactive says why Claude Code does not export metrics to endpoint with
-// the headers memry recorded, or nothing when it does: the switch, the
-// exporter, the protocol, the endpoint and the headers, each as Claude
-// Code reads it. Headers with another bearer token are not memry's.
-func (t telemetry) inactive(endpoint, headers string) []string {
+// inactive says why Claude Code does not run with the configuration memry
+// expects (every variable it configures, with the exact value recorded),
+// or nothing when it does, each variable as Claude Code reads it: headers
+// with another bearer token, for one, are not memry's.
+func (t telemetry) inactive(expected map[string]string) []string {
 	var reasons []string
-	for _, v := range []variable{{switchKey, "1"}, {"OTEL_METRICS_EXPORTER", "otlp"}, {"OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", "http/json"}, {endpointKey, endpoint}, {headersKey, headers}} {
-		if value, ok := t.inEnvironment(v.key); ok {
-			if value != v.value {
-				reasons = append(reasons, v.key+" is overridden in the environment.")
+	for _, key := range config.UsageKeys {
+		want := expected[key]
+		if value, ok := t.inEnvironment(key); ok {
+			if value != want {
+				reasons = append(reasons, key+" is overridden in the environment.")
 			}
 			continue
 		}
-		value, ok := t.inSettings(v.key)
+		value, ok := t.inSettings(key)
 		switch {
 		case !ok:
-			reasons = append(reasons, v.key+" is missing from "+t.path+".")
-		case value != v.value:
-			reasons = append(reasons, v.key+" is not memry's value in "+t.path+".")
+			reasons = append(reasons, key+" is missing from "+t.path+".")
+		case value != want:
+			reasons = append(reasons, key+" is not memry's value in "+t.path+".")
 		}
 	}
 	return reasons

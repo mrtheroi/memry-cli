@@ -32,7 +32,12 @@ func interruptedEnable(t *testing.T, h *harness, s *server, written bool) int {
 		values[key] = value
 	}
 	values["OTEL_EXPORTER_OTLP_METRICS_HEADERS"] = "Authorization=Bearer " + usageToken(id)
-	pending["values"], pending["token_id"] = values, id
+	expected := map[string]any{}
+	for key, value := range current["expected"].(map[string]any) {
+		expected[key] = value
+	}
+	expected["OTEL_EXPORTER_OTLP_METRICS_HEADERS"] = values["OTEL_EXPORTER_OTLP_METRICS_HEADERS"]
+	pending["values"], pending["expected"], pending["token_id"] = values, expected, id
 	record["pending"] = pending
 	h.writeConfig(cfg)
 	if written {

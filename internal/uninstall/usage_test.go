@@ -2,11 +2,13 @@ package uninstall_test
 
 import (
 	"encoding/json"
+	"maps"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/mrtheroi/memry-cli/internal/config"
 	"github.com/mrtheroi/memry-cli/internal/uninstall"
 )
 
@@ -22,7 +24,7 @@ func TestUninstallTurnsOffUsageMetrics(t *testing.T) {
 		"OTEL_EXPORTER_OTLP_METRICS_HEADERS":  "Authorization=Bearer 7|usage",
 	}
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"claude-code"},
-		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7, "server_url": s.URL}}})
+		"usage_metrics": usageRecord(s.URL, h.settingsPath, values)})
 	env := map[string]string{"FOO": "bar"}
 	for key, value := range values {
 		env[key] = value
@@ -71,7 +73,7 @@ func TestUninstallKeepsTheLoginWhenUsageMetricsCannotBeTurnedOff(t *testing.T) {
 	codex := &fakeAgent{key: "codex", name: "Codex"}
 	h.useAgents(codex)
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"},
-		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}, "token_id": 7, "server_url": s.URL}}})
+		"usage_metrics": usageRecord(s.URL, h.settingsPath, map[string]string{"OTEL_METRICS_EXPORTER": "otlp"})})
 	writeRaw(t, h.settingsPath, `{"env":`)
 
 	output, code := h.run(uninstall.Uninstall, force)
@@ -90,7 +92,7 @@ func TestDeleteAccountKeepsTheUsageMetricsRecordForARetry(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
-	record := map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}, "kept": []string{}, "token_id": 7, "server_url": s.URL}}
+	record := usageRecord(s.URL, h.settingsPath, map[string]string{"OTEL_METRICS_EXPORTER": "otlp"})
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"}, "usage_metrics": record})
 	writeRaw(t, h.settingsPath, `{"env":`)
 
@@ -148,7 +150,7 @@ func TestDeleteAccountWarnsAboutAUsageTokenOnAnotherServer(t *testing.T) {
 	other := "https://other.example.com"
 	values := map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"},
-		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7, "server_url": other}}})
+		"usage_metrics": usageRecord(other, h.settingsPath, values)})
 	writeRaw(t, h.settingsPath, `{"env":{"OTEL_METRICS_EXPORTER":"otlp"}}`)
 
 	output, code := h.run(uninstall.DeleteAccount, nil, answer{label: typeYourEmail, value: "ana@example.com"})
@@ -165,7 +167,7 @@ func TestDeleteAccountOnTheRecordedServerSaysNothingAboutTheUsageToken(t *testin
 	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
 	values := map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"},
-		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7, "server_url": s.URL}}})
+		"usage_metrics": usageRecord(s.URL, h.settingsPath, values)})
 	writeRaw(t, h.settingsPath, `{"env":{"OTEL_METRICS_EXPORTER":"otlp"}}`)
 
 	output, code := h.run(uninstall.DeleteAccount, nil, answer{label: typeYourEmail, value: "ana@example.com"})
@@ -198,7 +200,7 @@ func TestUninstallKeepsTheLoginWhenTheUsageCleanupCannotLock(t *testing.T) {
 	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
 	values := map[string]string{"OTEL_METRICS_EXPORTER": "otlp"}
 	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"},
-		"usage_metrics": map[string]any{"current": map[string]any{"settings_path": h.settingsPath, "values": values, "kept": []string{}, "token_id": 7, "server_url": s.URL}}})
+		"usage_metrics": usageRecord(s.URL, h.settingsPath, values)})
 	writeRaw(t, h.settingsPath, `{"env":{"OTEL_METRICS_EXPORTER":"otlp"}}`)
 	h.cacheDir = filepath.Join(t.TempDir(), "not-a-directory")
 	writeRaw(t, h.cacheDir, "a file")
@@ -237,4 +239,27 @@ func TestRemovalLeavesAConfigWithAMalformedUsageRecordUntouched(t *testing.T) {
 			assertCalls(t, codex)
 		})
 	}
+}
+
+// usageRecord is a valid usage_metrics record of a setup on serverURL that
+// wrote values (which must hold the headers) in the settings at path and
+// kept every other variable memry configures.
+func usageRecord(serverURL, path string, values map[string]string) map[string]any {
+	if _, ok := values[config.UsageHeadersKey]; !ok {
+		values = maps.Clone(values)
+		values[config.UsageHeadersKey] = "Authorization=Bearer 7|usage"
+	}
+	expected := map[string]string{}
+	kept := []string{}
+	for _, key := range config.UsageKeys {
+		value, owned := values[key]
+		if !owned {
+			value = "kept"
+			kept = append(kept, key)
+		}
+		expected[key] = value
+	}
+	expected[config.UsageHeadersKey] = values[config.UsageHeadersKey]
+	return map[string]any{"current": map[string]any{"server_url": serverURL, "settings_path": path,
+		"expected": expected, "values": values, "kept": kept, "token_id": 7}}
 }

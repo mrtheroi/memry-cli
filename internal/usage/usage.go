@@ -124,8 +124,10 @@ func (env Env) enable() int {
 	endpoint := st.url + metricsPath
 	kept := st.kept(current, endpoint)
 	vars := phpjson.NewObject()
-	values := map[string]string{}
+	values, expected := map[string]string{}, map[string]string{}
 	for _, v := range append(wanted(endpoint), variable{headersKey, bearerPrefix + usageToken}) {
+		// A kept variable already has exactly this value.
+		expected[v.key] = v.value
 		if !slices.Contains(kept, v.key) {
 			vars.Set(v.key, v.value)
 			values[v.key] = v.value
@@ -134,7 +136,7 @@ func (env Env) enable() int {
 	// The record goes first, in two phases: the new setup is pending, next
 	// to the current one, until the settings hold it. Whatever stops
 	// enable, the next usage command can tell which one the settings got.
-	setup := config.UsageSetup{ServerURL: normalizeServer(st.url), SettingsPath: st.settings.Path(), Values: values, Kept: kept, TokenID: issued.ID}
+	setup := config.UsageSetup{ServerURL: normalizeServer(st.url), SettingsPath: st.settings.Path(), Expected: expected, Values: values, Kept: kept, TokenID: issued.ID}
 	staged := config.UsageMetrics{Pending: &setup}
 	if st.hasRecord {
 		staged.Current = &st.record
@@ -706,20 +708,12 @@ func (env Env) status() int {
 		return failure
 	}
 	current := snapshot.Env()
-	// The recorded server is the one the token and endpoint belong to,
-	// even when the endpoint was kept (already set by the user).
-	endpoint := st.record.Values[endpointKey]
-	if endpoint == "" {
-		endpoint = st.record.ServerURL + metricsPath
-	}
+	// What Claude Code must run with is recorded exactly, written or kept,
+	// endpoint spelling included: nothing is rebuilt.
+	expected := st.record.Expected
+	endpoint := expected[endpointKey]
 	model := telemetry{goos: env.GOOS, environment: env.LookupEnv, environ: env.Environ, settings: current, path: st.settings.Path(), helper: snapshot.Setting(helperKey)}
-	// The headers memry recorded: the current setup's, or a pending one's
-	// while it is not settled.
-	headers := st.record.Values[headersKey]
-	if st.pending != nil && headers == "" {
-		headers = st.pending.Values[headersKey]
-	}
-	reasons := append(model.inactive(endpoint, headers), model.foreign(endpoint)...)
+	reasons := append(model.inactive(expected), model.foreign(endpoint)...)
 	if reasons = append(reasons, managedBlockers(env.ManagedDir, endpoint, env.GOOS)...); len(reasons) > 0 {
 		env.line("Usage metrics are not active:")
 		for _, reason := range reasons {

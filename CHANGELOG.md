@@ -82,6 +82,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the agents. They go on without it only when the cache directory cannot hold a lock (then
   no other command can hold one either); with a usage record to clean up, that fails clearly and
   keeps the login for a retry.
+- The usage metrics record holds, for each setup, the exact expected value of every variable memry
+  configures (`expected`, written or kept, the endpoint spelled as it matched) next to the ones it
+  owns (`values`) and keeps (`kept`). A record is valid only when `expected` covers every
+  variable with a bearer header, `values` is a part of it with the same values (the headers
+  always), and `kept` is exactly the rest. `memry usage status` compares what Claude Code runs with
+  against `expected`, never against values rebuilt from the server URL.
 - Unknown state fails closed: when the memry config exists but cannot be read, is not valid JSON,
   is not an object, or holds a `usage_metrics` that is not a valid record (null, empty, missing
   the server, settings path, variables or token id, or with wrong types), `memry usage enable`, `disable` and `status`, `memry uninstall` and `memry

@@ -516,6 +516,12 @@ func (env Env) disable() int {
 // the account. It reports false, after telling why, when they could not be
 // removed; the record then stays for a retry.
 func TurnOff(env Env, accountDeleted bool) bool {
+	// Without a record there is nothing to clean up, and no need for the
+	// lock, which may not be available (a cache directory that cannot be
+	// used). An unreadable config still goes through, to fail closed.
+	if st := env.load(); st.unreadable == nil && len(st.setups()) == 0 {
+		return true
+	}
 	return env.locked(func() int {
 		if _, ok := env.turnOff(accountDeleted); !ok {
 			return failure

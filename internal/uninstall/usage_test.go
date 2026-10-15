@@ -2,6 +2,7 @@ package uninstall_test
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -171,4 +172,20 @@ func TestDeleteAccountOnTheRecordedServerSaysNothingAboutTheUsageToken(t *testin
 
 	assertExit(t, code, 0, output)
 	assertNotContains(t, output, "usage token")
+}
+
+// Without a usage metrics record there is nothing to clean up, so an
+// unusable cache directory, where the usage lock lives, does not matter.
+func TestUninstallWithoutUsageMetricsNeedsNoUsageLock(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.useAgents(&fakeAgent{key: "codex", name: "Codex"})
+	h.previousConfig(map[string]any{"url": s.URL, "token": "1|abc", "agents": []string{"codex"}})
+	h.cacheDir = filepath.Join(t.TempDir(), "not-a-directory")
+	writeRaw(t, h.cacheDir, "a file")
+
+	output, code := h.run(uninstall.Uninstall, force)
+
+	assertExit(t, code, 0, output)
+	assertNotContains(t, output, "lock")
 }

@@ -2,6 +2,8 @@ package agentfiles_test
 
 import (
 	"errors"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/mrtheroi/memry-cli/internal/agentfiles"
@@ -184,4 +186,73 @@ func TestClaudeSettingsSetEnvFromComparesAgainRightBeforeReplacing(t *testing.T)
 		t.Errorf("SetEnvFrom = %v, %v; want false, ErrChanged", ok, err)
 	}
 	assertContents(t, path, edited)
+}
+
+// Installing the hook never overwrites what another command wrote since
+// the hook write read the file, like the telemetry variables a concurrent
+// usage enable added: it reads again and keeps them.
+func TestClaudeSettingsHookWriteKeepsAConcurrentChange(t *testing.T) {
+	path := settingsPath(t)
+	writeFile(t, path, `{"model":"opus"}`)
+	changed := false
+	t.Cleanup(agentfiles.SetBeforeReplace(func() {
+		if !changed {
+			changed = true
+			writeFile(t, path, `{"model":"opus","env":{"OTEL_METRICS_EXPORTER":"otlp"}}`)
+		}
+	}))
+
+	if !replaceHook(t, path) {
+		t.Fatal("ReplaceSessionStartHook = false, want true")
+	}
+
+	contents := readFile(t, path)
+	for _, want := range []string{`"OTEL_METRICS_EXPORTER": "otlp"`, `hook:session-start`} {
+		if !strings.Contains(contents, want) {
+			t.Errorf("settings = %s, want %s kept", contents, want)
+		}
+	}
+}
+
+func TestClaudeSettingsHookRemovalKeepsAConcurrentChange(t *testing.T) {
+	path := settingsPath(t)
+	replaceHook(t, path)
+	changed := false
+	t.Cleanup(agentfiles.SetBeforeReplace(func() {
+		if !changed {
+			changed = true
+			contents := strings.Replace(readFile(t, path), `"hooks"`, `"env": {"OTEL_METRICS_EXPORTER": "otlp"}, "hooks"`, 1)
+			writeFile(t, path, contents)
+		}
+	}))
+
+	if got := removeHook(t, path); got != agentfiles.Removed {
+		t.Fatalf("RemoveSessionStartHook = %v, want Removed", got)
+	}
+
+	contents := readFile(t, path)
+	if !strings.Contains(contents, `"OTEL_METRICS_EXPORTER": "otlp"`) || strings.Contains(contents, "hook:session-start") {
+		t.Errorf("settings = %s, want the hook removed and the change kept", contents)
+	}
+}
+
+// A file that keeps changing is left to the other program, with an error
+// asking to try again.
+func TestClaudeSettingsHookWriteGivesUpOnAFileThatKeepsChanging(t *testing.T) {
+	path := settingsPath(t)
+	writeFile(t, path, `{}`)
+	n := 0
+	t.Cleanup(agentfiles.SetBeforeReplace(func() {
+		n++
+		writeFile(t, path, `{"n":`+strconv.Itoa(n)+`}`)
+	}))
+
+	ok, err := agentfiles.NewClaudeSettings(path).ReplaceSessionStartHook(hookGroup(), hookMarker)
+
+	if ok || !errors.Is(err, agentfiles.ErrChanged) || !strings.Contains(err.Error(), "try again") {
+		t.Errorf("ReplaceSessionStartHook = %v, %v; want false and a changed error", ok, err)
+	}
+	if got := readFile(t, path); strings.Contains(got, "hook:session-start") {
+		t.Errorf("settings = %s, want the other program's", got)
+	}
 }

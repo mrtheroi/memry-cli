@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   launch environment first, exports them to memry with a bearer token, and otherwise lists what is
   missing or overridden, never printing the token. `memry uninstall` and `memry delete-account`
   turn usage metrics off too; a delete-account retry keeps the record.
+- Every write to Claude Code's settings, including setup's SessionStart hook install and its
+  removal, goes through one snapshot-checked write path. The hook writes read the file again and
+  reapply their change when another command changed it meanwhile (up to three times, then ask to
+  try again), so they never erase the telemetry variables a concurrent `memry usage enable` wrote.
 - Every write to Claude Code's settings (enable, disable, uninstall, delete-account) is a
   best-effort compare-and-swap of the whole file, checked again right before every rename attempt
   (including the retries while another program holds the file on Windows) (another

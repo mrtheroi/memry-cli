@@ -3,6 +3,7 @@ package agentfiles
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -27,38 +28,63 @@ func (s *ClaudeSettings) Path() string {
 	return s.path
 }
 
-// ReplaceSessionStartHook adds group to the SessionStart hooks.
+// ReplaceSessionStartHook adds group to the SessionStart hooks. Like every
+// write to the settings, it writes only while the file is still the one it
+// read (see edit).
 func (s *ClaudeSettings) ReplaceSessionStartHook(group *phpjson.Object, marker string) (bool, error) {
-	settings, ok, err := s.read()
-	if !ok || err != nil {
-		return false, err
+	written := false
+	err := s.edit(func(settings *phpjson.Object) bool {
+		// Like PHP's ??=, null hooks or SessionStart are replaced too.
+		hooks, _ := settings.Get("hooks")
+		if hooks == nil {
+			hooks = phpjson.NewObject()
+			settings.Set("hooks", hooks)
+		}
+		groups, _ := listOrEmpty(hooks.(*phpjson.Object), "SessionStart")
+		kept, _ := withoutHooks(groups, marker)
+		hooks.(*phpjson.Object).Set("SessionStart", append(kept, group))
+		written = true
+		return true
+	})
+	if errors.Is(err, errUnsafe) {
+		return false, nil
 	}
-	// Like PHP's ??=, null hooks or SessionStart are replaced too.
-	hooks, _ := settings.Get("hooks")
-	if hooks == nil {
-		hooks = phpjson.NewObject()
-		settings.Set("hooks", hooks)
-	}
-	groups, _ := listOrEmpty(hooks.(*phpjson.Object), "SessionStart")
-	kept, _ := withoutHooks(groups, marker)
-	hooks.(*phpjson.Object).Set("SessionStart", append(kept, group))
-	return true, s.write(settings)
+	return written && err == nil, err
 }
 
-// read decodes the file, or returns an empty object when there is none.
-// It returns false when the file is not well formed (see wellFormed) or
-// cannot be written back (PHP would write a lone newline instead).
-func (s *ClaudeSettings) read() (*phpjson.Object, bool, error) {
-	contents, err := os.ReadFile(s.path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return phpjson.NewObject(), true, nil
+// editAttempts is how many times edit reads the settings and applies its
+// change again when another program changed them meanwhile.
+const editAttempts = 3
+
+// errUnsafe means the settings are not well formed: edit left them alone.
+var errUnsafe = errors.New("not well formed")
+
+// edit applies change to the settings as read and writes them back, with
+// their permissions, only while the file is still the one it read: a file
+// changed meanwhile is read again and the change applied again, as it is
+// computed from what is read, so another program's change is never
+// overwritten. A change that returns false writes nothing. Settings that
+// are not well formed return errUnsafe, untouched.
+func (s *ClaudeSettings) edit(change func(settings *phpjson.Object) bool) error {
+	for attempt := 1; ; attempt++ {
+		snapshot, err := s.Read()
+		if err != nil {
+			return err
+		}
+		if snapshot.settings == nil {
+			return errUnsafe
+		}
+		if !change(snapshot.settings) {
+			return nil
+		}
+		err = s.replaceFrom(snapshot, snapshot.settings, false)
+		if errors.Is(err, ErrChanged) && attempt == editAttempts {
+			return fmt.Errorf("%s kept changing while memry was writing it; try again: %w", s.path, err)
+		}
+		if !errors.Is(err, ErrChanged) {
+			return err
+		}
 	}
-	if err != nil {
-		return nil, false, err
-	}
-	decoded, _ := phpjson.Decode(contents)
-	settings, ok := decoded.(*phpjson.Object)
-	return settings, ok && wellFormed(settings) && encodable(settings), nil
 }
 
 // wellFormed reports whether the hooks of settings, if present, have the
@@ -101,42 +127,43 @@ func listOrEmpty(o *phpjson.Object, key string) ([]any, bool) {
 	return list, ok
 }
 
-// write writes the settings like PHP's json_encode with pretty printing
-// and unescaped slashes and Unicode.
-func (s *ClaudeSettings) write(settings *phpjson.Object) error {
-	return replaceWithJSON(s.path, settings)
-}
-
 // RemoveSessionStartHook removes every SessionStart hook whose command
 // contains marker (and any matcher group left empty by that), keeping
 // every other hook and setting. A SessionStart list and hooks object left
 // empty are dropped too, as installing the hook creates them when missing.
+// Like every write to the settings, it writes only while the file is still
+// the one it read (see edit).
 func (s *ClaudeSettings) RemoveSessionStartHook(marker string) (Removal, error) {
-	settings, ok, err := s.read()
-	if err != nil {
+	removal := NotFound
+	err := s.edit(func(settings *phpjson.Object) bool {
+		removal = NotFound
+		hooks, _ := settings.Get("hooks")
+		events, _ := hooks.(*phpjson.Object)
+		if events == nil {
+			return false
+		}
+		groups, _ := listOrEmpty(events, "SessionStart")
+		kept, removed := withoutHooks(groups, marker)
+		if !removed {
+			return false
+		}
+		events.Set("SessionStart", kept)
+		if len(kept) == 0 {
+			events.Delete("SessionStart")
+		}
+		if events.Len() == 0 {
+			settings.Delete("hooks")
+		}
+		removal = Removed
+		return true
+	})
+	switch {
+	case errors.Is(err, errUnsafe):
+		return Unsafe, nil
+	case err != nil:
 		return NotFound, err
 	}
-	if !ok {
-		return Unsafe, nil
-	}
-	hooks, _ := settings.Get("hooks")
-	events, _ := hooks.(*phpjson.Object)
-	if events == nil {
-		return NotFound, nil
-	}
-	groups, _ := listOrEmpty(events, "SessionStart")
-	kept, removed := withoutHooks(groups, marker)
-	if !removed {
-		return NotFound, nil
-	}
-	events.Set("SessionStart", kept)
-	if len(kept) == 0 {
-		events.Delete("SessionStart")
-	}
-	if events.Len() == 0 {
-		settings.Delete("hooks")
-	}
-	return Removed, s.write(settings)
+	return removal, nil
 }
 
 // withoutHooks returns the groups without the hooks whose command contains
@@ -266,8 +293,7 @@ func (s *ClaudeSettings) SetEnvFrom(snapshot Snapshot, vars *phpjson.Object) (bo
 	for key, value := range vars.All() {
 		fresh.env.Set(key, value)
 	}
-	beforeReplace()
-	if err := s.writeOwnerOnly(fresh.settings, snapshot); err != nil {
+	if err := s.replaceFrom(snapshot, fresh.settings, true); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -301,8 +327,7 @@ func (s *ClaudeSettings) RemoveEnvFrom(snapshot Snapshot, keys []string) (Remova
 	if fresh.env.Len() == 0 {
 		fresh.settings.Delete("env")
 	}
-	beforeReplace()
-	if err := s.writeOwnerOnly(fresh.settings, snapshot); err != nil {
+	if err := s.replaceFrom(snapshot, fresh.settings, true); err != nil {
 		return NotFound, err
 	}
 	return Removed, nil
@@ -312,15 +337,27 @@ func (s *ClaudeSettings) RemoveEnvFrom(snapshot Snapshot, keys []string) (Remova
 // and is about to replace it; a seam for the tests.
 var beforeReplace = func() {}
 
-// writeOwnerOnly is write for settings that hold a secret: a new file is
-// readable by its owner only, and an existing one loses the permissions
-// of everyone else, never gaining any. The file is compared with snapshot
-// again right before it is replaced (see fsx.WriteAtomicIf): another
-// program writing it at that same instant still wins, the last writer.
-func (s *ClaudeSettings) writeOwnerOnly(settings *phpjson.Object, snapshot Snapshot) error {
+// replaceFrom writes settings over the file, the only way memry writes the
+// settings: only while the file is still exactly snapshot, compared again
+// right before every rename attempt (see fsx.WriteAtomicIf), else
+// ErrChanged; another program writing it at that same instant still wins,
+// the last writer. With ownerOnly, for settings that hold a secret, a new
+// file is readable by its owner only, and an existing one loses the
+// permissions of everyone else, never gaining any; otherwise the file
+// keeps its permissions (a new one gets the default ones).
+func (s *ClaudeSettings) replaceFrom(snapshot Snapshot, settings *phpjson.Object, ownerOnly bool) error {
 	encoded, err := encode(settings)
 	if err != nil {
 		return err
+	}
+	data := append(encoded, '\n')
+	check := func() error {
+		_, err := s.reread(snapshot)
+		return err
+	}
+	beforeReplace()
+	if !ownerOnly {
+		return fsx.ReplaceIf(s.path, data, check)
 	}
 	// The write keeps the mode of an existing file, so it is tightened
 	// first.
@@ -329,8 +366,5 @@ func (s *ClaudeSettings) writeOwnerOnly(settings *phpjson.Object, snapshot Snaps
 			return err
 		}
 	}
-	return fsx.WriteAtomicIf(s.path, append(encoded, '\n'), 0o600, func() error {
-		_, err := s.reread(snapshot)
-		return err
-	})
+	return fsx.WriteAtomicIf(s.path, data, 0o600, check)
 }

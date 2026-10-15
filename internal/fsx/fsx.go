@@ -47,6 +47,12 @@ func Replace(path string, data []byte) error {
 	return write(path, data, nil, false, nil)
 }
 
+// ReplaceIf is Replace that calls check right before every rename attempt
+// and leaves path untouched when check fails (see WriteAtomicIf).
+func ReplaceIf(path string, data []byte, check func() error) error {
+	return write(path, data, nil, false, check)
+}
+
 // write writes data atomically to path, with the mode of an existing file,
 // else mode, else (when mode is nil) the default mode. With restrict, the
 // file is left accessible to its owner only where restrictToOwner is set.

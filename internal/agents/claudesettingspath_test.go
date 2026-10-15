@@ -8,14 +8,17 @@ import (
 )
 
 func TestClaudeSettingsPath(t *testing.T) {
+	sep := string(filepath.Separator)
 	tests := map[string]struct {
 		goos string
 		vars map[string]string
 		want string
 	}{
-		"config dir":          {"linux", map[string]string{"CLAUDE_CONFIG_DIR": "/c", "HOME": "/h"}, filepath.Join("/c", "settings.json")},
-		"home":                {"linux", map[string]string{"HOME": "/h"}, filepath.Join("/h", ".claude", "settings.json")},
-		"windows userprofile": {"windows", map[string]string{"HOME": "/decoy", "USERPROFILE": `C:\Users\ana`}, `C:\Users\ana` + string(filepath.Separator) + filepath.Join(".claude", "settings.json")},
+		// The directory is used as given, joined with the OS separator.
+		"config dir":          {"linux", map[string]string{"CLAUDE_CONFIG_DIR": "/c", "HOME": "/h"}, "/c" + sep + "settings.json"},
+		"home":                {"linux", map[string]string{"HOME": "/h"}, "/h" + sep + filepath.Join(".claude", "settings.json")},
+		"windows userprofile": {"windows", map[string]string{"HOME": "/decoy", "USERPROFILE": `C:\Users\ana`}, `C:\Users\ana` + sep + filepath.Join(".claude", "settings.json")},
+		"windows config dir":  {"windows", map[string]string{"CLAUDE_CONFIG_DIR": `C:\Users\ana\work`}, `C:\Users\ana\work` + sep + "settings.json"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {

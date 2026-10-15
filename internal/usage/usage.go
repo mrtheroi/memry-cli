@@ -375,7 +375,7 @@ func (env Env) turnOff(revoke bool) (removed, ok bool) {
 			return false, false
 		}
 	}
-	if revoke && st.record.TokenID != 0 && !(st.loggedIn && env.revokeToken(st.url, st.token, st.record.TokenID)) {
+	if revoke && st.record.TokenID != 0 && (!st.loggedIn || !env.revokeToken(st.url, st.token, st.record.TokenID)) {
 		env.line("Could not revoke your usage token; it stops working after 30 days without use.")
 	}
 	st.cfg.DeleteUsageMetrics()

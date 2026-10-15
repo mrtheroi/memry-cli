@@ -215,11 +215,12 @@ whatever `--force` says, on any telemetry setting there that is not memry's own 
 memry's value: every `OTEL_*`, `CLAUDE_CODE_ENABLE_TELEMETRY*`, `CLAUDE_CODE_ENHANCED_TELEMETRY*`,
 `ENABLE_ENHANCED_TELEMETRY*`, `CLAUDE_CODE_OTEL_*` and `*BETA_TRACING*` variable and the
 `otelHeadersHelper` setting, except exporters set to `none` and variables you had already set to
-memry's value. A managed settings file it cannot read stops it too. One of memry's own variables
+memry's value. A managed settings file it cannot read, or one that sets a `policyHelper` (memry
+never runs it), stops it too, as the effective policy cannot be determined. One of memry's own variables
 set in `settings.json` to another value stops it unless you pass `--force`. A plain `http://`
 server that is not this machine needs `--insecure`, like `memry setup`.
 
-memry cannot see per-session `--settings` files, managed policy helpers, MDM profiles, the Windows
+memry cannot see per-session `--settings` files, what managed policy helpers compute, MDM profiles, the Windows
 registry, server-managed settings or the environment Claude Code is actually launched from. Any of
 them can change what Claude Code sends or where, so `status` reports what it finds "as far as
 memry can see". If you use mTLS, Claude Code may also present its client certificate

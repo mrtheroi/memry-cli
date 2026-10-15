@@ -58,6 +58,11 @@ func managedFileBlockers(path, endpoint string) []string {
 		return unknown
 	}
 	var lines []string
+	// A policy helper computes the managed settings at startup; memry
+	// never runs it, so what they set cannot be determined.
+	if helper, _ := settings.Get("policyHelper"); helper != nil {
+		lines = append(lines, "policyHelper is set in the managed settings "+path+", so memry cannot determine where Claude Code sends metrics.")
+	}
 	if helper, _ := settings.Get(helperKey); helper != nil {
 		lines = append(lines, helperKey+" is set in the managed settings "+path+".")
 	}

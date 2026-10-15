@@ -98,3 +98,15 @@ func TestEnableStopsWhenManagedSettingsCannotBeParsed(t *testing.T) {
 		})
 	}
 }
+
+// A managed policyHelper computes the managed settings at startup: what
+// they set cannot be determined, so enable stops. memry never runs it.
+func TestEnableStopsOnAManagedPolicyHelper(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	managed := filepath.Join(h.managedDir, "managed-settings.json")
+	writeRaw(t, managed, `{"policyHelper":{"path":"/usr/local/bin/policy"}}`)
+
+	enableBlocked(t, h, s, "policyHelper is set in the managed settings "+managed+", so memry cannot determine where Claude Code sends metrics.")
+}

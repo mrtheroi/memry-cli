@@ -1,6 +1,7 @@
 package usage_test
 
 import (
+	"path/filepath"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -36,4 +37,23 @@ func TestOverlappingEnablesNeverInterleave(t *testing.T) {
 	}
 	h.run(usage.Status)
 	assertContains(t, readText(t, h.configPath), `"token_id": 7`)
+}
+
+// The lock lives in the user's own cache directory, which other users
+// cannot write to, not in a shared temporary directory.
+func TestTheLockIsInTheUsersCacheDirectory(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	var locks []string
+	s.onIssue = func() {
+		locks, _ = filepath.Glob(filepath.Join(h.cacheDir, "memry", "memry-usage-*.lock"))
+	}
+
+	output, code := h.run(usage.Enable)
+
+	assertExit(t, code, 0, output)
+	if len(locks) != 1 {
+		t.Errorf("locks under %s while enabling = %v, want one", h.cacheDir, locks)
+	}
 }

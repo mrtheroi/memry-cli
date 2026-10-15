@@ -17,3 +17,8 @@ func SetLockTiming(wait, stale time.Duration) (restore func()) {
 	lockWait, lockStale = wait, stale
 	return func() { lockWait, lockStale = beforeWait, beforeStale }
 }
+
+// LockPath is the usage lock env takes.
+func LockPath(env Env) string {
+	return env.lockPath()
+}

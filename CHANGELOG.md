@@ -53,8 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is still exactly those; any change meanwhile, inside or outside the env, stops it with nothing
   written. A failed enable restores the previous record and revokes the new token, but only while
   the pending setup is still its own. Usage commands and uninstall run under an exclusive lock, a
-  file created with `O_EXCL` in the temporary directory and named after the memry config, holding
-  the pid and time, taken over after two minutes; a command waits up to 15 seconds for another one.
+  file created with `O_EXCL` and mode 0600 in `memry/` under the user's cache directory (never the
+  shared temporary directory), named after the memry config and holding the pid and time. The
+  directory must be the user's own and not group- or world-writable on Unix; anything at the lock
+  path that is not a regular file is refused, never followed or removed; a regular lock older than
+  two minutes is taken over, and a command waits up to 15 seconds for another one.
 - Unknown state fails closed: when the memry config exists but cannot be read, is not valid JSON or
   is not an object, `memry usage enable`, `disable` and `status`, `memry uninstall` and `memry
   delete-account` stop before changing anything, instead of taking it for a config without a usage

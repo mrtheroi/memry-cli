@@ -45,6 +45,8 @@ type Env struct {
 	Prompter  Prompter
 	Agents    agents.Registry
 	HTTP      *http.Client
+	// CacheDir is the user's cache directory, where the usage lock lives.
+	CacheDir string
 }
 
 // Exit codes, as in the PHP CLI.
@@ -145,7 +147,7 @@ func (env Env) removeFromAgents(accountDeleted bool) []string {
 	}
 	// The usage metrics are recognized by the login, so they go before it.
 	// When they cannot be removed, Claude Code is kept for a retry.
-	if !usage.TurnOff(usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out, HTTP: env.HTTP}, accountDeleted) && !slices.Contains(pending, "claude-code") {
+	if !usage.TurnOff(usage.Env{GOOS: env.GOOS, LookupEnv: env.LookupEnv, Out: env.Out, HTTP: env.HTTP, CacheDir: env.CacheDir}, accountDeleted) && !slices.Contains(pending, "claude-code") {
 		pending = append(pending, "claude-code")
 	}
 	return pending

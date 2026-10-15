@@ -150,6 +150,9 @@ type harness struct {
 	// goos and executable are what the commands run with; the zero values
 	// mean Unix.
 	goos, executable string
+	// cacheDir stands for the user's cache directory, apart from the
+	// config's, which some tests make read-only.
+	cacheDir string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -161,6 +164,7 @@ func newHarness(t *testing.T) *harness {
 		configPath:   filepath.Join(dir, "config.json"),
 		settingsPath: filepath.Join(dir, "claude", "settings.json"),
 		claude:       &fakeClaude{results: map[string]agents.RunResult{}},
+		cacheDir:     t.TempDir(),
 	}
 	h.env = map[string]string{"HOME": dir, "MEMRY_CONFIG": h.configPath, "CLAUDE_CONFIG_DIR": filepath.Dir(h.settingsPath)}
 	getenv := func(name string) string { return h.env[name] }
@@ -241,6 +245,7 @@ func (h *harness) run(command func(uninstall.Env) int, argv []string, answers ..
 		Prompter: p,
 		Agents:   h.agents,
 		HTTP:     client.New("test", 5*time.Second),
+		CacheDir: h.cacheDir,
 	})
 	if len(p.answers) > 0 {
 		h.t.Errorf("questions never asked: %+v", p.answers)

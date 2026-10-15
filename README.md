@@ -195,10 +195,11 @@ readable by your user only.
 
 Every write memry makes to the settings (`enable`, `disable`, uninstall) happens only if the file
 is still, byte for byte, the one it checked; if anything changed meanwhile, it writes nothing and
-you can try again. Usage commands and uninstall also take a lock, a file in the temporary
-directory named after the memry config, so two of them never run at once; a lock older than two
-minutes is taken over. It
-saves its record (see below) in two phases: before it writes the settings, the new setup
+you can try again. Usage commands and uninstall also take a lock, a file in `memry/` under
+your user cache directory (`~/Library/Caches` on macOS, `~/.cache` on Linux, `%LocalAppData%` on
+Windows) named after the memry config, so two of them never run at once. memry refuses a lock
+directory other users can write to, never follows or removes anything at the lock path that is not
+a regular file, and takes over a lock older than two minutes. `enable` saves its record (see below) in two phases: before it writes the settings, the new setup
 is saved as pending next to the current one, and it becomes current once the settings hold it. If
 `enable` is interrupted in between, the next `memry usage` command (or `memry uninstall`) checks
 which token the settings hold and settles it, revoking the token that was not used. If the record cannot be

@@ -135,12 +135,14 @@ type harness struct {
 	via *server
 	// managedDir stands for Claude Code's managed settings directory.
 	managedDir string
+	// cacheDir stands for the user's cache directory.
+	cacheDir string
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	dir := t.TempDir()
-	h := &harness{t: t, home: dir, configPath: filepath.Join(dir, "memry", "config.json"), managedDir: filepath.Join(dir, "managed")}
+	h := &harness{t: t, home: dir, configPath: filepath.Join(dir, "memry", "config.json"), managedDir: filepath.Join(dir, "managed"), cacheDir: filepath.Join(dir, "cache")}
 	h.env = map[string]string{"HOME": dir, "USERPROFILE": dir, "MEMRY_CONFIG": h.configPath}
 	return h
 }
@@ -185,6 +187,7 @@ func (h *harness) run(command func(usage.Env) int, argv ...string) (string, int)
 		Out:        &out,
 		HTTP:       h.client(),
 		ManagedDir: h.managedDir,
+		CacheDir:   h.cacheDir,
 	})
 	return out.String(), code
 }
@@ -286,4 +289,16 @@ func (s *server) issueElsewhere() int {
 	s.nextID++
 	s.active[id] = true
 	return id
+}
+
+// lockPath is the usage lock the commands take.
+func (h *harness) lockPath() string {
+	return usage.LockPath(usage.Env{
+		GOOS: h.goos,
+		LookupEnv: func(key string) (string, bool) {
+			value, ok := h.env[key]
+			return value, ok
+		},
+		CacheDir: h.cacheDir,
+	})
 }

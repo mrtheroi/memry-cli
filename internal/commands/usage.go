@@ -57,6 +57,7 @@ func usageCommand(name, short, version string, run func(usage.Env) int) *cobra.C
 				// Claude Code's managed settings, which win over the
 				// user's.
 				ManagedDir: usage.ManagedSettingsDir(runtime.GOOS),
+				CacheDir:   cacheDir(),
 			})
 			if code != 0 {
 				return errFailed
@@ -64,4 +65,11 @@ func usageCommand(name, short, version string, run func(usage.Env) int) *cobra.C
 			return nil
 		},
 	}
+}
+
+// cacheDir is the user's cache directory, where the usage lock lives, or
+// "" when there is none.
+func cacheDir() string {
+	dir, _ := os.UserCacheDir()
+	return dir
 }

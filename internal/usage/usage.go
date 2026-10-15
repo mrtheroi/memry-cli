@@ -34,6 +34,9 @@ type Env struct {
 	Environ func() []string
 	Out     io.Writer
 	HTTP    *http.Client
+	// CacheDir is the user's cache directory (os.UserCacheDir), where
+	// the usage lock lives.
+	CacheDir string
 	// ManagedDir is the directory of Claude Code's managed settings
 	// files (see ManagedSettingsDir); empty, there are none to read.
 	ManagedDir string
@@ -643,15 +646,15 @@ func (env Env) status() int {
 // seam for the tests.
 var beforeSettingsWrite = func() {}
 
-// lockPath is the usage lock of the memry config: in the temporary
-// directory, named after the config's absolute path, so the lock works
-// even where the config's own directory is read-only, and two configs
-// never share one.
+// lockPath is the usage lock of the memry config: in memry's directory
+// of the user's cache directory, which other users cannot write to, named
+// after the config's absolute path, so the lock works even where the
+// config's own directory is read-only, and two configs never share one.
 func (env Env) lockPath() string {
 	path, _ := config.Path(env.GOOS, env.getenv)
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	}
 	sum := sha256.Sum256([]byte(path))
-	return filepath.Join(os.TempDir(), "memry-usage-"+hex.EncodeToString(sum[:8])+".lock")
+	return filepath.Join(env.CacheDir, "memry", "memry-usage-"+hex.EncodeToString(sum[:8])+".lock")
 }

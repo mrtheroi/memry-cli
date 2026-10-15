@@ -163,3 +163,25 @@ func TestClaudeSettingsRemoveEnvFromStopsWhenTheFileChanged(t *testing.T) {
 	}
 	assertContents(t, path, changed)
 }
+
+// The file is compared again right before the rename, after the new
+// contents were written aside, so an edit made while they were being
+// written is not overwritten either.
+func TestClaudeSettingsSetEnvFromComparesAgainRightBeforeReplacing(t *testing.T) {
+	path := settingsPath(t)
+	writeFile(t, path, `{"env":{"A":"1"}}`)
+	settings := agentfiles.NewClaudeSettings(path)
+	snapshot, err := settings.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := `{"env":{"A":"2"}}`
+	t.Cleanup(agentfiles.SetBeforeReplace(func() { writeFile(t, path, edited) }))
+
+	ok, err := settings.SetEnvFrom(snapshot, phpjson.NewObject("B", "2"))
+
+	if !errors.Is(err, agentfiles.ErrChanged) || ok {
+		t.Errorf("SetEnvFrom = %v, %v; want false, ErrChanged", ok, err)
+	}
+	assertContents(t, path, edited)
+}

@@ -241,7 +241,10 @@ memry can see". If you use mTLS, Claude Code may also present its client certifi
 - `enable` saves the new setup as pending before writing the settings, so an interrupted `enable`
   is settled by the next usage command. A failed `enable` changes nothing and the token in use
   keeps working.
-- memry writes the settings only if the file is still, byte for byte, the one it checked. Usage
+- memry writes the settings only if the file is still, byte for byte, the one it checked; it
+  compares again right before replacing it. A file system has no true compare-and-swap with other
+  programs, so if another program writes `settings.json` at that same instant, the last writer
+  wins. Usage
   commands and `memry setup` share a lock in `memry/` under your user cache directory, which must
   be private to you, so they never overwrite each other's changes to the memry config.
 - If the memry config exists but cannot be read as a JSON object, the usage commands, `memry

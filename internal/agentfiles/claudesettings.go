@@ -266,7 +266,11 @@ func (s *ClaudeSettings) SetEnvFrom(snapshot Snapshot, vars *phpjson.Object) (bo
 	for key, value := range vars.All() {
 		fresh.env.Set(key, value)
 	}
-	return true, s.writeOwnerOnly(fresh.settings)
+	beforeReplace()
+	if err := s.writeOwnerOnly(fresh.settings, snapshot); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // RemoveEnvFrom removes keys from the env object of the settings, keeping
@@ -297,13 +301,23 @@ func (s *ClaudeSettings) RemoveEnvFrom(snapshot Snapshot, keys []string) (Remova
 	if fresh.env.Len() == 0 {
 		fresh.settings.Delete("env")
 	}
-	return Removed, s.writeOwnerOnly(fresh.settings)
+	beforeReplace()
+	if err := s.writeOwnerOnly(fresh.settings, snapshot); err != nil {
+		return NotFound, err
+	}
+	return Removed, nil
 }
+
+// beforeReplace runs once a write from a snapshot has read the file again
+// and is about to replace it; a seam for the tests.
+var beforeReplace = func() {}
 
 // writeOwnerOnly is write for settings that hold a secret: a new file is
 // readable by its owner only, and an existing one loses the permissions
-// of everyone else, never gaining any.
-func (s *ClaudeSettings) writeOwnerOnly(settings *phpjson.Object) error {
+// of everyone else, never gaining any. The file is compared with snapshot
+// again right before it is replaced (see fsx.WriteAtomicIf): another
+// program writing it at that same instant still wins, the last writer.
+func (s *ClaudeSettings) writeOwnerOnly(settings *phpjson.Object, snapshot Snapshot) error {
 	encoded, err := encode(settings)
 	if err != nil {
 		return err
@@ -315,5 +329,8 @@ func (s *ClaudeSettings) writeOwnerOnly(settings *phpjson.Object) error {
 			return err
 		}
 	}
-	return fsx.WriteAtomic(s.path, append(encoded, '\n'), 0o600)
+	return fsx.WriteAtomicIf(s.path, append(encoded, '\n'), 0o600, func() error {
+		_, err := s.reread(snapshot)
+		return err
+	})
 }

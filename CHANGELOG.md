@@ -53,7 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   missing or overridden, never printing the token. `memry uninstall` and `memry delete-account`
   turn usage metrics off too; a delete-account retry keeps the record.
 - Every write to Claude Code's settings (enable, disable, uninstall, delete-account) is a
-  compare-and-swap of the whole file: memry keeps the bytes it validated and writes only if the file
+  best-effort compare-and-swap of the whole file, checked again right before the rename (another
+  program writing at that same instant still wins; there is no file-system CAS): memry keeps the bytes it validated and writes only if the file
   is still exactly those; any change meanwhile, inside or outside the env, stops it with nothing
   written. A failed enable restores the previous record and revokes the new token, but only while
   the pending setup is still its own. Usage commands and uninstall run under an exclusive lock, a

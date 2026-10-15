@@ -170,3 +170,26 @@ func TestWriteAtomicDoesNotRetryAnErrorThatIsNotTransient(t *testing.T) {
 		t.Errorf("attempts = %d, slept = %v, want 1 and 0", f.attempts, f.slept)
 	}
 }
+
+// WriteAtomicIf checks right before the rename and, when the check fails,
+// leaves the file as it was and no temporary file behind.
+func TestWriteAtomicIfLeavesTheFileWhenTheCheckFails(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	if err := os.WriteFile(path, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stop := errors.New("changed")
+
+	err := fsx.WriteAtomicIf(path, []byte("after"), 0o600, func() error { return stop })
+
+	if !errors.Is(err, stop) {
+		t.Errorf("WriteAtomicIf = %v, want the check's error", err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "before" {
+		t.Errorf("file = %q, want it untouched", data)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("dir holds %v, want only the file", entries)
+	}
+}

@@ -5,6 +5,7 @@ package usage
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	neturl "net/url"
@@ -355,14 +356,21 @@ func (env Env) unknown(st state) bool {
 // loads the state again. The pending setup is current when the settings
 // it names hold its headers, so the write happened: the previous token is
 // revoked. Otherwise it never happened: the pending setup is dropped and
-// its token revoked. Settings it cannot read leave it for later.
+// its token revoked. When it cannot tell (the settings cannot be read) or
+// cannot save the outcome, the state is unknown (st.unreadable), never
+// "no record".
 func (env Env) reconcile(st state) state {
 	if st.pending == nil {
 		return st
 	}
 	pending := *st.pending
 	snapshot, err := agentfiles.NewClaudeSettings(pending.SettingsPath).Read()
-	if err != nil || !snapshot.OK() {
+	if err == nil && !snapshot.OK() {
+		err = errors.New(pending.SettingsPath + " is not valid JSON")
+	}
+	if err != nil {
+		// Which setup the settings hold is unknown, so the state is.
+		st.unreadable = fmt.Errorf("could not settle the pending usage setup: %w", err)
 		return st
 	}
 	var headers any
@@ -382,6 +390,7 @@ func (env Env) reconcile(st state) state {
 		st.cfg.SetUsageMetrics(usage)
 	}
 	if err := st.cfg.Save(); err != nil {
+		st.unreadable = fmt.Errorf("could not settle the pending usage setup: %w", err)
 		return st
 	}
 	if revoke.TokenID != 0 && st.loggedIn && normalizeServer(st.url) == revoke.ServerURL {

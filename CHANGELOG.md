@@ -92,7 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   next to the `current` one before the settings are written, and becomes current once they are.
   Every later usage command, and uninstall, settles a leftover pending setup first: current when
   the settings hold its headers (the previous token is then revoked), dropped otherwise (its token
-  is revoked). Until then, disable removes the values of either setup.
+  is revoked). When it cannot be settled (the settings cannot be read, or the config cannot be
+  saved), the state is unknown and every command fails closed instead of reporting it off.
 - The recorded server is the only truth for the usage token and endpoint: revocations go to it,
   `memry usage status` derives a kept endpoint from it, and `memry delete-account` relies on the
   account deletion only when the account is on that server, warning otherwise that the recorded

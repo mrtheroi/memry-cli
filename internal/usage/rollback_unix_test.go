@@ -3,6 +3,7 @@
 package usage_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -83,18 +84,47 @@ func TestFirstEnableLeavesNoRecordWhenTheSettingsCannotBeWritten(t *testing.T) {
 	assertNotContains(t, readText(t, h.configPath), `"usage_metrics"`)
 }
 
-// When the pending setup cannot be settled, disable still removes the
-// values of either setup from the settings.
-func TestDisableRemovesThePendingSetupsValuesToo(t *testing.T) {
+// When the pending setup cannot be settled, which setup the settings
+// hold is not recorded: disable fails closed and changes nothing.
+func TestDisableFailsClosedWhenThePendingSetupCannotBeSettled(t *testing.T) {
 	s := newServer(t)
 	h := newHarness(t)
 	h.login(s.URL)
 	interruptedEnable(t, h, s, true)
+	settings := readText(t, h.settingsPath())
 	readOnly(t, filepath.Dir(h.configPath))
 
-	output, _ := h.run(usage.Disable)
+	output, code := h.run(usage.Disable)
 
-	if got := h.settingsEnv(); len(got) != 0 {
-		t.Errorf("env = %v, want the values of both setups removed; output:\n%s", got, output)
+	assertExit(t, code, 1, output)
+	assertContains(t, output, "so memry cannot tell whether usage metrics are on")
+	if got := readText(t, h.settingsPath()); got != settings {
+		t.Errorf("settings changed:\n%s", got)
 	}
+}
+
+// A pending setup that cannot be settled, here because the config cannot
+// be saved, is unknown state, never "off": the settings may hold its live
+// exporter and token.
+func TestStatusReportsUnknownWhenAPendingSetupCannotBeSettled(t *testing.T) {
+	s := newServer(t)
+	h := newHarness(t)
+	h.login(s.URL)
+	h.run(usage.Enable)
+	// A first enable stopped after writing the settings: only pending.
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(readText(t, h.configPath)), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	record := cfg["usage_metrics"].(map[string]any)
+	record["pending"] = record["current"]
+	delete(record, "current")
+	h.writeConfig(cfg)
+	readOnly(t, filepath.Dir(h.configPath))
+
+	output, code := h.run(usage.Status)
+
+	assertExit(t, code, 1, output)
+	assertContains(t, output, "Could not read the memry config "+h.configPath+", so memry cannot tell whether usage metrics are on. Fix it, then try again.")
+	assertNotContains(t, output, "are off")
 }

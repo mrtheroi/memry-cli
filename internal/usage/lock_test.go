@@ -1,12 +1,18 @@
 package usage_test
 
 import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/mrtheroi/memry-cli/internal/agents"
+	"github.com/mrtheroi/memry-cli/internal/setup"
 	"github.com/mrtheroi/memry-cli/internal/usage"
 )
 
@@ -31,7 +37,7 @@ func TestOverlappingEnablesNeverInterleave(t *testing.T) {
 
 	assertExit(t, code, 0, output)
 	assertExit(t, secondCode, 1, second)
-	assertContains(t, second, "Another memry usage command is running; try again when it is done.")
+	assertContains(t, second, "Another memry command is changing the memry config; try again when it is done.")
 	if got := s.activeTokens(); !reflect.DeepEqual(got, []int{7}) {
 		t.Errorf("active tokens = %v, want only the first enable's", got)
 	}
@@ -56,4 +62,47 @@ func TestTheLockIsInTheUsersCacheDirectory(t *testing.T) {
 	if len(locks) != 1 {
 		t.Errorf("locks under %s while enabling = %v, want one", h.cacheDir, locks)
 	}
+}
+
+// `memry setup` takes the same lock for its config writes: a setup that
+// overlaps an enable waits for it, then gives up cleanly, and neither
+// overwrites the other's config.
+func TestSetupDuringEnableWaitsForTheLock(t *testing.T) {
+	s := newServer(t)
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(other.Close)
+	h := newHarness(t)
+	h.login(s.URL)
+	t.Cleanup(usage.SetLockTiming(50*time.Millisecond, time.Hour))
+	var out bytes.Buffer
+	setupCode := -1
+	var started atomic.Bool
+	s.onIssue = func() {
+		if started.Swap(true) {
+			return
+		}
+		setupCode = setup.Run(setup.Env{
+			Args: []string{"--url", other.URL, "--token=other-token", "--agents=", "-n"},
+			LookupEnv: func(key string) (string, bool) {
+				value, ok := h.env[key]
+				return value, ok
+			},
+			Unsetenv: func(string) error { return nil },
+			Out:      &out,
+			Agents:   agents.NewSupported(),
+			HTTP:     h.client(),
+			CacheDir: h.cacheDir,
+		})
+	}
+
+	output, code := h.run(usage.Enable)
+
+	assertExit(t, code, 0, output)
+	assertExit(t, setupCode, 1, out.String())
+	assertContains(t, out.String(), "Another memry command is changing the memry config; try again when it is done.")
+	cfg := readText(t, h.configPath)
+	assertContains(t, cfg, `"url": "`+s.URL+`"`)
+	assertContains(t, cfg, `"token_id": 7`)
 }

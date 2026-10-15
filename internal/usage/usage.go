@@ -4,14 +4,11 @@
 package usage
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
 	neturl "net/url"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -649,15 +646,20 @@ func (env Env) status() int {
 // seam for the tests.
 var beforeSettingsWrite = func() {}
 
-// lockPath is the usage lock of the memry config: in memry's directory
-// of the user's cache directory, which other users cannot write to, named
-// after the config's absolute path, so the lock works even where the
-// config's own directory is read-only, and two configs never share one.
-func (env Env) lockPath() string {
-	path, _ := config.Path(env.GOOS, env.getenv)
-	if abs, err := filepath.Abs(path); err == nil {
-		path = abs
+// locked runs command holding the config lock (see config.Lock), so two
+// usage commands, uninstalls or setups never read, issue, record, write
+// or revoke at the same time.
+func (env Env) locked(command func() int) int {
+	if env.CacheDir == "" {
+		env.line("Could not find your cache directory for the usage lock; set HOME (or XDG_CACHE_HOME), then try again.")
+		return failure
 	}
-	sum := sha256.Sum256([]byte(path))
-	return filepath.Join(env.CacheDir, "memry", "memry-usage-"+hex.EncodeToString(sum[:8])+".lock")
+	path, _ := config.Path(env.GOOS, env.getenv)
+	unlock, err := config.Lock(env.CacheDir, path)
+	if err != nil {
+		env.line(config.LockFailure(err, env.CacheDir, path))
+		return failure
+	}
+	defer unlock()
+	return command()
 }

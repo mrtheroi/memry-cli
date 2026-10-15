@@ -242,7 +242,8 @@ memry can see". If you use mTLS, Claude Code may also present its client certifi
   is settled by the next usage command. A failed `enable` changes nothing and the token in use
   keeps working.
 - memry writes the settings only if the file is still, byte for byte, the one it checked. Usage
-  commands take a lock in `memry/` under your user cache directory, which must be private to you.
+  commands and `memry setup` share a lock in `memry/` under your user cache directory, which must
+  be private to you, so they never overwrite each other's changes to the memry config.
 - If the memry config exists but cannot be read as a JSON object, the usage commands, `memry
   uninstall` and `memry delete-account` stop without changing anything.
 

@@ -48,6 +48,9 @@ type Env struct {
 	Prompter  Prompter
 	Agents    agents.Registry
 	HTTP      *http.Client
+	// CacheDir is the user's cache directory, where the config lock it
+	// shares with the usage commands lives.
+	CacheDir string
 }
 
 // Exit codes, as in the PHP CLI.
@@ -202,8 +205,15 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	}
 	// Run has checked that there is a config path.
 	path, _ := config.Path(env.GOOS, env.getenv)
+	// Under the lock the usage commands take too, so neither overwrites
+	// the other's changes to the config.
+	unlock, ok := env.lock(path)
+	if !ok {
+		return unsaved()
+	}
 	cfg, err := config.LoadOrEmpty(path)
 	if err != nil {
+		unlock()
 		env.notSaved(path, err)
 		return unsaved()
 	}
@@ -213,6 +223,7 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	toRemove, hasToRemove := cfg.AgentsToRemove()
 	selected, err := env.selectAgents(plan, saved, hasSaved)
 	if err != nil {
+		unlock()
 		return unsaved()
 	}
 	cfg.Set("url", plan.URL)
@@ -222,9 +233,11 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	toRemove = slices.DeleteFunc(slices.Clone(toRemove), func(key string) bool { return slices.Contains(selected, key) })
 	setAgentsToRemove(cfg, toRemove)
 	if err := cfg.Save(); err != nil {
+		unlock()
 		env.notSaved(path, err)
 		return unsaved()
 	}
+	unlock()
 
 	env.line(loggedIn + " Credentials saved to " + path + ".")
 	if hasURL && hasToken && previousToken != token {
@@ -244,13 +257,39 @@ func (env Env) saveLogin(plan flags.Plan, token, loggedIn string) int {
 	code, pending := env.wire(plan.URL, selected, append(slices.Clone(wired), toRemove...))
 	if len(toRemove) > 0 || len(pending) > 0 {
 		// Keep the agents memry could not be removed from, so a later
-		// setup or uninstall retries the removal.
-		setAgentsToRemove(cfg, pending)
-		if err := cfg.Save(); err != nil {
+		// setup or uninstall retries the removal. The config is read
+		// again under the lock: another command may have changed it
+		// while the agents were wired.
+		unlock, ok := env.lock(path)
+		if !ok {
+			return failure
+		}
+		defer unlock()
+		cfg, err := config.LoadOrEmpty(path)
+		if err == nil {
+			setAgentsToRemove(cfg, pending)
+			err = cfg.Save()
+		}
+		if err != nil {
 			return env.notSaved(path, err)
 		}
 	}
 	return code
+}
+
+// lock takes the config lock the usage commands share (see config.Lock),
+// or says why it could not. Without a cache directory there is no lock to
+// share: usage commands cannot run either.
+func (env Env) lock(path string) (func(), bool) {
+	if env.CacheDir == "" {
+		return func() {}, true
+	}
+	unlock, err := config.Lock(env.CacheDir, path)
+	if err != nil {
+		env.line(config.LockFailure(err, env.CacheDir, path))
+		return nil, false
+	}
+	return unlock, true
 }
 
 // setAgentsToRemove saves the agents memry could not be removed from in

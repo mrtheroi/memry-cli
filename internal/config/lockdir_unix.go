@@ -1,6 +1,6 @@
 //go:build !windows
 
-package usage
+package config
 
 import (
 	"io/fs"

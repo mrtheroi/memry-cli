@@ -61,7 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shared temporary directory), named after the memry config and holding the pid and time. The
   directory must be the user's own and not group- or world-writable on Unix; anything at the lock
   path that is not a regular file is refused, never followed or removed; a regular lock older than
-  two minutes is taken over, and a command waits up to 15 seconds for another one. Uninstall and
+  two minutes is taken over, and a command waits up to 15 seconds for another one. `memry setup` takes the
+  same lock around its config writes, re-reading the config before its second save, so setup and
+  the usage commands never overwrite each other's changes. Uninstall and
   delete-account take it only when the config has a usage record, so an unusable cache directory
   never fails an uninstall that has no usage metrics to clean up.
 - Unknown state fails closed: when the memry config exists but cannot be read, is not valid JSON or

@@ -1,6 +1,10 @@
 package usage
 
-import "time"
+import (
+	"time"
+
+	"github.com/mrtheroi/memry-cli/internal/config"
+)
 
 // SetBeforeSettingsWrite makes enable call f right before it writes the
 // settings, as a crash there would stop it, until the test ends.
@@ -13,12 +17,11 @@ func SetBeforeSettingsWrite(f func()) (restore func()) {
 // SetLockTiming sets how long a usage command waits for the lock and when
 // a lock is stale, until the test ends.
 func SetLockTiming(wait, stale time.Duration) (restore func()) {
-	beforeWait, beforeStale := lockWait, lockStale
-	lockWait, lockStale = wait, stale
-	return func() { lockWait, lockStale = beforeWait, beforeStale }
+	return config.SetLockTiming(wait, stale)
 }
 
 // LockPath is the usage lock env takes.
 func LockPath(env Env) string {
-	return env.lockPath()
+	path, _ := config.Path(env.GOOS, env.getenv)
+	return config.LockPath(env.CacheDir, path)
 }

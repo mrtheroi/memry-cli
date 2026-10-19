@@ -53,6 +53,18 @@ memry setup --agents=claude-code,codex
 
 Run `memry setup` again to change the selection; memry is removed from agents you deselect.
 
+### Claude Code plugin
+
+This repository is also a Claude Code plugin marketplace. Its `memry` plugin adds a
+`/memry:setup` skill that walks you through installing the CLI and running `memry setup`:
+
+```bash
+/plugin install memry --marketplace mrtheroi/memry-cli
+```
+
+The plugin does not register the MCP server itself; `memry setup` does, so memry is never
+connected twice.
+
 ### Self-hosted
 
 On a self-hosted memry server, your admin creates a token for you instead of the email login.

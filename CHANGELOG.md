@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A Claude Code plugin marketplace in this repository. The `memry` plugin adds a `/memry:setup`
+  skill that guides you through installing the CLI and running `memry setup`.
+- `server.json` to list memry in the official MCP Registry as `io.github.mrtheroi/memry`.
+
 ## [1.2.0] - 2026-10-15
 
 ### Added

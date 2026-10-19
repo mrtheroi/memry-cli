@@ -59,8 +59,12 @@ This repository is also a Claude Code plugin marketplace. Its `memry` plugin add
 `/memry:setup` skill that walks you through installing the CLI and running `memry setup`:
 
 ```bash
-/plugin install memry --marketplace mrtheroi/memry-cli
+/plugin marketplace add mrtheroi/memry-cli
+/plugin install memry@memry
 ```
+
+On Claude Code 2.1.275 or later, one command does both:
+`/plugin install memry --marketplace mrtheroi/memry-cli`.
 
 The plugin does not register the MCP server itself; `memry setup` does, so memry is never
 connected twice.

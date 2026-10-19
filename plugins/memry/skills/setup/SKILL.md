@@ -26,6 +26,7 @@ Follow these steps in order and stop at the first one that needs the user.
 3. **Log in and connect.** `memry setup` is interactive: it asks for the user's email, sends a 6-digit code and asks which agents to connect. Do not run it yourself. Ask the user to run it in their terminal:
    - memry Cloud: `memry setup`
    - A self-hosted memry server, with a token from their admin: `memry setup --url https://their-memry-server --token`
+   - When repairing an existing setup, keep its config file. If the memry hook command or the `claude mcp get memry` output contains `--config <path>`, add the same `--config <path>` to the setup command. If you cannot tell, ask the user whether they used a custom config file.
 
 4. **Start a new session.** Setup registers the `memry` MCP server and a hook that loads the user's memories when a session starts. Both take effect in the next Claude Code session.
 

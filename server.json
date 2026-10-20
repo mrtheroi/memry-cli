@@ -1,0 +1,12 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.mrtheroi/memry",
+  "title": "memry",
+  "description": "Persistent memory for AI coding agents. Install the memry CLI and run memry setup.",
+  "websiteUrl": "https://www.memry.com.mx",
+  "repository": {
+    "url": "https://github.com/mrtheroi/memry-cli",
+    "source": "github"
+  },
+  "version": "1.2.0"
+}

@@ -1,0 +1,15 @@
+{
+  "name": "memry",
+  "description": "Persistent memory for your AI coding agents.",
+  "owner": {
+    "name": "mrtheroi",
+    "url": "https://github.com/mrtheroi"
+  },
+  "plugins": [
+    {
+      "name": "memry",
+      "source": "./plugins/memry",
+      "description": "Set up memry so Claude Code remembers decisions, bug fixes and discoveries between sessions and projects."
+    }
+  ]
+}

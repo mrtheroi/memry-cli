@@ -1,6 +1,7 @@
 {
   "name": "memry",
   "displayName": "memry",
+  "version": "1.0.0",
   "description": "Set up memry so Claude Code remembers decisions, bug fixes and discoveries between sessions and projects.",
   "author": {
     "name": "mrtheroi",
@@ -9,5 +10,10 @@
   "homepage": "https://www.memry.com.mx",
   "repository": "https://github.com/mrtheroi/memry-cli",
   "license": "MIT",
-  "keywords": ["memory", "mcp", "context", "sessions"]
+  "keywords": [
+    "memory",
+    "mcp",
+    "context",
+    "sessions"
+  ]
 }

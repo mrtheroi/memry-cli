@@ -1,7 +1,7 @@
 {
   "name": "memry",
   "displayName": "memry",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "icon": "./.claude-plugin/icon.png",
   "description": "Set up memry so Claude Code remembers decisions, bug fixes and discoveries between sessions and projects.",
   "author": {
